@@ -1,0 +1,4084 @@
+# Agentry public REST API: spec-first contract (PLAN D-09, §9).
+# This file is the source of truth; server stubs and clients are generated
+# from it (make generate). Changes within /api/v1 must be additive; the CI
+# oasdiff gate enforces it. Document version 3.0.3 per DEVIATIONS.md DEV-002.
+openapi: 3.0.3
+info:
+  title: Agentry API
+  description: >
+    Public REST API for the Agentry registry: agents, versions,
+    publishing, scanning reports, orgs, and enterprise administration. Errors
+    follow RFC 9457 (application/problem+json).
+
+
+    Pagination (§9.1): list endpoints take `?cursor=&limit=` with an opaque
+    cursor and return the next page as a `Link: <…>; rel="next"` header
+    (cursor-carrying bodies keep `nextCursor` too). A `limit` outside the
+    documented bounds is clamped, never rejected.
+
+
+    Rate limits (§19) are reported on every response with
+    `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`
+    (plus `Retry-After` on 429).
+
+
+    Idempotency (§9.1): mutating POSTs accept an `Idempotency-Key` request
+    header (≤255 chars). The first request under a key executes and its
+    response is recorded. A retry with the same key, user, endpoint, and
+    body replays that recorded response verbatim. Reusing a key with a
+    *different* body is a 409. Keys are scoped per user and endpoint and
+    expire after 24 hours. Endpoints that honour the header: `POST /orgs`,
+    `POST /orgs/{org}/webhooks`, `POST /orgs/{org}/webhooks/{id}/ping`,
+    `POST /platform/ruleset-releases`,
+    `POST /agents/{ns}/{name}/versions`.
+  version: 0.2.0
+  license:
+    name: MIT
+    url: https://github.com/blaktron/agentry/blob/main/LICENSE
+servers:
+  - url: /api/v1
+tags:
+  - name: meta
+    description: Server metadata and feature discovery.
+  - name: auth
+    description: Registration, login, sessions, 2FA (§12.1).
+  - name: users
+    description: Current user, public profiles, personal access tokens.
+  - name: orgs
+    description: Organizations, members, teams (§12.2).
+  - name: audit
+    description: Org audit log (§12.6).
+  - name: agents
+    description: Agents, hosted repos, per-agent grants (§9.2).
+  - name: search
+    description: Full-text search and facets for discovery (§10.4).
+  - name: versions
+    description: Version submission, resolution, downloads (§7, §9.4).
+  - name: reviews
+    description: Review queue and finding verdicts (§8.5, §8.6).
+  - name: policies
+    description: Platform baseline and org policy overlays (§8.6).
+  - name: platform
+    description: Trust & safety actions and advisories (§7, §8.7).
+  - name: sso
+    description: "Enterprise SSO: SAML 2.0 SP and OIDC RP (§12.4)."
+  - name: scim
+    description: SCIM 2.0 provisioning tokens (§12.5).
+  - name: webhooks
+    description: Org webhook endpoints and deliveries (§9.3).
+  - name: domains
+    description: Domain verification for JIT auto-linking (§12.4).
+  - name: stars
+    description: Stars and per-agent counters (§9.2).
+
+paths:
+  /meta:
+    get:
+      operationId: getMeta
+      tags: [meta]
+      summary: Server version and self-host feature flags (§9.2).
+      security: []
+      responses:
+        "200":
+          description: Server metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Meta"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Create an individual account (email+password, §12.1).
+      description: >
+        When the deployment delegates accounts to an external directory
+        (`AGENTRY_AUTH_EXTERNAL_ONLY`, DEV-057), this endpoint answers 410 Gone;
+        sign in through /auth/oidc/{provider}/start instead.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Account created; verification email queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /auth/verify-email:
+    post:
+      operationId: verifyEmail
+      description: >
+        When the deployment delegates accounts to an external directory
+        (`AGENTRY_AUTH_EXTERNAL_ONLY`, DEV-057), this endpoint answers 410 Gone;
+        sign in through /auth/oidc/{provider}/start instead.
+      tags: [auth]
+      summary: Confirm an email address with the mailed token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        "204":
+          description: Email verified.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /auth/login:
+    post:
+      operationId: login
+      description: >
+        When the deployment delegates accounts to an external directory
+        (`AGENTRY_AUTH_EXTERNAL_ONLY`, DEV-057), this endpoint answers 410 Gone;
+        sign in through /auth/oidc/{provider}/start instead.
+      tags: [auth]
+      summary: Password (+TOTP when enabled) login; sets the session cookie.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Session established. The response sets the
+            `agentry_session` cookie; `csrfToken` must be echoed in the
+            `X-Agentry-CSRF` header on all cookie-authenticated mutations.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResult"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Revoke the current session.
+      description: >-
+        Answers 204 for a native or OIDC session. For a session established
+        through an organization's SAML connection whose IdP publishes a
+        Single Logout endpoint, answers 200 with the IdP logout URL the
+        browser should be sent to next (SP-initiated SLO, §12.4); the
+        registry session is revoked either way.
+      responses:
+        "204":
+          description: Session revoked.
+        "200":
+          description: Session revoked; continue the logout at the IdP.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutResult"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /auth/2fa/totp/setup:
+    post:
+      operationId: totpSetup
+      description: >
+        When the deployment delegates accounts to an external directory
+        (`AGENTRY_AUTH_EXTERNAL_ONLY`, DEV-057), this endpoint answers 410 Gone;
+        sign in through /auth/oidc/{provider}/start instead.
+      tags: [auth]
+      summary: Begin TOTP enrollment; returns the provisioning secret.
+      responses:
+        "200":
+          description: Enrollment secret (confirm with /auth/2fa/totp/verify).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TotpSetupResult"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /auth/2fa/totp/verify:
+    post:
+      operationId: totpVerify
+      description: >
+        When the deployment delegates accounts to an external directory
+        (`AGENTRY_AUTH_EXTERNAL_ONLY`, DEV-057), this endpoint answers 410 Gone;
+        sign in through /auth/oidc/{provider}/start instead.
+      tags: [auth]
+      summary: Confirm TOTP enrollment with a current code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        "204":
+          description: TOTP enabled.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /auth/2fa/totp/challenge:
+    post:
+      operationId: totpChallenge
+      tags: [auth]
+      summary: Complete a pending 2FA challenge and open the session (§12.1).
+      description: >
+        Second leg of a login that could not carry a TOTP code inline. Today
+        the only such login is social login: its callback is a browser
+        redirect. The challenge is opaque, single-use and expires in five
+        minutes; it proves nothing on its own, so a valid TOTP code is still
+        required.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challenge, code]
+              properties:
+                challenge:
+                  type: string
+                code:
+                  type: string
+      responses:
+        "200":
+          description: Session established.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResult"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /auth/desktop/exchange:
+    post:
+      operationId: exchangeDesktopCode
+      tags: [auth]
+      summary: Exchange a desktop sign-in code for the PAT it granted.
+      description: >
+        Unauthenticated; the code is the credential. Single use, bound to the
+        `state` nonce the desktop app generated, and valid for 60 seconds from
+        the grant. The PAT is minted at this moment and returned exactly once,
+        like `createToken`. Rate-limited with the login class (§19).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DesktopExchangeRequest"
+      responses:
+        "201":
+          description: Token minted; `token` appears only in this response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatCreated"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /auth/oidc/{provider}/start:
+    get:
+      operationId: socialOidcStart
+      tags: [auth]
+      summary: Begin social login with a configured provider (§12.1).
+      description: >
+        Individual-account login through a social identity provider
+        (`google` = OIDC proper; `github` = an OAuth2 shim, since GitHub is
+        not an OIDC issuer). Providers must be configured on the server
+        (`AGENTRY_SOCIAL_<PROVIDER>_CLIENT_ID`/`_SECRET`); unconfigured
+        providers return 404. This is individual login and never grants org
+        membership. Org SSO lives under /orgs/{org}/sso (§12.4).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/SocialProvider"
+        - name: next
+          in: query
+          description: >
+            Browser mode. An in-app, path-absolute return target (e.g.
+            `/dashboard`). When present and valid, the callback answers the
+            browser with a 303 to it instead of the JSON result, and a
+            failed login 303s to `/login?error=…`. Anything that is not a
+            single-slash path on this origin is ignored (open-redirect
+            guard), which leaves the API behaviour unchanged.
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to the provider's authorization endpoint.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /auth/oidc/{provider}/callback:
+    get:
+      operationId: socialOidcCallback
+      tags: [auth]
+      summary: "Social login redirect URI: establish a session (§12.1)."
+      description: >
+        Exchanges the code, verifies the identity, then links or JIT-creates
+        an individual account (`identities.provider_kind='social'`).
+        Auto-linking to an existing account happens only when the provider
+        asserts a verified email that matches a verified account email
+        (T-12); otherwise the response is 409 and the accounts must be linked
+        explicitly. When the account has TOTP enabled the response is a
+        pending 2FA challenge rather than a session. A login begun with
+        `next` (browser mode) answers 303 to that in-app path once the
+        session cookie is set, or to `/login?error=…` on failure; the JSON
+        result is the API mode, used when `next` was absent.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/SocialProvider"
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session established, or a pending TOTP challenge.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SocialLoginResult"
+        "303":
+          description: Browser mode — session cookie set, redirect to `next`.
+        "409":
+          description: An account with this email exists; link it explicitly.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /user:
+    get:
+      operationId: getCurrentUser
+      tags: [users]
+      summary: The authenticated user.
+      responses:
+        "200":
+          description: Current user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateCurrentUser
+      tags: [users]
+      summary: Update profile fields.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                  maxLength: 120
+                cookieAck:
+                  description: >
+                    True records acceptance of the cookie notice on the account
+                    (write-once timestamp; false is ignored).
+                  type: boolean
+      responses:
+        "200":
+          description: Updated user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /user/delete:
+    post:
+      operationId: deleteCurrentUser
+      tags: [users]
+      summary: Erase the caller's account (GDPR flow, §12.7).
+      description: >
+        Purges personal data and pseudonymizes the account. Published public
+        versions are never deleted (§12.7): they are either yanked, so
+        already-installed copies keep verifying, or the personal-namespace
+        agents are transferred to an organization the caller administers.
+        When the account has published public versions the choice is
+        explicit: omitting `publishedContent` is a 400, never a silent yank.
+        When the deployment holds credentials in a directory service and is
+        configured to reach it (`AGENTRY_IDP_ADMIN_URL`), the sign-in account
+        there is deleted in the same step; the outcome is audited as
+        `user.directory_erase`.
+      parameters:
+        - name: publishedContent
+          in: query
+          schema:
+            type: string
+            enum: [yank, transfer]
+          description: >
+            What to do with published public versions. Required when the
+            account has any; ignored (and defaulted to yank) when it has none.
+        - name: transferOrg
+          in: query
+          schema:
+            type: string
+            pattern: "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+          description: >
+            Destination org handle, required with publishedContent=transfer.
+            The caller must be an owner or admin of that org.
+      responses:
+        "204":
+          description: Account erased; session revoked.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /user/stars/{ns}/{name}:
+    put:
+      operationId: starAgent
+      tags: [stars]
+      summary: Star an agent (idempotent, §9.2).
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+      responses:
+        "204":
+          description: Starred (already-starred is also 204).
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: unstarAgent
+      tags: [stars]
+      summary: Remove a star (idempotent, §9.2).
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+      responses:
+        "204":
+          description: Unstarred (not-starred is also 204).
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /users/{handle}:
+    get:
+      operationId: getUserProfile
+      tags: [users]
+      summary: Public profile for a user handle.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Handle"
+      responses:
+        "200":
+          description: Public profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicUser"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /user/tokens:
+    get:
+      operationId: listTokens
+      tags: [users]
+      summary: List the caller's personal access tokens (metadata only).
+      responses:
+        "200":
+          description: Tokens.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pat"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createToken
+      tags: [users]
+      summary: Mint a PAT. The secret is returned exactly once (D-22).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTokenRequest"
+      responses:
+        "201":
+          description: Token created; `token` appears only in this response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatCreated"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /user/ssh-keys:
+    get:
+      operationId: listSshKeys
+      tags: [users]
+      summary: List the caller's SSH public keys for the git transport (§6.1 Q7).
+      responses:
+        "200":
+          description: Keys.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SshKey"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: addSshKey
+      tags: [users]
+      summary: Register an SSH public key for ssh://git@…/{ns}/{name}.git (session-only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddSshKeyRequest"
+      responses:
+        "201":
+          description: Key registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SshKey"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /user/ssh-keys/{keyId}:
+    delete:
+      operationId: removeSshKey
+      tags: [users]
+      summary: Remove an SSH public key (session-only).
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Key removed.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /user/tokens/desktop-grant:
+    post:
+      operationId: createDesktopGrant
+      tags: [users]
+      summary: Record a one-time grant for the desktop app's browser sign-in.
+      description: >
+        Session-only. The web tier's authorize page calls this after the user
+        consents; the response is a short-lived, single-use `code` bound to the
+        app's `state` nonce. No token is minted here — the desktop app
+        exchanges the code at `POST /auth/desktop/exchange` from its own
+        process, so the PAT never travels in a URL (DEV-058 hardening,
+        agentry#19). The grant's scopes are fixed to the desktop set
+        (agent:read, agent:publish, repo:read, repo:write, user:profile).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DesktopGrantRequest"
+      responses:
+        "201":
+          description: Grant recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DesktopGrant"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /user/tokens/{tokenId}:
+    delete:
+      operationId: revokeToken
+      tags: [users]
+      summary: Revoke a PAT immediately (§12.3).
+      parameters:
+        - name: tokenId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Revoked.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /user/directory:
+    get:
+      operationId: getUserDirectory
+      tags: [users]
+      summary: Where the caller manages password, MFA and profile when a directory service owns the account (DEV-057).
+      description: >
+        With auth.externalOnly, credentials live in the directory service
+        (Authentik). This answers the settings page's question "where do I
+        change my password or add an authenticator?" with the directory's
+        flow URLs, and lists the caller's enrolled authenticator devices
+        when the server has directory admin access (auth.idpAdminURL).
+        Without a directory, `managed` is false and the rest is absent.
+      responses:
+        "200":
+          description: Directory account links and devices.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDirectory"
+        default:
+          $ref: "#/components/responses/Problem"
+  /user/sessions:
+    get:
+      operationId: listUserSessions
+      tags: [users]
+      summary: List the caller's active browser sessions (§12.1).
+      description: >
+        Sessions are cookie sessions. A PAT-authenticated caller has no
+        sessions of its own, so the list is empty (200, not an error).
+        A PAT is not a way to enumerate someone's browser sessions.
+      responses:
+        "200":
+          description: Active, unexpired, unrevoked sessions, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionList"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: revokeOtherUserSessions
+      tags: [users]
+      summary: Revoke every session except the calling one ("sign out everywhere else").
+      description: >
+        The calling session survives, so the caller is not logged out of the
+        browser they are using. Session-only: a PAT cannot revoke sessions
+        (403), for the same reason it cannot list them.
+      responses:
+        "204":
+          description: Other sessions revoked.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /user/sessions/{sessionId}:
+    delete:
+      operationId: revokeUserSession
+      tags: [users]
+      summary: Revoke one of the caller's own sessions (§12.1).
+      description: >
+        Own sessions only. An id that is not one of the caller's live
+        sessions answers 404 whether it does not exist or belongs to
+        somebody else. The two are deliberately indistinguishable.
+        Session-only: a PAT cannot revoke sessions (403).
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Revoked.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /ruleset-releases/latest/bundle:
+    get:
+      operationId: getLatestRulesetBundle
+      tags: [meta]
+      summary: The newest published S3/S4 rule bundle, for `agentry validate --rules-update`.
+      description: >
+        Returns the deployment's rule bundle as an uncompressed tar of the
+        bundle directory (`bundle.yaml` plus the family YAML files), exactly
+        the bytes `pkg/rules.LoadBundle` reads. The advertised identity
+        travels in headers so a client can check what it got without
+        unpacking first:
+
+
+        `X-Agentry-Bundle-Semver`: the ruleset release semver;
+        `X-Agentry-Bundle-Digest`: the `sha256:<hex>` content digest
+        recorded on the `ruleset_releases` row; `ETag`: the same digest.
+
+
+        The digest is the pin: a client MUST recompute it over the received
+        bundle and refuse a mismatch. Bundle-level *signatures* do not exist
+        yet (see DEVIATIONS DEV-024); this endpoint pins by digest only.
+      security: []
+      responses:
+        "200":
+          description: The rule bundle as a tar archive.
+          headers:
+            X-Agentry-Bundle-Semver:
+              schema:
+                type: string
+              description: Ruleset release semver.
+            X-Agentry-Bundle-Digest:
+              schema:
+                type: string
+              description: "sha256:<hex> content digest of the bundle."
+            ETag:
+              schema:
+                type: string
+          content:
+            application/x-tar:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /ruleset-releases/latest/attestation:
+    get:
+      operationId: getLatestRulesetAttestation
+      tags: [platform]
+      summary: DSSE attestation over the bundle `…/latest/bundle` serves.
+      description: >
+        An in-toto statement (predicate `https://agentry.dev/attestation/ruleset/v1`)
+        whose subject digest is the bundle's content digest, signed with the
+        registry's release-signing key (`/.well-known/agentry/signing-keys.json`).
+        Lets `agentry validate --rules-update` verify a fetched bundle by
+        signature rather than only by the digest the same server advertised
+        (agentry#25). 404 when the registry does not sign (`signing.kind: none`).
+      security: []
+      responses:
+        "200":
+          description: The DSSE envelope (application/json).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs:
+    post:
+      operationId: createOrg
+      tags: [orgs]
+      summary: Create an organization; caller becomes owner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrgRequest"
+      responses:
+        "201":
+          description: Organization created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}:
+    get:
+      operationId: getOrg
+      tags: [orgs]
+      summary: Organization profile (public fields; settings for admins).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "200":
+          description: Organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateOrg
+      tags: [orgs]
+      summary: Update org settings (admin+).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                  maxLength: 120
+                ssoRequired:
+                  type: boolean
+                  description: Enforce SSO for org resources (§12.4). Owner only.
+      responses:
+        "200":
+          description: Updated organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/members:
+    get:
+      operationId: listOrgMembers
+      tags: [orgs]
+      summary: List members with roles (members can view).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "200":
+          description: Members.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Membership"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/members/{handle}:
+    put:
+      operationId: setOrgMember
+      tags: [orgs]
+      summary: Add a member or change a role (admin+; owner grants owner/admin).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/Handle"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  $ref: "#/components/schemas/OrgRole"
+      responses:
+        "200":
+          description: Membership set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Membership"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: removeOrgMember
+      tags: [orgs]
+      summary: Remove a member (admin+; owners removable only by owners).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/Handle"
+      responses:
+        "204":
+          description: Removed.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/teams:
+    get:
+      operationId: listTeams
+      tags: [orgs]
+      summary: List teams (members can view).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "200":
+          description: Teams.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Team"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createTeam
+      tags: [orgs]
+      summary: Create a team (admin+).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug]
+              properties:
+                slug:
+                  type: string
+                  pattern: "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+      responses:
+        "201":
+          description: Team created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/teams/{team}:
+    delete:
+      operationId: deleteTeam
+      tags: [orgs]
+      summary: Delete a team (admin+).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/TeamSlug"
+      responses:
+        "204":
+          description: Deleted.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/teams/{team}/members:
+    get:
+      operationId: listTeamMembers
+      tags: [orgs]
+      summary: List team members (org members can view).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/TeamSlug"
+      responses:
+        "200":
+          description: Team members.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PublicUser"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/teams/{team}/members/{handle}:
+    put:
+      operationId: addTeamMember
+      tags: [orgs]
+      summary: Add an org member to a team (admin+).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/TeamSlug"
+        - $ref: "#/components/parameters/Handle"
+      responses:
+        "204":
+          description: Added.
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: removeTeamMember
+      tags: [orgs]
+      summary: Remove a member from a team (admin+).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/TeamSlug"
+        - $ref: "#/components/parameters/Handle"
+      responses:
+        "204":
+          description: Removed.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/audit:
+    get:
+      operationId: listOrgAudit
+      tags: [audit]
+      summary: Org audit events, newest first (admin+; cursor paged, §12.6).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: action
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents:
+    post:
+      operationId: createAgent
+      tags: [agents]
+      summary: Create an agent and its hosted git repository (§9.2).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentRequest"
+      responses:
+        "201":
+          description: Agent created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        default:
+          $ref: "#/components/responses/Problem"
+    get:
+      operationId: listAgents
+      tags: [agents]
+      summary: List agents in a namespace (public ones for everyone).
+      security: []
+      parameters:
+        - name: namespace
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Agents.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Agent"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}:
+    get:
+      operationId: getAgent
+      tags: [agents]
+      summary: Agent metadata (public agents readable by anyone).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+      responses:
+        "200":
+          description: Agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateAgent
+      tags: [agents]
+      summary: Update agent settings (maintain).
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                summary:
+                  type: string
+                  maxLength: 140
+                visibility:
+                  type: string
+                  enum: [public, private]
+                autoPublishTags:
+                  type: boolean
+                allowForcePush:
+                  description: >
+                    Allow non-fast-forward pushes to the default branch
+                    (§6.3). Off by default; maintain only.
+                  type: boolean
+      responses:
+        "200":
+          description: Updated agent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteAgent
+      tags: [agents]
+      summary: Delete an agent that was never published (maintain, §9.2).
+      description: >
+        Deletes the agent and its hosted repository. Refused (409) once the
+        agent has any version row, because §4.3 forbids deleting version rows:
+        a version past `submitted` is history consumers may depend on, and a
+        version still at `submitted` is mid-pipeline. Published agents are
+        yanked or blocked, never deleted.
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+      responses:
+        "204":
+          description: Deleted.
+        "409":
+          description: The agent has versions, advisories, or abuse reports.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}/stats:
+    get:
+      operationId: getAgentStats
+      tags: [stars]
+      summary: Star count and install counts for an agent (§9.2).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+      responses:
+        "200":
+          description: Counters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentStats"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}/activity:
+    get:
+      operationId: listAgentActivity
+      tags: [agents]
+      summary: Recent activity for an agent (§9.2).
+      description: >
+        Drawn from the audit log. Anyone who can see a public agent gets the
+        public-safe subset: publishes and yanks; callers with an explicit
+        read grant (or namespace-derived read) see the fuller stream
+        including submissions, settings changes, and grant changes.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit100"
+      responses:
+        "200":
+          description: 'Activity page (`Link` header with rel=next when more remain).'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}/grants:
+    get:
+      operationId: listAgentGrants
+      tags: [agents]
+      summary: List explicit grants (maintain).
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+      responses:
+        "200":
+          description: Grants.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentGrant"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}/grants/user/{handle}:
+    put:
+      operationId: setAgentUserGrant
+      tags: [agents]
+      summary: Grant a user a per-agent role (maintain).
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/Handle"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  $ref: "#/components/schemas/AgentRole"
+      responses:
+        "204":
+          description: Grant set.
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: removeAgentUserGrant
+      tags: [agents]
+      summary: Remove a user grant (maintain).
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/Handle"
+      responses:
+        "204":
+          description: Removed.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}/grants/team/{team}:
+    put:
+      operationId: setAgentTeamGrant
+      tags: [agents]
+      summary: Grant an org team a per-agent role (maintain; org agents only).
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/TeamSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  $ref: "#/components/schemas/AgentRole"
+      responses:
+        "204":
+          description: Grant set.
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: removeAgentTeamGrant
+      tags: [agents]
+      summary: Remove a team grant (maintain).
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/TeamSlug"
+      responses:
+        "204":
+          description: Removed.
+        default:
+          $ref: "#/components/responses/Problem"
+
+
+  /agents/{ns}/{name}/versions:
+    post:
+      operationId: submitVersion
+      tags: [versions]
+      summary: Submit a version for publication (§7 state machine entry).
+      description: >
+        Two sources (§6.5): JSON {tag} submits an existing repo tag
+        (git-tag source); multipart/form-data with an `archive` part
+        (tar.zst) submits a client-built package (cli-upload source; the
+        server re-validates, re-packs deterministically, and compares
+        digests: client packing is never trusted).
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tag]
+              properties:
+                tag:
+                  type: string
+                  description: Existing repo tag vX.Y.Z.
+          multipart/form-data:
+            schema:
+              type: object
+              required: [archive]
+              properties:
+                archive:
+                  type: string
+                  format: binary
+                digest:
+                  type: string
+                  description: Client-computed sha256 digest to cross-check.
+      responses:
+        "202":
+          description: Version accepted into the pipeline.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentVersion"
+        default:
+          $ref: "#/components/responses/Problem"
+    get:
+      operationId: listVersions
+      tags: [versions]
+      summary: Version history, newest first.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+      responses:
+        "200":
+          description: Versions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentVersion"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}/versions/{version}:
+    get:
+      operationId: getVersionInfo
+      tags: [versions]
+      summary: One version with its state and archive identity.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/VersionString"
+      responses:
+        "200":
+          description: Version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentVersion"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}/versions/{version}/manifest:
+    get:
+      operationId: getVersionManifest
+      tags: [versions]
+      summary: The validated manifest (canonical JSON, §4.2).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/VersionString"
+      responses:
+        "200":
+          description: Canonical manifest document.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}/versions/{version}/yank:
+    post:
+      operationId: yankVersion
+      tags: [versions]
+      summary: Yank a published version (§5.5 semantics; publish permission).
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/VersionString"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        "204":
+          description: Yanked.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}/versions/{version}/download:
+    get:
+      operationId: downloadVersion
+      tags: [versions]
+      summary: Download the release archive (§9.4; counts an install).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/VersionString"
+      responses:
+        "200":
+          description: The tar.zst archive (self-host streams directly).
+          content:
+            application/zstd:
+              schema:
+                type: string
+                format: binary
+        "302":
+          description: Redirect to the CDN object (SaaS).
+        "410":
+          description: Version blocked by trust & safety (§7).
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}/versions/{version}/files:
+    get:
+      operationId: listVersionFiles
+      tags: [versions]
+      summary: List the files inside the version's release archive (§10.2).
+      description: >
+        The same inventory a reviewer sees (§10.1), opened under the
+        download access gate: published and yanked versions list, blocked
+        versions return 410, quarantined versions 409. Browsing does not
+        count an install.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/VersionString"
+      responses:
+        "200":
+          description: File inventory (path and size of every regular file).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewFileList"
+        "410":
+          description: Version blocked by trust & safety (§7).
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}/versions/{version}/file:
+    get:
+      operationId: getVersionFile
+      tags: [versions]
+      summary: Read one file from the version's release archive (§10.2).
+      description: >
+        Text files return UTF-8 content up to the display cap with a
+        truncation flag; binary files return metadata only (binary true),
+        never raw bytes (§10.3). Same access gate as listVersionFiles.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/VersionString"
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Repo-relative file path exactly as listVersionFiles reports it.
+      responses:
+        "200":
+          description: File metadata and, for text files, its content.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewFileContent"
+        "410":
+          description: Version blocked by trust & safety (§7).
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /resolve:
+    get:
+      operationId: resolveRef
+      tags: [versions]
+      summary: Resolve ns/name@range to a concrete version (§9.4 step 1).
+      security: []
+      parameters:
+        - name: ref
+          in: query
+          required: true
+          schema:
+            type: string
+          description: "ns/name, ns/name@^1.2, ns/name@1.2.3, or ns/name@beta."
+        - name: channel
+          in: query
+          schema:
+            type: string
+            enum: [stable, beta]
+      responses:
+        "200":
+          description: Resolution result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolveResult"
+        default:
+          $ref: "#/components/responses/Problem"
+
+
+  /agents/{ns}/{name}/versions/{version}/events:
+    get:
+      operationId: streamVersionEvents
+      tags: [versions]
+      summary: Server-sent events for a version's pipeline progress (§11 "SSE/poll"; agentry#65).
+      description: >
+        Streams `event: status` messages (JSON: status, statusReason, the
+        scan stages completed so far, done) whenever something changes,
+        about once a second while a scan runs, and closes after the
+        terminal state — published, rejected, needs_review, quarantined —
+        or after five minutes, whichever comes first. Same visibility rules
+        as the version itself. Clients that cannot consume SSE poll the
+        version resource instead.
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/VersionString"
+      responses:
+        "200":
+          description: An event stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/Problem"
+  /agents/{ns}/{name}/versions/{version}/report:
+    get:
+      operationId: getVersionReport
+      tags: [versions]
+      summary: The scan report for a version (findings, ruleset, verdict, §8).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/VersionString"
+      responses:
+        "200":
+          description: Scan report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanReport"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}/versions/{version}/attestation:
+    get:
+      operationId: getVersionAttestation
+      tags: [versions]
+      summary: The signed DSSE attestation (§8.8), verbatim.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - $ref: "#/components/parameters/VersionString"
+      responses:
+        "200":
+          description: DSSE envelope.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "404":
+          description: No attestation (unsigned/unpublished).
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /review-queue:
+    get:
+      operationId: listReviewQueue
+      tags: [reviews]
+      summary: Pending review items (platform staff or org security_reviewer).
+      parameters:
+        - name: queue
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [platform, org]
+        - name: org
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Review items.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReviewItem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /review-items/{id}:
+    get:
+      operationId: getReviewItem
+      tags: [reviews]
+      summary: One review item with its findings bundle.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Review bundle.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewBundle"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /review-items/{id}/files:
+    get:
+      operationId: listReviewFiles
+      tags: [reviews]
+      summary: File inventory of the archive under review (reviewer/staff).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Files in the release archive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewFileList"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /review-items/{id}/file:
+    get:
+      operationId: getReviewFile
+      tags: [reviews]
+      summary: One file's content from the archive under review (reviewer/staff).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 512
+      responses:
+        "200":
+          description: File content (text files only; binary is flagged, not returned).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewFileContent"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /review-items/{id}/decision:
+    post:
+      operationId: decideReviewItem
+      tags: [reviews]
+      summary: Approve or reject a version under review (not its author, §12.2).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, rationale]
+              properties:
+                decision:
+                  type: string
+                  enum: [approve, reject]
+                rationale:
+                  type: string
+                  maxLength: 1000
+      responses:
+        "204":
+          description: Decision recorded.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /findings/{id}/verdict:
+    post:
+      operationId: setFindingVerdict
+      tags: [reviews]
+      summary: Confirm or dismiss a finding (§8.5 dismissals).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [verdict, reason]
+              properties:
+                verdict:
+                  type: string
+                  enum: [confirmed, dismissed_false_positive, dismissed_accepted_risk]
+                reason:
+                  type: string
+                  maxLength: 1000
+      responses:
+        "204":
+          description: Verdict recorded.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /platform/policy:
+    get:
+      operationId: getPlatformPolicy
+      tags: [policies]
+      summary: The read-only platform baseline policy (§8.6).
+      security: []
+      responses:
+        "200":
+          description: Baseline policy document.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /platform/redteam/reports:
+    get:
+      operationId: listRedTeamReports
+      tags: [platform]
+      summary: Reports of the scheduled red-team job against the S3/S4 gate (§17.5; platform staff).
+      description: >-
+        Newest first. Each report is one run of the attack corpus's rewrites
+        (paraphrase, encoding, unicode and obfuscation mutators) scanned with
+        the rule bundle in service, and lists the rewrites an expected rule no
+        longer caught. Report-only: nothing on the publish path reads these.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+      responses:
+        "200":
+          description: Reports, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RedTeamReport"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/policy:
+    get:
+      operationId: getOrgPolicy
+      tags: [policies]
+      summary: The org policy overlay (admin+).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "200":
+          description: Org policy document.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: setOrgPolicy
+      tags: [policies]
+      summary: Set the org policy overlay (owner; tighten-only, §8.6).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Effective (merged) policy after the update.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/sso/connections:
+    get:
+      operationId: listSsoConnections
+      tags: [sso]
+      summary: List the org's SSO connections (owner, §12.4).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "200":
+          description: Connections (secrets redacted).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SsoConnection"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/sso/connections/{kind}:
+    put:
+      operationId: putSsoConnection
+      tags: [sso]
+      summary: Create or update a SAML/OIDC connection (owner, §12.4).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/SsoKind"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SsoConnectionInput"
+      responses:
+        "200":
+          description: Connection stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SsoConnection"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteSsoConnection
+      tags: [sso]
+      summary: Delete a connection (owner, §12.4).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/SsoKind"
+      responses:
+        "204":
+          description: Deleted.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/sso/connections/{kind}/test:
+    post:
+      operationId: testSsoConnection
+      tags: [sso]
+      summary: Probe a stored connection without signing in (owner, §12.4; agentry#50).
+      description: >
+        OIDC: runs discovery against the stored issuer and reports the
+        endpoints it advertises. SAML: parses the stored IdP metadata and
+        reports entity id, sign-on URLs and signing-certificate expiry.
+        Neither contacts the IdP's sign-in flow or uses the client secret.
+        A failed probe is a 200 with ok=false and the reason, so the admin
+        page can show it inline.
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/SsoKind"
+      responses:
+        "200":
+          description: Probe outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SsoConnectionTest"
+        default:
+          $ref: "#/components/responses/Problem"
+  /orgs/{org}/sso/saml/metadata:
+    get:
+      operationId: getSamlMetadata
+      tags: [sso]
+      summary: SP SAML metadata for this org's connection (§12.4).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "200":
+          description: SP metadata XML.
+          content:
+            application/samlmetadata+xml:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/sso/saml/acs:
+    post:
+      operationId: samlAcs
+      tags: [sso]
+      summary: "SAML Assertion Consumer Service: consume a signed assertion (§12.4)."
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "200":
+          description: SSO session established.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResult"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/sso/saml/slo:
+    get:
+      operationId: samlSloRedirect
+      tags: [sso]
+      summary: "SAML Single Logout endpoint, HTTP-Redirect binding (§12.4)."
+      description: >-
+        Accepts a signed IdP-initiated LogoutRequest (revokes the sessions it
+        names and answers the IdP with a LogoutResponse) or the IdP's
+        LogoutResponse to an SP-initiated logout (validated, then the browser
+        is sent home).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "303":
+          description: Redirect to the IdP's SLO endpoint (LogoutResponse) or home.
+        "200":
+          description: Logged out; the IdP publishes no endpoint to answer to.
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: samlSloPost
+      tags: [sso]
+      summary: "SAML Single Logout endpoint, HTTP-POST binding (§12.4)."
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "303":
+          description: Redirect to the IdP's SLO endpoint (LogoutResponse) or home.
+        "200":
+          description: Logged out; the IdP publishes no endpoint to answer to.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/sso/oidc/start:
+    get:
+      operationId: oidcStart
+      tags: [sso]
+      summary: Begin the OIDC auth-code + PKCE flow (redirect to IdP, §12.4).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "302":
+          description: Redirect to the IdP authorization endpoint.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/sso/oidc/callback:
+    get:
+      operationId: oidcCallback
+      tags: [sso]
+      summary: "OIDC redirect URI: exchange the code and establish a session (§12.4)."
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSO session established.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResult"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/scim/tokens:
+    get:
+      operationId: listScimTokens
+      tags: [scim]
+      summary: List active SCIM provisioning tokens (owner, §12.5).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "200":
+          description: SCIM tokens (secret shown only at creation).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScimToken"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createScimToken
+      tags: [scim]
+      summary: Mint a SCIM bearer token (owner, §12.5).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expiresInDays:
+                  type: integer
+                  minimum: 1
+                  maximum: 730
+      responses:
+        "201":
+          description: Token created; the token value is returned once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScimTokenCreated"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/scim/tokens/{tokenId}:
+    delete:
+      operationId: revokeScimToken
+      tags: [scim]
+      summary: Revoke a SCIM token (owner, §12.5).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - name: tokenId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Revoked.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/webhooks:
+    get:
+      operationId: listWebhooks
+      tags: [webhooks]
+      summary: List webhook endpoints (admin+, §9.3).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "200":
+          description: Webhook endpoints.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WebhookEndpoint"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createWebhook
+      tags: [webhooks]
+      summary: Create a webhook endpoint (admin+, §9.3).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookInput"
+      responses:
+        "201":
+          description: Endpoint created; the signing secret is returned once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpointCreated"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/webhooks/{id}:
+    get:
+      operationId: getWebhook
+      tags: [webhooks]
+      summary: Get a webhook endpoint (admin+, §9.3).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/WebhookID"
+      responses:
+        "200":
+          description: Endpoint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpoint"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: updateWebhook
+      tags: [webhooks]
+      summary: Update a webhook endpoint (admin+, §9.3).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/WebhookID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                events:
+                  type: array
+                  items:
+                    type: string
+                active:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated endpoint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpoint"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteWebhook
+      tags: [webhooks]
+      summary: Delete a webhook endpoint (admin+, §9.3).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/WebhookID"
+      responses:
+        "204":
+          description: Deleted.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/webhooks/{id}/ping:
+    post:
+      operationId: pingWebhook
+      tags: [webhooks]
+      summary: Send a test delivery to an endpoint (admin+, §9.2).
+      description: >
+        Enqueues a signed `ping` delivery through the ordinary webhook
+        machinery (same signature header, same SSRF guard, same retry
+        schedule), so the recorded attempt appears in
+        `GET …/{id}/deliveries`. Honours `Idempotency-Key`.
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/WebhookID"
+      responses:
+        "202":
+          description: Test delivery enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDelivery"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/webhooks/{id}/deliveries:
+    get:
+      operationId: listWebhookDeliveries
+      tags: [webhooks]
+      summary: Recent delivery attempts for an endpoint (admin+, §9.3).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/WebhookID"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit100"
+      responses:
+        "200":
+          description: 'Deliveries (`Link` header with rel=next when more remain).'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WebhookDelivery"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/domain-claims:
+    get:
+      operationId: listDomainClaims
+      tags: [domains]
+      summary: List domain claims (admin+, §12.4).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "200":
+          description: Domain claims.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DomainClaim"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createDomainClaim
+      tags: [domains]
+      summary: Start a domain claim; returns the DNS TXT challenge (admin+, §12.4).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain]
+              properties:
+                domain:
+                  type: string
+      responses:
+        "201":
+          description: Claim created with a verification challenge.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainClaim"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/domain-claims/verify:
+    post:
+      operationId: verifyDomainClaim
+      tags: [domains]
+      summary: Check the DNS TXT record and mark verified (admin+, §12.4).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain]
+              properties:
+                domain:
+                  type: string
+      responses:
+        "200":
+          description: Verification result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainClaim"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/audit/exports:
+    post:
+      operationId: createAuditExport
+      tags: [audit]
+      summary: Start an async NDJSON audit export (admin+, §12.6).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  description: Optional action filter.
+      responses:
+        "202":
+          description: Export job accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditExport"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/audit/exports/{id}:
+    get:
+      operationId: getAuditExport
+      tags: [audit]
+      summary: Poll an audit export's status and download reference (admin+, §12.6).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Export status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditExport"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /platform/audit:
+    get:
+      operationId: listPlatformAudit
+      tags: [audit]
+      summary: Audit events across every org (platform staff, §12.6).
+      description: >
+        The staff-wide slice of the audit log, newest first. Staff access to
+        it is itself audited (§12.6), one event per call.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit200"
+        - name: action
+          in: query
+          schema:
+            type: string
+        - name: org
+          in: query
+          description: Restrict to one org handle.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 'Audit page (`Link` header with rel=next when more remain).'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /platform/ruleset-releases:
+    get:
+      operationId: listRulesetReleases
+      tags: [platform]
+      summary: Ruleset releases, newest first (platform staff, §10.1 console).
+      responses:
+        "200":
+          description: Registered releases; the first is what new scans run under.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RulesetRelease"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createRulesetRelease
+      tags: [platform]
+      summary: Register a ruleset release (platform staff, §9.2).
+      description: >
+        Records the versioned scanner bundle a deployment is running, so scan
+        runs can name it. Omitting the body registers the server's own
+        embedded bundle (§8.3). Honours `Idempotency-Key`; re-registering the
+        same semver returns the existing row.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                semver:
+                  type: string
+                  pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+].*)?$"
+                bundleDigest:
+                  type: string
+                  description: "sha256:<hex> of the bundle."
+                notes:
+                  type: string
+                  maxLength: 2000
+      responses:
+        "201":
+          description: Release registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RulesetRelease"
+        "200":
+          description: This semver was already registered; the existing row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RulesetRelease"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /platform/agents/{ns}/{name}/{action}:
+    post:
+      operationId: platformAgentAction
+      tags: [platform]
+      summary: Quarantine, block, or reinstate an agent (platform staff, §7).
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - name: action
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [quarantine, block, reinstate]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  maxLength: 1000
+      responses:
+        "204":
+          description: Action applied.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}/abuse-reports:
+    post:
+      operationId: reportAbuse
+      tags: [platform]
+      summary: Report malicious or abusive content (authed, rate-limited §8.7).
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category, detail]
+              properties:
+                category:
+                  type: string
+                  enum: [malicious_content, hidden_instructions, credential_theft, typosquat, spam, license, other]
+                detail:
+                  type: string
+                  minLength: 10
+                  maxLength: 4000
+                version:
+                  type: string
+      responses:
+        "202":
+          description: Report received and queued for triage.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /platform/abuse-reports:
+    get:
+      operationId: listAbuseReports
+      tags: [platform]
+      summary: Abuse reports for triage (platform staff).
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+            enum: [open, triaged, actioned, dismissed]
+          description: Filter by triage state; defaults to open.
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Reports.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AbuseReport"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /platform/abuse-reports/{id}:
+    post:
+      operationId: triageAbuseReport
+      tags: [platform]
+      summary: Record a triage outcome for an abuse report (platform staff).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state, resolution]
+              properties:
+                state:
+                  type: string
+                  enum: [triaged, actioned, dismissed]
+                resolution:
+                  type: string
+                  maxLength: 1000
+      responses:
+        "204":
+          description: Triage recorded.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /advisories:
+    get:
+      operationId: listAdvisories
+      tags: [platform]
+      summary: Published advisories — for one agent, or the global feed (§8.7).
+      description: >
+        With `affecting`, the advisories against that agent (newest first).
+        Without it, the global feed: every published advisory against a
+        public agent, newest first, keyset-paged with `cursor`/`limit` and a
+        `Link: rel="next"` header (§9.1). Each item carries `agent`
+        (`ns/name`) so a feed reader can find the affected BriefAgent.
+      security: []
+      parameters:
+        - name: affecting
+          in: query
+          required: false
+          schema:
+            type: string
+          description: ns/name. Omit for the global feed.
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Opaque keyset cursor from the previous page's Link header (feed mode).
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+          description: Page size (feed mode; clamped).
+      responses:
+        "200":
+          description: Advisories.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Advisory"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /advisories/{advisoryId}:
+    get:
+      operationId: getAdvisory
+      tags: [platform]
+      summary: One published advisory (permalink); public agents only.
+      security: []
+      parameters:
+        - name: advisoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The advisory.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Advisory"
+        default:
+          $ref: "#/components/responses/Problem"
+
+
+  /search:
+    get:
+      operationId: searchAgents
+      tags: [search]
+      summary: Full-text search over public agents with facets (§10.4).
+      security: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Free-text query; empty lists by popularity.
+        - name: kind
+          in: query
+          schema:
+            $ref: "#/components/schemas/AgentKind"
+        - name: capability
+          in: query
+          description: >
+            Capability the latest published version actually asks for, e.g.
+            `network`, `filesystem`, `exec`, `secrets`, `dataAccess` (§5.4).
+            A capability declared as `none`, null, or empty does not match:
+            `network: {egress: none}` is not a network agent.
+          schema:
+            type: string
+            maxLength: 64
+        - name: license
+          in: query
+          description: SPDX identifier from the latest published manifest.
+          schema:
+            type: string
+            maxLength: 64
+        - name: verified
+          in: query
+          description: Only agents in an org namespace with a verified domain.
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [relevance, installs, newest]
+            default: relevance
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: Search results with facet counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResults"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /tags/{tag}:
+    get:
+      operationId: listAgentsByTag
+      tags: [search]
+      summary: Public agents tagged with {tag} (§9.2).
+      description: >
+        Matches the tag list of each agent's latest published manifest
+        (`manifest.tags`, V8). Blocked agents never appear.
+      security: []
+      parameters:
+        - name: tag
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit100"
+      responses:
+        "200":
+          description: 'Tagged agents (`Link` header with rel=next when more remain).'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagPage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /agents/{ns}/{name}/readme:
+    get:
+      operationId: getAgentReadme
+      tags: [agents]
+      summary: The agent README rendered to sanitized HTML (§10.3, D-11).
+      description: >
+        Markdown is rendered server-side through a strict allowlist: no raw
+        HTML, no user styles, no SVG, external links rewritten, and invisible
+        or bidi Unicode replaced with visible placeholders.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+        - name: version
+          in: query
+          schema:
+            type: string
+          description: Version to render; defaults to the latest published.
+      responses:
+        "200":
+          description: Sanitized HTML fragment.
+          content:
+            text/html:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/Problem"
+
+
+components:
+  parameters:
+    VersionString:
+      name: version
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+].*)?$"
+    Namespace:
+      name: ns
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+    AgentName:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9](?:[a-z0-9-]{0,63}[a-z0-9])?$"
+    Handle:
+      name: handle
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+    OrgHandle:
+      name: org
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+    TeamSlug:
+      name: team
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+    SsoKind:
+      name: kind
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [saml, oidc]
+    WebhookID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SocialProvider:
+      name: provider
+      in: path
+      required: true
+      description: >
+        Social identity provider id (§12.1). google and microsoft use their
+        built-in OIDC endpoints; openai and claude need an operator-set
+        issuer; authentik is the deployment's own directory service
+        (DEV-057) and also needs one; an unconfigured provider answers 404.
+      schema:
+        type: string
+        enum: [google, github, microsoft, openai, claude, authentik]
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque cursor from the previous page's `Link` header.
+      schema:
+        type: string
+        maxLength: 512
+    Limit100:
+      name: limit
+      in: query
+      description: Page size; values outside the range are clamped, not rejected.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+    Limit200:
+      name: limit
+      in: query
+      description: Page size; values outside the range are clamped, not rejected.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+
+  schemas:
+    Meta:
+      type: object
+      required: [version, apiVersion, features]
+      properties:
+        version:
+          type: string
+          description: agentryd semantic version (build-stamped).
+          example: 0.1.0
+        apiVersion:
+          type: string
+          description: API surface major.
+          example: v1
+        features:
+          type: object
+          description: >
+            Self-host feature flags: `judge`, `signing`, `redis`, `s3`, and
+            `externalOnly` (accounts live in an external directory service;
+            the native register/password/TOTP surface answers 410 — clients
+            should not offer those forms).
+          additionalProperties:
+            type: boolean
+        minCLIVersion:
+          type: string
+          description: Oldest supported agentry CLI version (§11 distribution note).
+
+    RegisterRequest:
+      type: object
+      required: [handle, email, password]
+      properties:
+        handle:
+          type: string
+          pattern: "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 10
+          maxLength: 256
+        displayName:
+          type: string
+          maxLength: 120
+
+    LoginRequest:
+      type: object
+      required: [login, password]
+      properties:
+        login:
+          type: string
+          description: Handle or email.
+        password:
+          type: string
+        totpCode:
+          type: string
+          description: Required when the account has TOTP enabled.
+
+    LoginResult:
+      type: object
+      required: [user, csrfToken]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        csrfToken:
+          type: string
+          description: Echo in X-Agentry-CSRF on cookie-authenticated mutations.
+
+    SocialLoginResult:
+      type: object
+      description: >
+        Outcome of a social-login callback: either a session (like password
+        login) or a pending TOTP challenge to complete at
+        POST /auth/2fa/totp/challenge.
+      required: [totpRequired]
+      properties:
+        totpRequired:
+          type: boolean
+        challenge:
+          type: string
+          description: Single-use, five-minute challenge; present iff totpRequired.
+        user:
+          $ref: "#/components/schemas/User"
+        csrfToken:
+          type: string
+          description: Echo in X-Agentry-CSRF on cookie-authenticated mutations.
+
+    TotpSetupResult:
+      type: object
+      required: [secret, otpauthUrl]
+      properties:
+        secret:
+          type: string
+          description: Base32 TOTP secret (display once for authenticator apps).
+        otpauthUrl:
+          type: string
+
+    UserDirectory:
+      type: object
+      required: [managed]
+      properties:
+        managed:
+          description: True when a directory service owns credentials for this deployment.
+          type: boolean
+        accountUrl:
+          description: The directory's own account page (name, email, sessions, consents).
+          type: string
+        passwordChangeUrl:
+          type: string
+        totpSetupUrl:
+          type: string
+        webauthnSetupUrl:
+          type: string
+        devices:
+          description: >
+            The caller's enrolled authenticators as the directory reports
+            them; absent when the server has no directory admin access.
+          type: array
+          items:
+            type: object
+            required: [kind, name]
+            properties:
+              kind:
+                description: totp | webauthn | static | duo | sms | email | other
+                type: string
+              name:
+                type: string
+              createdAt:
+                type: string
+                format: date-time
+        devicesError:
+          description: Set when the device lookup was attempted and failed; the links still work.
+          type: string
+    User:
+      type: object
+      required: [id, handle, email, displayName, emailVerified, totpEnabled, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        handle:
+          type: string
+        email:
+          type: string
+        displayName:
+          type: string
+        emailVerified:
+          type: boolean
+        totpEnabled:
+          type: boolean
+        cookieAckAt:
+          description: When this account acknowledged the cookie notice.
+          type: string
+          format: date-time
+        platformStaff:
+          type: boolean
+        orgs:
+          description: The caller's org memberships (present on GET /user only).
+          type: array
+          items:
+            type: object
+            required: [handle, role]
+            properties:
+              handle:
+                type: string
+              role:
+                type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    PublicUser:
+      type: object
+      required: [handle, displayName]
+      properties:
+        handle:
+          type: string
+        displayName:
+          type: string
+
+    Pat:
+      type: object
+      required: [id, name, prefix, scopes, expiresAt, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        prefix:
+          type: string
+          description: First 12 characters, for display and lookup (§4.2 pats).
+        scopes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Scope"
+        orgHandle:
+          type: string
+          description: Set when org-bound (enforced SSO, §12.4).
+        expiresAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    PatCreated:
+      allOf:
+        - $ref: "#/components/schemas/Pat"
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+              description: The full secret. Shown exactly once.
+
+    CreateTokenRequest:
+      type: object
+      required: [name, scopes]
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        scopes:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/Scope"
+        expiresAt:
+          type: string
+          format: date-time
+          description: Defaults to (and is capped at) the max PAT lifetime (§12.3).
+        orgHandle:
+          type: string
+          description: >
+            Bind the token to this org (§12.4). Requires the current session to
+            be SSO-fresh for the org; org-bound tokens are capped at 90 days and
+            are the only tokens accepted against an enforced-SSO org's resources.
+
+    DesktopGrantRequest:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{8,128}$"
+          description: The desktop app's nonce; the exchange must present the same value.
+
+    DesktopGrant:
+      type: object
+      required: [code, expiresAt]
+      properties:
+        code:
+          type: string
+          description: Single-use exchange code. Appears only in this response.
+        expiresAt:
+          type: string
+          format: date-time
+
+    DesktopExchangeRequest:
+      type: object
+      required: [code, state]
+      properties:
+        code:
+          type: string
+        state:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{8,128}$"
+
+    Scope:
+      type: string
+      description: PAT scopes (§12.3).
+      enum:
+        - repo:read
+        - repo:write
+        - agent:publish
+        - agent:read
+        - org:admin
+        - review:act
+        - audit:read
+        - user:profile
+
+    OrgRole:
+      type: string
+      description: Org roles, ordered owner > admin > security_reviewer | member (§12.2).
+      enum: [owner, admin, security_reviewer, member]
+
+    CreateOrgRequest:
+      type: object
+      required: [handle, displayName]
+      properties:
+        handle:
+          type: string
+          pattern: "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        displayName:
+          type: string
+          maxLength: 120
+
+    Org:
+      type: object
+      required: [id, handle, displayName, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        handle:
+          type: string
+        displayName:
+          type: string
+        verifiedDomain:
+          type: string
+        ssoRequired:
+          type: boolean
+          description: Present for org admins only.
+        createdAt:
+          type: string
+          format: date-time
+
+    Membership:
+      type: object
+      required: [user, role]
+      properties:
+        user:
+          $ref: "#/components/schemas/PublicUser"
+        role:
+          $ref: "#/components/schemas/OrgRole"
+        viaScim:
+          type: boolean
+
+    Team:
+      type: object
+      required: [id, slug]
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+
+    AuditEvent:
+      type: object
+      required: [id, occurredAt, actorKind, action]
+      properties:
+        id:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        actorKind:
+          type: string
+          enum: [user, pat, scim, system]
+        actorHandle:
+          type: string
+        action:
+          type: string
+          description: Registered action id (internal/audit/actions.go).
+        targetKind:
+          type: string
+        targetId:
+          type: string
+          format: uuid
+        detail:
+          type: object
+          additionalProperties: true
+
+    AuditPage:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEvent"
+        nextCursor:
+          type: string
+          description: Opaque; absent on the last page.
+
+    ActivityEvent:
+      type: object
+      description: One agent-scoped entry from the audit log (§9.2 activity).
+      required: [id, occurredAt, action]
+      properties:
+        id:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        action:
+          type: string
+          description: Registered action id (internal/audit/actions.go).
+        actorHandle:
+          type: string
+          description: Absent on the public-safe subset and for system actors.
+        version:
+          type: string
+          description: The version this entry concerns, when it names one.
+        detail:
+          type: object
+          additionalProperties: true
+          description: Present only for callers with read access.
+
+    ActivityPage:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityEvent"
+        nextCursor:
+          type: string
+          description: Opaque; absent on the last page.
+
+    AgentStats:
+      type: object
+      required: [stars, installsTotal, installs30d]
+      properties:
+        stars:
+          type: integer
+          format: int64
+        starred:
+          type: boolean
+          description: Whether the calling user has starred it (authed only).
+        installsTotal:
+          type: integer
+          format: int64
+        installs30d:
+          type: integer
+          format: int64
+
+    TagPage:
+      type: object
+      required: [tag, results]
+      properties:
+        tag:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchHit"
+        nextCursor:
+          type: string
+          description: Opaque; absent on the last page.
+
+    SessionList:
+      type: object
+      required: [sessions]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionInfo"
+
+    SessionInfo:
+      type: object
+      required: [id, createdAt, lastSeenAt, current]
+      properties:
+        id:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+        current:
+          type: boolean
+          description: True for the session making this request.
+        ip:
+          type: string
+          description: Client address recorded at session creation.
+        userAgent:
+          type: string
+          description: User-Agent recorded at session creation.
+
+    RulesetRelease:
+      type: object
+      required: [id, semver, bundleDigest, publishedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        semver:
+          type: string
+        bundleDigest:
+          type: string
+        notes:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+
+    LogoutResult:
+      type: object
+      required: [idpLogoutUrl]
+      properties:
+        idpLogoutUrl:
+          type: string
+          format: uri
+          description: Send the browser here to end the IdP session too (SAML SLO).
+
+    RedTeamReport:
+      type: object
+      description: One run of the §17.5 red-team job (agentry#67).
+      required: [id, rulesetSemver, bundleDigest, fixtures, cases, evaded, createdAt, report]
+      properties:
+        id:
+          type: string
+          format: uuid
+        rulesetSemver:
+          type: string
+        bundleDigest:
+          type: string
+        fixtures:
+          type: integer
+          description: Attack fixtures with S3/S4 expectations that fired unmutated.
+        cases:
+          type: integer
+          description: Fixtures × applicable mutators.
+        evaded:
+          type: integer
+          description: Cases where at least one expected rule stopped firing.
+        createdAt:
+          type: string
+          format: date-time
+        report:
+          type: object
+          additionalProperties: true
+          description: The full report (byMutator tallies and every evasion).
+
+    SshKey:
+      type: object
+      required: [id, title, keyType, fingerprint, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        keyType:
+          type: string
+          description: ssh-ed25519, ecdsa-sha2-nistp256, ssh-rsa, …
+        fingerprint:
+          type: string
+          description: SHA256 fingerprint as OpenSSH prints it.
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+
+    AddSshKeyRequest:
+      type: object
+      required: [title, publicKey]
+      properties:
+        title:
+          type: string
+          maxLength: 120
+        publicKey:
+          type: string
+          description: One authorized_keys line ("ssh-ed25519 AAAA… comment").
+
+    AgentKind:
+      type: string
+      description: Supported agent kinds (§1.4).
+      enum: [skill, prompt-agent, mcp-server]
+
+    AgentRole:
+      type: string
+      description: Per-agent grant levels (§12.2), read < write < maintain < publish.
+      enum: [read, write, maintain, publish]
+
+    CreateAgentRequest:
+      type: object
+      required: [namespace, name, kind]
+      properties:
+        namespace:
+          type: string
+          description: User or org handle owning the agent.
+        name:
+          type: string
+          pattern: "^[a-z0-9](?:[a-z0-9-]{0,63}[a-z0-9])?$"
+        kind:
+          $ref: "#/components/schemas/AgentKind"
+        visibility:
+          type: string
+          enum: [public, private]
+          default: private
+        summary:
+          type: string
+          maxLength: 140
+
+    Agent:
+      type: object
+      required: [id, namespace, name, kind, visibility, summary, defaultBranch, gitHttpUrl, quarantineState, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        namespace:
+          type: string
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/AgentKind"
+        visibility:
+          type: string
+          enum: [public, private]
+        summary:
+          type: string
+        defaultBranch:
+          type: string
+        gitHttpUrl:
+          type: string
+          description: Clone URL for the hosted repository (§6.1).
+        gitSshUrl:
+          type: string
+          description: SSH clone URL (§6.1 Q7), present when the deployment serves the SSH transport.
+        quarantineState:
+          type: string
+          enum: [none, quarantined, blocked]
+        autoPublishTags:
+          type: boolean
+          description: Present for callers with maintain (§6.3 toggle).
+        allowForcePush:
+          type: boolean
+          description: Present for callers with maintain; whether force-push to the default branch is allowed (§6.3).
+        createdAt:
+          type: string
+          format: date-time
+
+    AgentGrant:
+      type: object
+      required: [kind, grantee, role]
+      properties:
+        kind:
+          type: string
+          enum: [user, team]
+        grantee:
+          type: string
+          description: User handle or team slug.
+        role:
+          $ref: "#/components/schemas/AgentRole"
+
+    VersionStatus:
+      type: string
+      description: >
+        Publication state machine states (§7). `approved` is reserved and
+        never produced: a reviewer's approval publishes directly
+        (needs_review → published), so clients will not observe it; it is
+        kept because removing an enum value is a breaking change (DEV-046).
+      enum: [submitted, scanning, needs_review, approved, published, rejected, yanked, quarantined, blocked]
+
+    AgentVersion:
+      type: object
+      required: [id, version, status, channel, source, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: string
+        status:
+          $ref: "#/components/schemas/VersionStatus"
+        statusReason:
+          type: string
+        channel:
+          type: string
+          enum: [stable, beta]
+        source:
+          type: string
+          enum: [git-tag, cli-upload]
+        commitSha:
+          type: string
+        archiveDigest:
+          type: string
+          description: sha256:<hex>, the release identity (D-15).
+        archiveSize:
+          type: integer
+          format: int64
+        capabilities:
+          type: object
+          additionalProperties: true
+          description: The declared capability block (§5.4).
+        createdAt:
+          type: string
+          format: date-time
+        publishedAt:
+          type: string
+          format: date-time
+        yankedAt:
+          type: string
+          format: date-time
+        yankReason:
+          type: string
+
+    ResolveResult:
+      type: object
+      required: [namespace, name, version, digest, archiveUrl, manifest, yanked]
+      properties:
+        namespace:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        digest:
+          type: string
+        archiveUrl:
+          type: string
+          description: Where to fetch the archive (CDN on SaaS; API path self-host).
+        attestationUrl:
+          type: string
+          description: >
+            Where to fetch the DSSE attestation over this release (§8.8,
+            §9.4 step 3). Present whenever the version has been signed:
+            every version published by a signing-enabled deployment. Absent
+            when the deployment runs `signing.kind: none` (dev/self-host
+            opt-out) or the version predates signing.
+        manifest:
+          type: object
+          additionalProperties: true
+        yanked:
+          type: boolean
+          description: True only for exact pins of yanked versions (§5.5).
+
+    ScanFinding:
+      type: object
+      required: [scanner, severity, confidence, title, verdict]
+      properties:
+        id:
+          type: string
+          format: uuid
+        scanner:
+          type: string
+        severity:
+          type: string
+          enum: [info, low, medium, high, critical]
+        confidence:
+          type: string
+          enum: [low, medium, high]
+        title:
+          type: string
+        filePath:
+          type: string
+        lineStart:
+          type: integer
+        lineEnd:
+          type: integer
+        excerpt:
+          type: string
+        detail:
+          type: object
+          additionalProperties: true
+        verdict:
+          type: string
+          enum: [open, confirmed, dismissed_false_positive, dismissed_accepted_risk]
+        verdictReason:
+          type: string
+          description: >-
+            Why a reviewer dismissed or confirmed this finding. Dismissed
+            findings stay on the public report WITH their rationale (PLAN
+            §8.5). A finding that vanishes without explanation is exactly
+            what the report exists to prevent.
+
+    ScanReport:
+      type: object
+      required: [versionStatus, findings]
+      properties:
+        scanRunId:
+          type: string
+          format: uuid
+        versionStatus:
+          $ref: "#/components/schemas/VersionStatus"
+        rulesetVersion:
+          type: string
+        reportDigest:
+          type: string
+        judgeModel:
+          type: string
+        scanStatus:
+          type: string
+        finishedAt:
+          type: string
+          format: date-time
+          description: "When this scan run completed: the date the report describes."
+        findingCounts:
+          type: object
+          additionalProperties:
+            type: integer
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanFinding"
+
+    ReviewItem:
+      type: object
+      required: [id, queue, state, version, agent, namespace]
+      properties:
+        id:
+          type: string
+          format: uuid
+        queue:
+          type: string
+          enum: [platform, org]
+        state:
+          type: string
+          enum: [pending, approved, rejected]
+        version:
+          type: string
+        agent:
+          type: string
+        namespace:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ReviewBundle:
+      type: object
+      required: [item, findings]
+      properties:
+        item:
+          $ref: "#/components/schemas/ReviewItem"
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanFinding"
+        versionDetail:
+          $ref: "#/components/schemas/AgentVersion"
+        previous:
+          # The most recent previously published version, when one exists:
+          # the baseline for the capability diff (§10.1).
+          $ref: "#/components/schemas/AgentVersion"
+        manifest:
+          description: The submitted manifest (canonical JSON form).
+          type: object
+          additionalProperties: true
+        report:
+          $ref: "#/components/schemas/ScanReport"
+
+    ReviewFileEntry:
+      type: object
+      required: [path, size]
+      properties:
+        path:
+          type: string
+        size:
+          type: integer
+          format: int64
+
+    ReviewFileList:
+      type: object
+      required: [files]
+      properties:
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewFileEntry"
+
+    ReviewFileContent:
+      type: object
+      required: [path, size, binary, truncated]
+      properties:
+        path:
+          type: string
+        size:
+          type: integer
+          format: int64
+        binary:
+          type: boolean
+        truncated:
+          type: boolean
+        content:
+          description: UTF-8 text content; absent for binary files. Rendered
+            by clients with invisible-character escaping (§10.3).
+          type: string
+
+    AbuseReport:
+      type: object
+      required: [id, namespace, agent, category, detail, state, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        namespace:
+          type: string
+        agent:
+          type: string
+        version:
+          type: string
+        category:
+          type: string
+        detail:
+          type: string
+        state:
+          type: string
+          enum: [open, triaged, actioned, dismissed]
+        createdAt:
+          type: string
+          format: date-time
+
+    Advisory:
+      type: object
+      required: [id, affectedVersions, severity, summary]
+      properties:
+        id:
+          type: string
+          format: uuid
+        affectedVersions:
+          type: string
+        severity:
+          type: string
+        summary:
+          type: string
+        detail:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+        agent:
+          type: string
+          description: The affected agent as `ns/name`. Present on feed and permalink responses.
+
+    SearchResults:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchHit"
+        facets:
+          type: object
+          description: Facet counts keyed by facet name then value.
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: integer
+        total:
+          type: integer
+
+    SearchHit:
+      type: object
+      required: [namespace, name, kind, summary]
+      properties:
+        namespace:
+          type: string
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/AgentKind"
+        summary:
+          type: string
+        installs30d:
+          type: integer
+        quarantineState:
+          type: string
+          enum: [none, quarantined, blocked]
+
+    Problem:
+      type: object
+      description: RFC 9457 problem details (D-10).
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Stable problem type URI.
+          example: https://agentry.dev/problems/validation
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        errors:
+          type: array
+          description: Field-level validation errors when applicable.
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    SsoConnectionTest:
+      type: object
+      required: [ok, kind, summary, checkedAt]
+      properties:
+        ok:
+          type: boolean
+        kind:
+          type: string
+          enum: [saml, oidc]
+        summary:
+          description: One line for the admin page.
+          type: string
+        details:
+          description: Discovered endpoints / metadata facts (strings only).
+          type: object
+          additionalProperties:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        checkedAt:
+          type: string
+          format: date-time
+    SsoConnection:
+      type: object
+      required: [kind, enabled]
+      properties:
+        kind:
+          type: string
+          enum: [saml, oidc]
+        enabled:
+          type: boolean
+        config:
+          type: object
+          additionalProperties: true
+          description: Non-secret connection settings (client secrets are redacted).
+
+    SsoConnectionInput:
+      type: object
+      required: [enabled, config]
+      properties:
+        enabled:
+          type: boolean
+        config:
+          type: object
+          additionalProperties: true
+          description: SAML (idpMetadataXml or idpEntityId+idpCertificatePem+idpSsoUrl) or OIDC (issuer, clientId, clientSecret) settings.
+
+    ScimToken:
+      type: object
+      required: [id, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    ScimTokenCreated:
+      type: object
+      required: [id, token]
+      properties:
+        id:
+          type: string
+          format: uuid
+        token:
+          type: string
+          description: The SCIM bearer token; shown once.
+        expiresAt:
+          type: string
+          format: date-time
+
+    WebhookEndpoint:
+      type: object
+      required: [id, url, events, active, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    WebhookEndpointCreated:
+      allOf:
+        - $ref: "#/components/schemas/WebhookEndpoint"
+        - type: object
+          required: [secret]
+          properties:
+            secret:
+              type: string
+              description: The HMAC signing secret; shown once.
+
+    WebhookInput:
+      type: object
+      required: [url, events]
+      properties:
+        url:
+          type: string
+          description: HTTPS endpoint (§9.3 requires https).
+        events:
+          type: array
+          items:
+            type: string
+
+    WebhookDelivery:
+      type: object
+      required: [id, eventType, attempt, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+        attempt:
+          type: integer
+        statusCode:
+          type: integer
+        error:
+          type: string
+        deliveredAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    DomainClaim:
+      type: object
+      required: [domain, verificationToken, verified]
+      properties:
+        domain:
+          type: string
+        verificationToken:
+          type: string
+        recordName:
+          type: string
+          description: The DNS TXT record name to create.
+        recordValue:
+          type: string
+          description: The DNS TXT record value to publish.
+        verified:
+          type: boolean
+        verifiedAt:
+          type: string
+          format: date-time
+
+    AuditExport:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        eventCount:
+          type: integer
+        downloadPath:
+          type: string
+          description: Blob-store reference; presign is a deployment concern.
+        error:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+  responses:
+    Problem:
+      description: Error following RFC 9457.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+
+  securitySchemes:
+    pat:
+      type: http
+      scheme: bearer
+      bearerFormat: "agy_ personal access token"
+    session:
+      type: apiKey
+      in: cookie
+      name: agentry_session
+
+security:
+  - pat: []
+  - session: []

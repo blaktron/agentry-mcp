@@ -1,0 +1,46 @@
+# Runs on the self-hosted runners on agentry-runner: GitHub-hosted minutes for
+# this account are exhausted, so every repo in the estate builds there.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: [self-hosted, linux, x64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Format
+        run: npm run format:check
+
+      # The catalog is generated from the vendored contract. If regenerating it
+      # changes anything, the two have drifted and the committed catalog lies
+      # about what the API accepts.
+      - name: Catalog matches the vendored spec
+        run: |
+          npm run generate
+          git diff --exit-code -- src/catalog.generated.ts \
+            || { echo "::error::src/catalog.generated.ts is stale — run 'npm run generate' and commit the result"; exit 1; }
+
+      - name: Test
+        run: npm test
