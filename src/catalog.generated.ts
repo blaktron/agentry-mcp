@@ -46,13 +46,13 @@ export interface Action {
 }
 
 /** OpenAPI `info.version` of the spec this catalog was built from. */
-export const API_VERSION = "0.2.0";
+export const API_VERSION = "0.3.0";
 
 /** Server-relative base path the operations hang off, e.g. "/api/v1". */
 export const API_BASE_PATH = "/api/v1";
 
 /** sha256 of spec/openapi.yaml, so a drifted catalog is detectable. */
-export const SPEC_SHA256 = "5859a0fb8145e3b8b32175ebd45fca55e86af7cd4df566f35d11a36f0d47c624";
+export const SPEC_SHA256 = "0832daa7493458966ce9c14bcca4dfb6c29949daad4e282f70453ebeb5e42c75";
 
 export const ACTIONS: readonly Action[] = [
   {
@@ -164,7 +164,7 @@ export const ACTIONS: readonly Action[] = [
         "required": [
           "namespace",
           "name",
-          "kind"
+          "modes"
         ],
         "properties": {
           "namespace": {
@@ -175,15 +175,22 @@ export const ACTIONS: readonly Action[] = [
             "type": "string",
             "pattern": "^[a-z0-9](?:[a-z0-9-]{0,63}[a-z0-9])?$"
           },
-          "kind": {
-            "title": "AgentKind",
-            "type": "string",
-            "description": "Supported agent kinds (§1.4).",
-            "enum": [
-              "skill",
-              "prompt-agent",
-              "mcp-server"
-            ]
+          "modes": {
+            "title": "AgentModes",
+            "type": "array",
+            "description": "The run modes a release supports; at least one.",
+            "minItems": 1,
+            "maxItems": 2,
+            "uniqueItems": true,
+            "items": {
+              "title": "AgentMode",
+              "type": "string",
+              "description": "A run mode a release supports (DEV-088). `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop. A release declares one or both.\n",
+              "enum": [
+                "autonomous",
+                "interactive"
+              ]
+            }
           },
           "visibility": {
             "type": "string",
@@ -3613,17 +3620,17 @@ export const ACTIONS: readonly Action[] = [
         }
       },
       {
-        "name": "kind",
+        "name": "mode",
         "in": "query",
         "required": false,
+        "description": "Only agents that support this run mode.",
         "schema": {
-          "title": "AgentKind",
+          "title": "AgentMode",
           "type": "string",
-          "description": "Supported agent kinds (§1.4).",
+          "description": "A run mode a release supports (DEV-088). `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop. A release declares one or both.\n",
           "enum": [
-            "skill",
-            "prompt-agent",
-            "mcp-server"
+            "autonomous",
+            "interactive"
           ]
         }
       },
@@ -4521,6 +4528,23 @@ export const ACTIONS: readonly Action[] = [
           "allowForcePush": {
             "description": "Allow non-fast-forward pushes to the default branch (§6.3). Off by default; maintain only.\n",
             "type": "boolean"
+          },
+          "modes": {
+            "title": "AgentModes",
+            "type": "array",
+            "description": "The run modes a release supports; at least one.",
+            "minItems": 1,
+            "maxItems": 2,
+            "uniqueItems": true,
+            "items": {
+              "title": "AgentMode",
+              "type": "string",
+              "description": "A run mode a release supports (DEV-088). `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop. A release declares one or both.\n",
+              "enum": [
+                "autonomous",
+                "interactive"
+              ]
+            }
           }
         }
       }

@@ -155,13 +155,13 @@ test("create_agent sends the body the contract expects", async () => {
   const text = await callText(client, "agentry_create_agent", {
     namespace: "acme",
     name: "linter",
-    kind: "skill",
+    modes: ["autonomous"],
     summary: "lints",
   });
   assert.deepEqual(fetchImpl.calls[0].body, {
     namespace: "acme",
     name: "linter",
-    kind: "skill",
+    modes: ["autonomous"],
     summary: "lints",
   });
   assert.match(text, /Created acme\/linter and its git repository/);
@@ -236,10 +236,10 @@ test("set_grant with role none deletes the grant", async () => {
 test("search_agents maps its friendly names onto the contract's query parameters", async () => {
   const fetchImpl = stubRegistry({ "GET /api/v1/search": { results: [] } });
   const { client, close } = await connect({}, fetchImpl);
-  await callText(client, "agentry_search_agents", { query: "lint", kind: "skill", limit: 5 });
+  await callText(client, "agentry_search_agents", { query: "lint", mode: "interactive", limit: 5 });
   const { searchParams } = fetchImpl.calls[0];
   assert.equal(searchParams.get("q"), "lint");
-  assert.equal(searchParams.get("kind"), "skill");
+  assert.equal(searchParams.get("mode"), "interactive");
   assert.equal(searchParams.get("limit"), "5");
   await close();
 });

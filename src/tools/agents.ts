@@ -38,10 +38,10 @@ export const agentTools: ToolModule = (server, ctx) => {
           .string()
           .optional()
           .describe("Free-text query over name, summary and description."),
-        kind: z
-          .enum(["skill", "prompt-agent", "mcp-server"])
+        mode: z
+          .enum(["autonomous", "interactive"])
           .optional()
-          .describe("Restrict to one agent kind."),
+          .describe("Only agents that support this run mode."),
         capability: z
           .string()
           .max(64)
@@ -58,12 +58,12 @@ export const agentTools: ToolModule = (server, ctx) => {
       },
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
     },
-    async ({ query, kind, capability, license, verified, sort, limit, offset }) =>
+    async ({ query, mode, capability, license, verified, sort, limit, offset }) =>
       guard(async () =>
         render(
           ctx,
           await ctx.client.call("searchAgents", {
-            query: { q: query, kind, capability, license, verified, sort, limit, offset },
+            query: { q: query, mode, capability, license, verified, sort, limit, offset },
           }),
         ),
       ),
@@ -90,7 +90,7 @@ export const agentTools: ToolModule = (server, ctx) => {
     {
       title: "Get an agent",
       description:
-        "Metadata for one agent: kind, visibility, repository, latest version and quarantine state. " +
+        "Metadata for one agent: run modes, visibility, repository, latest version and quarantine state. " +
         "Set includeStats for star and install counts. A 404 means either no such agent or one you " +
         "cannot read — the registry does not distinguish them.",
       inputSchema: {
@@ -120,9 +120,12 @@ export const agentTools: ToolModule = (server, ctx) => {
       inputSchema: {
         namespace: handleSchema.describe("Owning user or org handle."),
         name: agentNameSchema.describe("Agent name, unique within the namespace."),
-        kind: z
-          .enum(["skill", "prompt-agent", "mcp-server"])
-          .describe("What the agent is. Fixed at creation."),
+        modes: z
+          .array(z.enum(["autonomous", "interactive"]))
+          .min(1)
+          .describe(
+            "Run modes the agent supports: autonomous (runs from its files and ends), interactive (a conversation with the same controls), or both. A publish later sets them from the manifest.",
+          ),
         visibility: z
           .enum(["public", "private"])
           .optional()
@@ -140,7 +143,7 @@ export const agentTools: ToolModule = (server, ctx) => {
         openWorldHint: true,
       },
     },
-    async ({ namespace, name, kind, visibility, summary }) =>
+    async ({ namespace, name, modes, visibility, summary }) =>
       guard(async () =>
         render(
           ctx,
@@ -148,7 +151,7 @@ export const agentTools: ToolModule = (server, ctx) => {
             body: {
               namespace,
               name,
-              kind,
+              modes,
               ...(visibility ? { visibility } : {}),
               ...(summary ? { summary } : {}),
             },
@@ -163,7 +166,7 @@ export const agentTools: ToolModule = (server, ctx) => {
     {
       title: "Update agent settings",
       description:
-        "Change an agent's summary, visibility, tag auto-publishing or force-push policy. Needs " +
+        "Change an agent's summary, visibility, run modes, tag auto-publishing or force-push policy. Needs " +
         "maintain on the agent. Turning visibility from private to public exposes the repository " +
         "and every published version to anyone.",
       inputSchema: {
@@ -178,6 +181,13 @@ export const agentTools: ToolModule = (server, ctx) => {
           .boolean()
           .optional()
           .describe("Allow non-fast-forward pushes to the default branch. Off by default."),
+        modes: z
+          .array(z.enum(["autonomous", "interactive"]))
+          .min(1)
+          .optional()
+          .describe(
+            "Replace the run modes the agent advertises (maintain only). Published versions keep the modes their own manifests declare.",
+          ),
       },
       annotations: {
         readOnlyHint: false,
@@ -186,13 +196,14 @@ export const agentTools: ToolModule = (server, ctx) => {
         openWorldHint: true,
       },
     },
-    async ({ namespace, name, summary, visibility, autoPublishTags, allowForcePush }) =>
+    async ({ namespace, name, summary, visibility, autoPublishTags, allowForcePush, modes }) =>
       guard(async () => {
         const body: Record<string, unknown> = {};
         if (summary !== undefined) body.summary = summary;
         if (visibility !== undefined) body.visibility = visibility;
         if (autoPublishTags !== undefined) body.autoPublishTags = autoPublishTags;
         if (allowForcePush !== undefined) body.allowForcePush = allowForcePush;
+        if (modes !== undefined) body.modes = modes;
         if (Object.keys(body).length === 0) {
           return render(ctx, await ctx.client.call("getAgent", { path: { ns: namespace, name } }), {
             note: "Nothing to change — no settings were given. Current state below.",
