@@ -151,7 +151,7 @@ test("a hit summary is short and names what a caller must supply", () => {
 test("a described action carries the full parameter and body schemas", () => {
   const described = describeAction(findAction("createAgent"));
   assert.equal(described.body.required, true);
-  assert.ok(described.body.schema.properties.kind.enum.includes("skill"));
+  assert.ok(described.body.schema.properties.modes.items.enum.includes("interactive"));
   assert.equal(described.sessionOnly, false);
 });
 

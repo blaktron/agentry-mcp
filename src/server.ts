@@ -25,7 +25,8 @@ function instructions(config: Config): string {
     "Agentry is a registry and git host for BriefAgents: reviewable packages of instructions " +
       "published as immutable, content-addressed, scanned and signed releases. An agent IS its " +
       "repository — creating one creates its hosted git repo, and its versions are the releases " +
-      "cut from that repo.",
+      "cut from that repo. A release declares the run modes it supports: autonomous (runs from " +
+      "its files and ends) and/or interactive (a conversation with the same controls).",
     "",
     "Things worth knowing before you call anything:",
     "- Versions are history. A published version is never deleted, only yanked; an agent with any " +

@@ -86,12 +86,12 @@ test("a session cookie is sent as the session cookie", async () => {
 test("query parameters are set, and undefined ones are dropped", async () => {
   const fetchImpl = stubFetch({ body: "{}" });
   await client({}, fetchImpl).call("searchAgents", {
-    query: { q: "lint", kind: undefined, limit: 5 },
+    query: { q: "lint", mode: undefined, limit: 5 },
   });
   const url = new URL(fetchImpl.calls[0].url);
   assert.equal(url.searchParams.get("q"), "lint");
   assert.equal(url.searchParams.get("limit"), "5");
-  assert.equal(url.searchParams.has("kind"), false);
+  assert.equal(url.searchParams.has("mode"), false);
 });
 
 test("a body is serialised as JSON with the idempotency key passed through", async () => {
