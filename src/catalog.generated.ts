@@ -52,7 +52,7 @@ export const API_VERSION = "0.3.0";
 export const API_BASE_PATH = "/api/v1";
 
 /** sha256 of spec/openapi.yaml, so a drifted catalog is detectable. */
-export const SPEC_SHA256 = "0832daa7493458966ce9c14bcca4dfb6c29949daad4e282f70453ebeb5e42c75";
+export const SPEC_SHA256 = "c2b152e465f044d70dca720b531722feaf8b885a7323687ea7d8d5bb9125409b";
 
 export const ACTIONS: readonly Action[] = [
   {
@@ -850,6 +850,51 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "deleteUserDirectoryDevice",
+    "method": "DELETE",
+    "path": "/user/directory/devices/{kind}/{deviceId}",
+    "tags": [
+      "users"
+    ],
+    "summary": "Remove one of the caller's own authenticators from the directory service (agentry#164).",
+    "description": "With auth.externalOnly and directory admin access, removes the caller's authenticator device of this kind and id through the directory's admin API, so the settings page manages MFA without ever showing the directory's own panel. The device must be on the caller's own account: an id that is somebody else's answers 404 exactly like a missing one. 404 when the server has no directory admin access; 502 when the directory did not answer.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "kind",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "totp",
+            "webauthn",
+            "static",
+            "duo",
+            "sms",
+            "email"
+          ]
+        }
+      },
+      {
+        "name": "deviceId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "204",
+        "description": "Removed."
+      }
+    ]
+  },
+  {
     "id": "deleteWebhook",
     "method": "DELETE",
     "path": "/orgs/{org}/webhooks/{id}",
@@ -1230,6 +1275,55 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "The rule bundle as a tar archive."
+      }
+    ]
+  },
+  {
+    "id": "getMcpServerScan",
+    "method": "GET",
+    "path": "/mcp-servers/scan",
+    "tags": [
+      "mcp-servers"
+    ],
+    "summary": "The registry's last vulnerability check of one MCP server package version (agentry#177).",
+    "description": "What S7 recorded for the exact package version: `safe` means no known advisories at `lastCheckedAt`, `vulnerable` lists them, `error` means the last lookup failed and the advisories are the last known. 404 when no manifest has ever declared this version. The runner asks here before installing a declared server.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "ecosystem",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "npm",
+            "pypi"
+          ]
+        }
+      },
+      {
+        "name": "package",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      {
+        "name": "version",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The scan record."
       }
     ]
   },
@@ -2500,6 +2594,26 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Tokens."
+      }
+    ]
+  },
+  {
+    "id": "listUserDependencyAlerts",
+    "method": "GET",
+    "path": "/user/dependency-alerts",
+    "tags": [
+      "users"
+    ],
+    "summary": "Open dependency alerts on published versions the caller submitted (agentry#177).",
+    "description": "A dependency alert says a published version declares an MCP server version that the daily sweep found to carry a newly known high or critical vulnerability. It closes on its own when the version is yanked, quarantined or blocked, or when the advisory is withdrawn; publishing a fixed version does not close the old version's alert. The web app shows these as the banner after sign-in and on the dashboard.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "200",
+        "description": "Open alerts, newest first."
       }
     ]
   },
