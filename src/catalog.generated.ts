@@ -52,7 +52,7 @@ export const API_VERSION = "0.3.0";
 export const API_BASE_PATH = "/api/v1";
 
 /** sha256 of spec/openapi.yaml, so a drifted catalog is detectable. */
-export const SPEC_SHA256 = "c2b152e465f044d70dca720b531722feaf8b885a7323687ea7d8d5bb9125409b";
+export const SPEC_SHA256 = "f14b865448b6a0f3a6c681202bb4620cc9976e5dde0c2b2a85fcd87e26bf5303";
 
 export const ACTIONS: readonly Action[] = [
   {
@@ -1536,6 +1536,26 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Directory account links and devices."
+      }
+    ]
+  },
+  {
+    "id": "getUserNotificationSettings",
+    "method": "GET",
+    "path": "/user/notifications",
+    "tags": [
+      "users"
+    ],
+    "summary": "How the registry's alerts reach the caller (agentry#190).",
+    "description": "Email per kind of notification, and whether the dependency-alert banner shows in the web app. An account that never changed anything reads back with everything on.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The settings."
       }
     ]
   },
@@ -4749,6 +4769,87 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Updated organization."
+      }
+    ]
+  },
+  {
+    "id": "updateUserNotificationSettings",
+    "method": "PUT",
+    "path": "/user/notifications",
+    "tags": [
+      "users"
+    ],
+    "summary": "Replace the caller's notification settings (agentry#190).",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "NotificationSettings",
+        "type": "object",
+        "required": [
+          "email",
+          "web"
+        ],
+        "properties": {
+          "email": {
+            "title": "EmailNotificationSettings",
+            "type": "object",
+            "description": "Which of the registry's mails the person receives.",
+            "required": [
+              "dependencyAlerts",
+              "quarantine",
+              "reviewDecisions",
+              "advisories",
+              "orgInvites"
+            ],
+            "properties": {
+              "dependencyAlerts": {
+                "type": "boolean",
+                "description": "A published version declares an MCP server with a newly known vulnerability."
+              },
+              "quarantine": {
+                "type": "boolean",
+                "description": "A published version was quarantined by a rescan."
+              },
+              "reviewDecisions": {
+                "type": "boolean",
+                "description": "A reviewer decided one of the person's submissions."
+              },
+              "advisories": {
+                "type": "boolean",
+                "description": "An advisory naming one of the person's BriefAgents was published."
+              },
+              "orgInvites": {
+                "type": "boolean",
+                "description": "The person was added to an organization."
+              }
+            }
+          },
+          "web": {
+            "title": "WebNotificationSettings",
+            "type": "object",
+            "description": "In-app alerts.",
+            "required": [
+              "dependencyAlerts"
+            ],
+            "properties": {
+              "dependencyAlerts": {
+                "type": "boolean",
+                "description": "Show the dependency-alert banner on every page while an alert is open (the dashboard lists alerts regardless)."
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The saved settings."
       }
     ]
   },
