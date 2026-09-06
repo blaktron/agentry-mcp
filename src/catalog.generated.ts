@@ -52,7 +52,7 @@ export const API_VERSION = "0.3.0";
 export const API_BASE_PATH = "/api/v1";
 
 /** sha256 of spec/openapi.yaml, so a drifted catalog is detectable. */
-export const SPEC_SHA256 = "f14b865448b6a0f3a6c681202bb4620cc9976e5dde0c2b2a85fcd87e26bf5303";
+export const SPEC_SHA256 = "ee10b0d1d469a7914576b3a2901f3dcbb5ec396bdb9862601de58124bdc86093";
 
 export const ACTIONS: readonly Action[] = [
   {
@@ -2614,6 +2614,46 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Tokens."
+      }
+    ]
+  },
+  {
+    "id": "listUserActivity",
+    "method": "GET",
+    "path": "/user/activity",
+    "tags": [
+      "users"
+    ],
+    "summary": "The caller's own activity — the audit events they performed (agentry#192).",
+    "description": "Sign-ins, tokens and SSH keys created or revoked, profile and notification changes, publishes and reviews, newest first, with the address and user agent each was performed from. Keyset-paged like the agent activity feed.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 30
+        }
+      },
+      {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The page."
       }
     ]
   },
