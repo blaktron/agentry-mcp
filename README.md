@@ -49,7 +49,7 @@ npm run build
 Register it with Claude Code:
 
 ```bash
-claude mcp add agentry --env AGENTRY_REGISTRY=https://dev.secureagentry.net \
+claude mcp add agentry --env AGENTRY_REGISTRY=https://registry.example.test \
   -- node /path/to/agentry-mcp/dist/index.js
 ```
 
@@ -61,7 +61,7 @@ Or, in any MCP host's config:
     "agentry": {
       "command": "node",
       "args": ["/path/to/agentry-mcp/dist/index.js"],
-      "env": { "AGENTRY_REGISTRY": "https://dev.secureagentry.net" }
+      "env": { "AGENTRY_REGISTRY": "https://registry.example.test" }
     }
   }
 }

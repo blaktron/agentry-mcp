@@ -18,9 +18,9 @@ import { ConfigError } from "./errors.js";
 import { API_BASE_PATH } from "./catalog.generated.js";
 
 export interface Config {
-  /** Registry origin, no trailing slash, e.g. "https://dev.secureagentry.net". */
+  /** Registry origin, no trailing slash, e.g. "https://registry.example.test". */
   registry: string;
-  /** Full API base, e.g. "https://dev.secureagentry.net/api/v1". */
+  /** Full API base, e.g. "https://registry.example.test/api/v1". */
   apiBase: string;
   /** Bearer PAT (`agy_…`), when one was found. */
   token?: string;
@@ -85,7 +85,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (!registryRaw) {
     throw new ConfigError(
       "No Agentry registry configured.",
-      `Set AGENTRY_REGISTRY (e.g. https://dev.secureagentry.net), or run \`agentry login\` ` +
+      `Set AGENTRY_REGISTRY (e.g. https://registry.example.test), or run \`agentry login\` ` +
         `so ${join(configDir(env), "config.yaml")} carries a defaultRegistry.`,
     );
   }
