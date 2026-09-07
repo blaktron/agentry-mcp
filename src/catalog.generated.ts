@@ -52,7 +52,7 @@ export const API_VERSION = "0.3.0";
 export const API_BASE_PATH = "/api/v1";
 
 /** sha256 of spec/openapi.yaml, so a drifted catalog is detectable. */
-export const SPEC_SHA256 = "ee10b0d1d469a7914576b3a2901f3dcbb5ec396bdb9862601de58124bdc86093";
+export const SPEC_SHA256 = "9817e0ee568aa1b0cf3e97c8276fd72aaef3b4bb6061c482543effe6ab3900c2";
 
 export const ACTIONS: readonly Action[] = [
   {
