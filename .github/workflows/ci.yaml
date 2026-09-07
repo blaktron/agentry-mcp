@@ -1,4 +1,4 @@
-# Runs on the self-hosted runners on agentry-runner: GitHub-hosted minutes for
+# Runs on the project's self-hosted runners: GitHub-hosted minutes for
 # this account are exhausted, so every repo in the estate builds there.
 name: ci
 
