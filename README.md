@@ -141,8 +141,8 @@ npm test
 CI regenerates the catalog and fails if it differs from what is committed, and a
 test checks the catalog's recorded spec hash against the vendored file. Neither
 check can see the vendored copy falling behind the registry's live contract. The
-sync above is what closes that gap, and the provenance file records the commit it
-last ran against.
+sync above is what closes that gap, and the provenance file records the commit
+that sync last ran against.
 
 ## Development
 
