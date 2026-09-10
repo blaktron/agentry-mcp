@@ -25,16 +25,17 @@ tools** for everything else.
 | Access          | `agentry_list_grants`, `agentry_set_grant`                                                                                                  |
 | Everything else | `agentry_search_actions`, `agentry_execute_action`                                                                                          |
 
-The catalog behind the last two carries all **114 operations** in the Agentry
+The catalog behind the last two carries all **120 operations** in the Agentry
 API — review queues, org policy, SSO and SCIM, webhooks, domain claims,
 advisories, audit exports, platform trust-and-safety — so the long tail is
-reachable without spending 114 tool schemas of context on it. The model
+reachable without spending 120 tool schemas of context on it. The model
 searches by intent, reads one operation's schema, and executes it.
 
-**Publishing is deliberately not exposed.** Versions reach a registry by pushing
+**Publishing has no dedicated tool here.** Versions reach a registry by pushing
 a tag or by the CLI uploading an archive it built, so that what is scanned is
-what was published. Wrapping `submitVersion` here would invite an agent to
-publish something it had not built.
+what was published. Wrapping `submitVersion` in a tool of its own would invite
+an agent to publish something it had not built. The catalog tools can still
+reach that operation, so the server's instructions tell the model not to.
 
 ## Install
 
@@ -69,9 +70,10 @@ Or, in any MCP host's config:
 
 ## Configuration
 
-Credentials resolve the same way the `agentry` CLI resolves them, so if you can
-already use the CLI the server needs no configuration beyond the registry URL —
-and there is one place to rotate a credential rather than two.
+Credentials resolve the same way the `agentry` CLI resolves them, reading the
+same config file the CLI writes at login. If you can already use the CLI, the
+server needs no configuration beyond the registry URL, and there is one place to
+rotate a credential rather than two.
 
 | Variable                 | Meaning                                                                                     |
 | ------------------------ | ------------------------------------------------------------------------------------------- |
@@ -91,10 +93,10 @@ credential came from, whether writes are enabled, and who the account is.
 **Some routes refuse personal access tokens entirely.** Token minting and
 revocation, SSH keys, session management, 2FA and account erasure are
 browser-session routes: the API rejects a PAT there whatever its scopes. This
-server knows which eleven operations those are — the list is extracted from the
-server's own authorization table, not guessed — and refuses them _before_ the
-request goes out, with a message saying to set `AGENTRY_SESSION_COOKIE`. That is
-better than a bare 403, which invites an agent to retry with different scopes
+server knows which eleven operations those are, extracted from the registry's
+own authorization table rather than guessed. It refuses them _before_ the
+request goes out, with a message saying to set `AGENTRY_SESSION_COOKIE`. A bare
+403 does not say why, so an agent reading one retries with different scopes
 forever.
 
 **Agent settings, grants and deletion need the `org:admin` scope**, even for an
@@ -108,7 +110,7 @@ create an agent but cannot then change or delete it. Mint accordingly.
 - **A minted token is never printed by default.** `agentry_create_token`
   redacts the secret, which the registry returns exactly once; pass
   `revealSecret: true` only when the operator has asked for the value itself.
-  Anything that looks like a PAT is redacted wherever it appears in any
+  The server redacts anything that looks like a PAT wherever it appears in any
   response.
 - **Read-only mode.** `AGENTRY_MCP_READ_ONLY=1` refuses every non-GET,
   including through `agentry_execute_action`.
@@ -137,8 +139,10 @@ npm test
 ```
 
 CI regenerates the catalog and fails if it differs from what is committed, and a
-test checks the catalog's recorded spec hash against the vendored file — so the
-catalog and the contract cannot drift apart silently.
+test checks the catalog's recorded spec hash against the vendored file. Neither
+check can see the vendored copy falling behind the registry's live contract. The
+sync above is what closes that gap, and the provenance file records the commit it
+last ran against.
 
 ## Development
 
@@ -149,10 +153,11 @@ npm run generate  # regenerate the catalog from the vendored spec
 ```
 
 The tests run against the built output, so what is tested is what ships. They
-cover credential resolution, the request seam (path expansion, pagination,
-problem+json translation, both pre-flight refusals), redaction, catalog search
-and every tool, driven end to end over an in-memory MCP transport with the
-registry stubbed.
+drive the tool surface end to end over an in-memory MCP transport with the
+registry stubbed. Between them they cover credential resolution, the request
+seam (path expansion, pagination, problem+json translation, both pre-flight
+refusals), redaction and catalog search. They check every tool's description and
+annotations, and call the ones that shape a request to assert what goes out.
 
 ## Licence
 
