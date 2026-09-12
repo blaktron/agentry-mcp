@@ -68,7 +68,7 @@ test("checkCli: a dev build is accepted with the floor unchecked", async () => {
   }
 });
 
-test("checkCli: a CLI without install --plan is refused naming what is needed", async () => {
+test("checkCli: a CLI without install --plan or run --plan is refused naming what is needed", async () => {
   process.env.FAKE_NO_PLAN = "1";
   try {
     await assert.rejects(
@@ -77,5 +77,14 @@ test("checkCli: a CLI without install --plan is refused naming what is needed", 
     );
   } finally {
     delete process.env.FAKE_NO_PLAN;
+  }
+  process.env.FAKE_NO_RUN_PLAN = "1";
+  try {
+    await assert.rejects(
+      checkCli(FAKE),
+      /has no `run --plan`; this server needs the CLI from agentry-cli#124/,
+    );
+  } finally {
+    delete process.env.FAKE_NO_RUN_PLAN;
   }
 });

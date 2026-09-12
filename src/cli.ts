@@ -13,9 +13,10 @@ import { delimiter, join } from "node:path";
 /**
  * The oldest CLI this server drives. The writing tools need the plan-mode
  * output of agentry-cli#123 (`install --plan --json`, `uninstall --plan`,
- * `list --json`); the CLI repository carries no release tag for it yet, so
- * the floor stays nominal and checkCli probes `install --help` for `--plan`
- * instead. A dev build reports a git describe (`9d89740-dirty`, `0.0.0-dev`)
+ * `list --json`) and agentry-cli#124 (`run --plan --json`); the CLI
+ * repository carries no release tag for them yet, so the floor stays
+ * nominal and checkCli probes `install --help` and `run --help` for
+ * `--plan` instead. A dev build reports a git describe (`9d89740-dirty`, `0.0.0-dev`)
  * rather than a version; that is accepted and noted, since the floor cannot
  * be read from it. Raise this to the first tagged release that ships the
  * plan mode.
@@ -210,13 +211,19 @@ export async function checkCli(
   }
   // The CLI has no release tags yet, so a dev build carries no version to
   // compare; the output the writing tools need is probed directly instead:
-  // `install --plan` (agentry-cli#123) is what the consent preview runs.
-  const help = await runCli(bin, ["install", "--help"], { timeoutMs: 10_000 });
-  if (help.spawnError || !/--plan\b/.test(help.stdout + help.stderr)) {
-    throw new CliUnavailableError(
-      `${bin} (agentry ${v.raw}) has no \`install --plan\`; this server needs the CLI from ` +
-        `agentry-cli#123 (${floor}) or newer. Update the CLI; the server never updates it for you.`,
-    );
+  // `install --plan` (agentry-cli#123) and `run --plan` (agentry-cli#124)
+  // are what the consent previews run.
+  for (const [command, issue] of [
+    ["install", "agentry-cli#123"],
+    ["run", "agentry-cli#124"],
+  ] as const) {
+    const help = await runCli(bin, [command, "--help"], { timeoutMs: 10_000 });
+    if (help.spawnError || !/--plan\b/.test(help.stdout + help.stderr)) {
+      throw new CliUnavailableError(
+        `${bin} (agentry ${v.raw}) has no \`${command} --plan\`; this server needs the CLI from ` +
+          `${issue} (${floor}) or newer. Update the CLI; the server never updates it for you.`,
+      );
+    }
   }
   return { ...v, floorChecked: v.semver !== undefined };
 }

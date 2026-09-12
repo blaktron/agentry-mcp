@@ -14,7 +14,7 @@ export function registerRunTools(d: Driver): void {
     "agentry_setup",
     {
       description:
-        "Prepare this machine for BriefAgent runs with the installed agentry CLI (`agentry setup --yes --json`): " +
+        "Prepare this machine for BriefAgent runs with the installed agentry CLI (`agentry setup --json`): " +
         "write the model provider into the runner policy (~/.agentry/runner/policy.yaml) — provider, model, the " +
         "NAME of the environment variable holding the key, never the key — and, unless skipImages, pull and build " +
         "the gateway, harness and runner images (minutes; progress is streamed when the host asks for it). " +
@@ -65,15 +65,16 @@ export function registerRunTools(d: Driver): void {
     {
       description:
         "Run a BriefAgent autonomously with the installed agentry CLI, in two calls. Without `confirm`: a " +
-        "preview (`agentry run --dry-run`) — the compiled run plan: the release that resolved, its digest, the " +
-        "capabilities and enforcement a run would apply, the tools it would be served, the gateway and proxy " +
-        "shape, the budgets — plus `digest`; nothing runs. Show the person what the run may reach and do, and " +
-        "only when they agree call again with `confirm` set to that digest: the server re-plans, refuses if " +
-        "anything changed, then runs `agentry run --mode autonomous --output-format json` and returns the CLI's " +
-        "result envelope (status, exitClass, result, usage, receipts) with `receiptsDir`, `resultFile` and " +
-        "`outDir` beside it. The receipts are the record of what was enforced; name them when you report a run. " +
-        "An unsigned release, and every local workspace, needs `acceptUnsigned: true` on the confirm, which you " +
-        `pass only if the person said so. A run stops at timeoutSeconds (default ${DEFAULT_RUN_TIMEOUT_SECONDS}); ` +
+        "preview (`agentry run --plan --json`) — the compiled run plan: the release that resolved, its digest, " +
+        "the capabilities and enforcement a run would apply, the tools it would be served, the gateway and proxy " +
+        "shape, the budgets, the attestation verdict and the refusal a run would meet — plus `digest`; nothing " +
+        "runs, nothing is recorded. Show the person what the run may reach and do, and only when they agree " +
+        "call again with `confirm` set to that digest: the server re-plans, refuses if anything changed, then " +
+        "runs `agentry run --mode autonomous --output-format json` and returns the CLI's result envelope " +
+        "(status, exitClass, result, usage, receipts) with `receiptsDir`, `resultFile` and `outDir` beside it. " +
+        "The receipts are the record of what was enforced; name them when you report a run. An unsigned " +
+        "release, and every local workspace, needs `acceptUnsigned: true` on the confirm, which you pass only " +
+        `if the person said so. A run stops at timeoutSeconds (default ${DEFAULT_RUN_TIMEOUT_SECONDS}); ` +
         "the CLI's teardown runs on every path. Progress streams from the CLI's log when the host asks for it.",
       inputSchema: {
         ref: z
@@ -83,7 +84,9 @@ export function registerRunTools(d: Driver): void {
         local: z
           .string()
           .optional()
-          .describe("Instead of ref: an unpublished workspace directory (always unsigned)."),
+          .describe(
+            "Instead of ref: an unpublished workspace directory (attestation `local`, always needs acceptUnsigned).",
+          ),
         input: z
           .string()
           .optional()

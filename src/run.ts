@@ -7,11 +7,13 @@
  * beside it. The runner's isolation and receipts are untouched: the server
  * invokes `agentry run` exactly as a person would.
  *
- * Consent is the same two calls as install (src/consent.ts): the preview
- * is `run --dry-run`, whose stdout is the compiled plan — exactly what a
+ * Consent is the same two calls as install (src/consent.ts). The preview is
+ * `run --plan --json` (agentry-cli#124): the compiled plan — exactly what a
  * run would enforce (the contract, the tools, the gateway, the proxy, the
- * budgets) — and the digest is over that plan. `--yes` is spelled in
- * consent.ts only; this file hands it the argv to append to.
+ * budgets) — with the attestation verdict and the refusal a run would meet,
+ * printed without asking or recording anything. The digest is over that
+ * whole plan. The consented flags are spelled in consent.ts only; this file
+ * hands it the argv to append to, and the preview carries neither.
  */
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -25,29 +27,42 @@ import type {
   ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { bool, flag, value } from "./argv.js";
-import { confirmed, consentedArgv, previewText, type Consent } from "./consent.js";
+import { ArgumentError, bool, flag, value } from "./argv.js";
+import {
+  canonical,
+  confirmed,
+  consentedArgv,
+  previewText,
+  runPlan,
+  type Consent,
+} from "./consent.js";
 import type { Driver } from "./driver.js";
-import { exitClass, tail } from "./envelope.js";
+import { tail } from "./envelope.js";
 
 /** The timeout a run gets when the call names none: the runner policy's own default budget. */
 export const DEFAULT_RUN_TIMEOUT_SECONDS = 900;
 /** After the timeout's SIGINT, how long the CLI's teardown gets before SIGKILL. */
-export const TEARDOWN_GRACE_MS = 60_000;
+const TEARDOWN_GRACE_MS = 60_000;
 
-export type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
+type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
-/** Forwards stderr lines as progress notifications when the host asked for them. */
-export function progressSink(extra: Extra): ((line: string) => void) | undefined {
+/**
+ * Forwards stderr lines as progress notifications when the host asked for
+ * them. A notification that cannot be delivered (the host went away
+ * mid-run) is dropped: the run's own result still comes back.
+ */
+function progressSink(extra: Extra): ((line: string) => void) | undefined {
   const token = extra._meta?.progressToken;
   if (token === undefined) return undefined;
   let n = 0;
   return (line) => {
     n += 1;
-    void extra.sendNotification({
-      method: "notifications/progress",
-      params: { progressToken: token, progress: n, message: line.slice(0, 500) },
-    });
+    extra
+      .sendNotification({
+        method: "notifications/progress",
+        params: { progressToken: token, progress: n, message: line.slice(0, 500) },
+      })
+      .catch(() => {});
   };
 }
 
@@ -60,9 +75,13 @@ export interface SetupArgs {
   policy?: string;
 }
 
-/** agentry_setup: `setup --yes --json`; the key NAME only ever crosses. */
+/**
+ * agentry_setup: `setup --json`. The server gives the CLI no terminal, and
+ * setup without one fills every gap from its provider table instead of
+ * asking, so no consent flag is needed; the key NAME only ever crosses.
+ */
 export async function setup(d: Driver, a: SetupArgs, extra: Extra): Promise<CallToolResult> {
-  const argv = ["setup", "--yes", "--json"];
+  const argv = ["setup", "--json"];
   flag(argv, "provider", a.provider);
   flag(argv, "model", a.model);
   flag(argv, "api-key-env", a.apiKeyEnv);
@@ -92,9 +111,34 @@ export interface RunArgs {
   acceptUnsigned?: boolean;
 }
 
+/** The run plan the CLI prints (agentry-cli#124); the fields consent reads. */
+export interface RunPlan {
+  ref: string;
+  version: string;
+  digest: string;
+  mode: string;
+  modes: string[];
+  summary?: string;
+  /** The compiled plan, canonical: what the run enforces. */
+  plan: unknown;
+  /** The receipt's runPlanSha256 for that plan. */
+  planSha256: string;
+  contract: unknown;
+  contractDigest: string;
+  attestation: string;
+  keyId?: string;
+  signed: boolean;
+  installed?: { version: string; dir: string };
+  diff?: { widened?: string[]; narrowed?: string[] };
+  needsConfirmation: boolean;
+  reason?: string;
+  refusal?: string;
+}
+
+/** The target as argv: a registry ref, or a workspace directory. */
 function target(a: RunArgs): string[] {
   if ((a.ref === undefined) === (a.local === undefined)) {
-    throw new Error(
+    throw new ArgumentError(
       "give exactly one of ref (a registry BriefAgent) or local (a workspace directory)",
     );
   }
@@ -103,114 +147,93 @@ function target(a: RunArgs): string[] {
     : [value("ref", a.ref as string)];
 }
 
-function commonFlags(argv: string[], a: RunArgs): void {
+/** The flags both the preview and the run carry: they shape the plan. */
+function commonFlags(argv: string[], a: RunArgs, timeoutSeconds: number): void {
+  argv.push("--mode", "autonomous", "--timeout", String(timeoutSeconds));
   flag(argv, "adapter", a.adapter);
   flag(argv, "policy", a.policy);
   flag(argv, "registry", a.registry);
   for (const f of a.files ?? []) argv.push("--file", value("files", f));
   for (const [id, v] of Object.entries(a.intake ?? {})) {
     if (!/^[A-Za-z0-9_-]+$/.test(id))
-      throw new Error(`intake id ${JSON.stringify(id)} is not an identifier`);
+      throw new ArgumentError(`intake id ${JSON.stringify(id)} is not an identifier`);
     argv.push("--intake", `${id}=${value(`intake.${id}`, v)}`);
   }
 }
 
-/** The compiled plan a dry run prints; the fields the digest and the preview name. */
-interface CompiledPlan {
-  ref: string;
-  digest: string;
-  mode: string;
-  capabilities?: unknown;
-  enforcement?: unknown;
-  tools?: unknown;
-  gateway?: unknown;
-  proxy?: unknown;
-  budgets?: unknown;
-  [k: string]: unknown;
+/**
+ * The facts the run digest covers: the whole compiled plan (so a policy,
+ * an image, a tool or a budget that changed between the calls changes the
+ * digest), the release it came from and its attestation, the refusal, and
+ * the call's own contribution to the run — the intake answers, the files,
+ * the timeout. The task input is not among them: it is the model's to
+ * compose, and it changes nothing about what the run may reach.
+ */
+function runFacts(p: RunPlan, a: RunArgs, timeoutSeconds: number) {
+  return {
+    ref: p.ref,
+    version: p.version,
+    archiveDigest: p.digest,
+    mode: p.mode,
+    plan: p.plan,
+    planSha256: p.planSha256,
+    contract: p.contract,
+    contractDigest: p.contractDigest,
+    attestation: p.attestation,
+    refusal: p.refusal ?? "",
+    intake: a.intake ?? {},
+    files: a.files ?? [],
+    timeoutSeconds,
+  };
 }
 
 /**
- * agentry_run: preview = the compiled plan (`run --dry-run`), digest over
- * it; confirm = the run. An unsigned release (and every --local workspace,
- * which the CLI treats as unsigned) needs acceptUnsigned on the confirm; the
- * preview tries without --allow-unsigned first and says `unsigned: true`
- * when that is why the dry run refused.
+ * agentry_run: preview = the CLI's run plan, digest over it; confirm = the
+ * run. The preview never lifts the unsigned gate: the CLI reports
+ * `attestation: unsigned` (a release with no attestation) or `local` (a
+ * workspace) with the refusal, and only a confirm carrying acceptUnsigned
+ * — the person's word — lifts it.
  */
 export async function run(d: Driver, a: RunArgs, extra: Extra): Promise<CallToolResult> {
   const tgt = target(a);
-  const dry = ["run", ...tgt, "--dry-run", "--mode", "autonomous"];
-  commonFlags(dry, a);
-  let unsigned = a.local !== undefined;
-  let planRes = await d.run("agentry_run (plan)", unsigned ? [...dry, "--allow-unsigned"] : dry);
-  if (planRes.isError && !unsigned && /unsigned|--allow-unsigned/.test(textOf(planRes))) {
-    unsigned = true;
-    planRes = await d.run("agentry_run (plan)", [...dry, "--allow-unsigned"]);
-  }
-  if (planRes.isError) return planRes;
-  const env = JSON.parse(textOf(planRes)) as { result: CompiledPlan; log: string };
-  const plan = env.result;
-  const facts = {
-    ref: plan.ref,
-    digest: plan.digest,
-    mode: plan.mode,
-    unsigned,
-    capabilities: plan.capabilities,
-    enforcement: plan.enforcement,
-    tools: plan.tools,
-    gateway: plan.gateway,
-    proxy: plan.proxy,
-    budgets: plan.budgets,
-    intake: a.intake ?? {},
-    files: a.files ?? [],
-  };
+  const timeoutSeconds = a.timeoutSeconds ?? DEFAULT_RUN_TIMEOUT_SECONDS;
+  const planArgv = ["run", ...tgt, "--plan", "--json"];
+  commonFlags(planArgv, a, timeoutSeconds);
+  const planned = await runPlan<RunPlan>(d, "agentry_run (plan)", planArgv);
+  if (!planned.ok) return planned.result;
+  const { plan, log } = planned;
+  const unsigned = plan.attestation === "unsigned" || plan.attestation === "local";
+  const facts = runFacts(plan, a, timeoutSeconds);
+
   if (a.confirm === undefined) {
-    return previewText(
-      {
-        plan: {
-          ref: plan.ref,
-          digest: plan.digest,
-          mode: plan.mode,
-          capabilities: plan.capabilities,
-          enforcement: plan.enforcement,
-          tools: plan.tools,
-          gateway: plan.gateway,
-          proxy: plan.proxy,
-          budgets: plan.budgets,
-        },
-        unsigned,
-        log: tail(env.log),
-        writes: false,
-      },
-      facts,
-    );
+    return previewText({ plan, unsigned, timeoutSeconds, log: tail(log), writes: false }, facts);
   }
   const ok = await confirmed(d, "agentry_run", a.confirm, facts, {
     unsigned,
     acceptUnsigned: a.acceptUnsigned,
+    refusal: plan.refusal,
     ask:
-      `Run ${plan.ref} (${plan.mode})? It may reach: ${JSON.stringify(plan.capabilities)}; tools: ${JSON.stringify(plan.tools)}.` +
-      (unsigned ? " The release is unsigned." : ""),
+      `Run ${plan.ref} (${plan.mode}, up to ${timeoutSeconds}s)? Contract: ${canonical(plan.contract)}. ` +
+      `Attestation: ${plan.attestation}.${plan.reason ? ` The CLI would ask because: ${plan.reason}.` : ""}`,
   });
   if (!isConsent(ok)) return ok;
 
-  const timeoutSeconds = a.timeoutSeconds ?? DEFAULT_RUN_TIMEOUT_SECONDS;
+  // The run names the release the digest covered — plan.ref is resolved
+  // (ns/name@version) — never the floating ref the call carried; a local
+  // workspace is the directory itself.
   const argv = [
     "run",
-    ...tgt,
-    "--mode",
-    "autonomous",
+    ...(a.local !== undefined ? tgt : [value("ref", plan.ref)]),
     "--output-format",
     "json",
-    "--timeout",
-    String(timeoutSeconds),
   ];
-  commonFlags(argv, a);
+  commonFlags(argv, a, timeoutSeconds);
   flag(argv, "out", a.out);
   let tmp: string | undefined;
   try {
     if (a.input !== undefined) {
       if (a.inputFile !== undefined)
-        throw new Error("give input (text) or inputFile (a path), not both");
+        throw new ArgumentError("give input (text) or inputFile (a path), not both");
       tmp = await mkdtemp(join(tmpdir(), "agentry-mcp-run-"));
       const file = join(tmp, "input.txt");
       await writeFile(file, a.input, { mode: 0o600 });
@@ -231,7 +254,7 @@ export async function run(d: Driver, a: RunArgs, extra: Extra): Promise<CallTool
   }
 }
 
-/** Adds receiptsDir and resultFile beside the CLI's envelope; a timeout is named. */
+/** Adds receiptsDir, resultFile and outDir beside the CLI's envelope. */
 function decorateRun(r: CallToolResult): CallToolResult {
   if (r.isError) return r;
   const env = JSON.parse(textOf(r)) as {
@@ -268,5 +291,3 @@ function isConsent(v: Consent | CallToolResult): v is Consent {
 function textOf(r: CallToolResult): string {
   return (r.content[0] as { text: string }).text;
 }
-
-export { exitClass };

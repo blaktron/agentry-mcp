@@ -74,31 +74,46 @@ same two calls.
 
 ## Running
 
-| Tool               | Runs                                                                                     | Returns                                                                                                      |
-| ------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `agentry_setup`    | `agentry setup --yes --json` (with or without the image pulls)                           | the policy as configured — provider, model, the key's variable **name** — and whether the images are ready   |
-| `agentry_run`      | `agentry run --dry-run`, then `agentry run --mode autonomous --output-format json --yes` | the compiled plan with a `digest`, then the CLI's result envelope with `receiptsDir`, `resultFile`, `outDir` |
-| `agentry_validate` | `agentry validate DIR --json`                                                            | the rules and scan findings as data, and whether publish would pass                                          |
+| Tool               | Runs                                                                                             | Returns                                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `agentry_setup`    | `agentry setup --json` (with or without the image pulls)                                         | the policy as configured — provider, model, the key's variable **name** — and whether the images are ready        |
+| `agentry_run`      | `agentry run --plan --json`, then `agentry run --mode autonomous --output-format json` consented | the run plan with a `digest`, then the CLI's result envelope with `receiptsDir`, `resultFile`, `outDir` beside it |
+| `agentry_validate` | `agentry validate DIR --json`                                                                    | the rules and scan findings as data, and whether publish would pass                                               |
 
-A run is the same two calls as an install. The preview is the compiled run
-plan — the release that resolved, the capabilities and enforcement a run
-would apply, the tools it would be served, the gateway and proxy shape, the
-budgets — which is exactly what the run enforces, and the digest is over it.
-The confirm re-plans, asks you when the host can, and runs. The runner's
-isolation and receipts are the CLI's, untouched: the server invokes
-`agentry run` as you would from a terminal, and the result names the
-receipts directory, which is the record of what was enforced.
+A run is the same two calls as an install. The preview is the CLI's run
+plan (`run --plan --json`, agentry-cli#124): the compiled plan — the release
+that resolved, the capabilities and enforcement a run would apply, the tools
+it would be served, the gateway and proxy shape, the budgets — which is
+exactly what the run enforces, with the attestation verdict and the refusal
+a run would meet. The CLI asks nothing and records nothing for it, and the
+server lifts nothing: the preview carries no consent flag. The digest is
+over the whole plan plus what the call itself brings to the run — the intake
+answers, the files, the timeout — so a policy, an image, a budget or an
+answer that changed between the two calls changes the digest; the task input
+is not in it, since it changes nothing about what the run may reach. The
+confirm re-plans, asks you when the host can, and runs the release the
+preview resolved. The runner's isolation and receipts are the CLI's,
+untouched: the server invokes `agentry run` as you would from a terminal,
+and the result names the receipts directory, which is the record of what
+was enforced; its `runPlanSha256` is the preview's `planSha256`.
+
+`setup` carries no consent flag either: the server gives the CLI no
+terminal, and setup without one fills every gap from its provider table
+instead of asking.
 
 `input` text is written to a temp file the server removes after the run;
 `inputFile` passes a path you already have; `intake` answers the
 BriefAgent's questions by id, and a required one left unanswered is an
-error naming it. A run stops at `timeoutSeconds` (default 900, the runner
-policy's own budget): the CLI's `--timeout` ends it, and if the process is
-still there 30 s later the server sends SIGINT and the CLI's teardown runs.
-Progress — the CLI's own narration — streams as MCP progress notifications
-when the host asks for them, and the last lines come back as `log`. A local
-workspace (`local`) is always unsigned and needs `acceptUnsigned` on the
-confirm, like an unsigned release.
+error from the run naming it. A run stops at `timeoutSeconds` (default 900,
+the runner policy's own budget): the CLI's `--timeout` ends it, and if the
+process is still there 30 s later the server sends SIGINT, on which the CLI
+tears down and writes its envelope (`error: interrupted`, class `cli`) —
+the result comes back with `timedOut: true` beside it. Progress — the CLI's
+own narration — streams as MCP progress notifications when the host asks
+for them, and the last lines come back as `log`. A local workspace
+(`local`) has attestation `local` and needs `acceptUnsigned` on the
+confirm, like an unsigned release; a verdict the person cannot lift
+(`mismatch`, `unverifiable`) stops the confirm.
 
 Not here, on purpose: **signing in** (`agentry login` once in a terminal; the
 server uses that login) and **publishing** (`agentry publish` in a terminal,
@@ -115,9 +130,10 @@ claude mcp add agentry -- node /path/to/agentry-mcp/dist/index.js
 
 The server finds the CLI through `AGENTRY_BIN`, else `agentry` on `PATH`,
 runs `agentry --version` once at start, and refuses to start without a CLI
-at or above `MIN_CLI_VERSION` (`src/cli.ts`) that has `install --plan`
-(agentry-cli#123 or newer; the CLI has no release tag for it yet, so the
-floor is nominal and the plan mode is probed directly). A dev build of the
+at or above `MIN_CLI_VERSION` (`src/cli.ts`) that has `install --plan` and
+`run --plan` (agentry-cli#123 and #124 or newer; the CLI has no release tag
+for them yet, so the floor is nominal and the plan modes are probed
+directly). A dev build of the
 CLI reports a git describe rather than a version; it is accepted and the
 start-up line says the floor was not checked.
 

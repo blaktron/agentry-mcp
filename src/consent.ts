@@ -108,7 +108,7 @@ function text(t: string, isError = false): ToolText {
 }
 
 /** Runs the CLI's plan mode and parses the plan; a refusal or non-JSON is the error. */
-async function runPlan<P>(
+export async function runPlan<P>(
   d: Driver,
   what: string,
   argv: string[],
