@@ -2,9 +2,10 @@
 
 An MCP server that drives the **`agentry` CLI you already have**, so Claude
 Code, Codex or any MCP host can search a registry, read a BriefAgent's
-capability contract, verify a release and check the machine — and, in later
-versions, install, run and manage BriefAgents — through tools whose results
-are the CLI's own JSON.
+capability contract, verify a release, check and prepare the machine,
+install and remove BriefAgents, run them, and hold an interactive session
+with one — through tools whose results are the CLI's own JSON, behind the
+same consent the CLI asks for on a terminal.
 
 Local stdio server, TypeScript, on the official
 [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk).
@@ -91,9 +92,8 @@ over the whole plan plus what the call itself brings to the run — the intake
 answers, the files and the input file, where the output lands, the budget —
 so a policy, an image, a budget or an answer that changed between the two
 calls changes the digest; the task input as text is not in it, since it
-changes nothing about what the run may reach. The
-confirm re-plans, asks you when the host can, and runs the release the
-preview resolved. The runner's isolation and receipts are the CLI's,
+changes nothing about what the run may reach. The confirm re-plans, asks
+you when the host can, and runs the release the preview resolved. The runner's isolation and receipts are the CLI's,
 untouched: the server invokes `agentry run` as you would from a terminal,
 and the result names the receipts directory, which is the record of what
 was enforced; its `runPlanSha256` is the preview's `planSha256`.
@@ -162,20 +162,43 @@ where the person sees the pipeline's verdict).
 
 ## Install
 
+The server needs Node 20 or newer, the `agentry` CLI on this machine (from
+https://secureagentry.net/download, or built from
+[agentry-cli](https://github.com/blaktron/agentry-cli)), and `python3` for
+the session tools. Build it once:
+
 ```sh
-npm install
-npm run build
+git clone https://github.com/blaktron/agentry-mcp
+cd agentry-mcp && npm install && npm run build
+```
+
+**Claude Code** — one command, then `/mcp` in a Claude Code session lists
+`agentry` and its tools:
+
+```sh
 claude mcp add agentry -- node /path/to/agentry-mcp/dist/index.js
 ```
+
+**Codex** — the same shape; `codex mcp list` shows it afterwards:
+
+```sh
+codex mcp add agentry -- node /path/to/agentry-mcp/dist/index.js
+```
+
+Either host can pass `AGENTRY_BIN` when the CLI is not on its `PATH`
+(`claude mcp add agentry -e AGENTRY_BIN=/path/to/agentry -- node …`,
+`codex mcp add agentry --env AGENTRY_BIN=/path/to/agentry -- node …`).
+Sign in to a registry once in a terminal (`agentry login`); the server uses
+that login and never sees the token.
 
 The server finds the CLI through `AGENTRY_BIN`, else `agentry` on `PATH`,
 runs `agentry --version` once at start, and refuses to start without a CLI
 at or above `MIN_CLI_VERSION` (`src/cli.ts`) that has `install --plan` and
 `run --plan` (agentry-cli#123 and #124 or newer; the CLI has no release tag
 for them yet, so the floor is nominal and the plan modes are probed
-directly). A dev build of the
-CLI reports a git describe rather than a version; it is accepted and the
-start-up line says the floor was not checked.
+directly). A dev build of the CLI reports a git describe rather than a
+version; it is accepted and the start-up line says the floor was not
+checked.
 
 ## What the server holds
 
