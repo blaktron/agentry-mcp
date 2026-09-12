@@ -134,7 +134,11 @@ export function runCli(bin: string, argv: string[], opts: CliOptions = {}): Prom
           code: -1,
           stdout,
           stderr,
-          spawnError: `timed out after ${opts.timeoutMs}ms and was killed`,
+          spawnError:
+            `timed out after ${opts.timeoutMs}ms and was killed` +
+            (opts.graceMs
+              ? `; SIGINT went unanswered for ${opts.graceMs}ms, so the CLI's teardown may not have run — check for leftover agentry-* containers`
+              : ""),
         });
       } else if (timedOut) {
         // SIGINT let the CLI finish its teardown and exit on its own: its

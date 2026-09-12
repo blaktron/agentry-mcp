@@ -3,7 +3,7 @@
  * process the server waits on: `agentry run --mode autonomous
  * --output-format json`, its stderr forwarded as MCP progress when the host
  * sent a progress token and kept as `log`, its stdout the CLI's result
- * envelope passed through with `receiptsDir`, `resultFile` and `exitClass`
+ * envelope passed through with `receiptsDir`, `resultFile` and `outDir`
  * beside it. The runner's isolation and receipts are untouched: the server
  * invokes `agentry run` exactly as a person would.
  *
@@ -28,21 +28,20 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { ArgumentError, bool, flag, value } from "./argv.js";
-import {
-  canonical,
-  confirmed,
-  consentedArgv,
-  previewText,
-  runPlan,
-  type Consent,
-} from "./consent.js";
+import { canonical, confirmed, consentedArgv, isConsent, previewText, runPlan } from "./consent.js";
 import type { Driver } from "./driver.js";
 import { tail } from "./envelope.js";
 
-/** The timeout a run gets when the call names none: the runner policy's own default budget. */
+/**
+ * The budget the server assumes when neither the call nor the compiled plan
+ * names one (the policy's own default); the plan's budget is what a run
+ * without timeoutSeconds gets, and the server's backstop sits past it.
+ */
 export const DEFAULT_RUN_TIMEOUT_SECONDS = 900;
 /** After the timeout's SIGINT, how long the CLI's teardown gets before SIGKILL. */
 const TEARDOWN_GRACE_MS = 60_000;
+/** setup pulls and builds images; minutes, bounded. */
+const SETUP_TIMEOUT_MS = 30 * 60 * 1000;
 
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
@@ -90,7 +89,7 @@ export async function setup(d: Driver, a: SetupArgs, extra: Extra): Promise<Call
   bool(argv, "skip-images", a.skipImages);
   return d.run("agentry_setup", argv, {
     onStderrLine: progressSink(extra),
-    timeoutMs: 30 * 60 * 1000,
+    timeoutMs: SETUP_TIMEOUT_MS,
     graceMs: TEARDOWN_GRACE_MS,
   });
 }
@@ -120,7 +119,7 @@ export interface RunPlan {
   modes: string[];
   summary?: string;
   /** The compiled plan, canonical: what the run enforces. */
-  plan: unknown;
+  plan: { budgets?: { timeoutSeconds?: number }; [k: string]: unknown };
   /** The receipt's runPlanSha256 for that plan. */
   planSha256: string;
   contract: unknown;
@@ -135,21 +134,33 @@ export interface RunPlan {
   refusal?: string;
 }
 
-/** The target as argv: a registry ref, or a workspace directory. */
-function target(a: RunArgs): string[] {
+/**
+ * The target as argv: a workspace directory, or a registry ref — the
+ * call's own for the preview, and for the run the one the preview resolved
+ * (ns/name@version), never the floating ref the call carried.
+ */
+function target(a: RunArgs, resolvedRef?: string): string[] {
   if ((a.ref === undefined) === (a.local === undefined)) {
     throw new ArgumentError(
       "give exactly one of ref (a registry BriefAgent) or local (a workspace directory)",
     );
   }
+  if (a.input !== undefined && a.inputFile !== undefined) {
+    throw new ArgumentError("give input (text) or inputFile (a path), not both");
+  }
   return a.local !== undefined
     ? ["--local", value("local", a.local)]
-    : [value("ref", a.ref as string)];
+    : [value("ref", resolvedRef ?? (a.ref as string))];
 }
 
-/** The flags both the preview and the run carry: they shape the plan. */
-function commonFlags(argv: string[], a: RunArgs, timeoutSeconds: number): void {
-  argv.push("--mode", "autonomous", "--timeout", String(timeoutSeconds));
+/**
+ * The flags both the preview and the run carry: they shape the plan.
+ * --timeout only when the call named one; otherwise the compiled plan's own
+ * budget (the policy's) is what the run gets.
+ */
+function commonFlags(argv: string[], a: RunArgs): void {
+  argv.push("--mode", "autonomous");
+  flag(argv, "timeout", a.timeoutSeconds);
   flag(argv, "adapter", a.adapter);
   flag(argv, "policy", a.policy);
   flag(argv, "registry", a.registry);
@@ -165,9 +176,10 @@ function commonFlags(argv: string[], a: RunArgs, timeoutSeconds: number): void {
  * The facts the run digest covers: the whole compiled plan (so a policy,
  * an image, a tool or a budget that changed between the calls changes the
  * digest), the release it came from and its attestation, the refusal, and
- * the call's own contribution to the run — the intake answers, the files,
- * the timeout. The task input is not among them: it is the model's to
- * compose, and it changes nothing about what the run may reach.
+ * the call's own contribution to the run — the intake answers, the files
+ * and the input file it hands the run, where the output lands, the budget.
+ * The task input as text is not among them: it is the model's to compose,
+ * and it changes nothing about what the run may reach.
  */
 function runFacts(p: RunPlan, a: RunArgs, timeoutSeconds: number) {
   return {
@@ -183,6 +195,8 @@ function runFacts(p: RunPlan, a: RunArgs, timeoutSeconds: number) {
     refusal: p.refusal ?? "",
     intake: a.intake ?? {},
     files: a.files ?? [],
+    inputFile: a.inputFile ?? "",
+    out: a.out ?? "",
     timeoutSeconds,
   };
 }
@@ -195,20 +209,22 @@ function runFacts(p: RunPlan, a: RunArgs, timeoutSeconds: number) {
  * — the person's word — lifts it.
  */
 export async function run(d: Driver, a: RunArgs, extra: Extra): Promise<CallToolResult> {
-  const tgt = target(a);
-  const timeoutSeconds = a.timeoutSeconds ?? DEFAULT_RUN_TIMEOUT_SECONDS;
-  const planArgv = ["run", ...tgt, "--plan", "--json"];
-  commonFlags(planArgv, a, timeoutSeconds);
+  const planArgv = ["run", ...target(a), "--plan", "--json"];
+  commonFlags(planArgv, a);
   const planned = await runPlan<RunPlan>(d, "agentry_run (plan)", planArgv);
   if (!planned.ok) return planned.result;
   const { plan, log } = planned;
   const unsigned = plan.attestation === "unsigned" || plan.attestation === "local";
+  // The budget the run gets: the call's, else the compiled plan's (the
+  // policy's), else the server's assumption.
+  const timeoutSeconds =
+    a.timeoutSeconds ?? plan.plan.budgets?.timeoutSeconds ?? DEFAULT_RUN_TIMEOUT_SECONDS;
   const facts = runFacts(plan, a, timeoutSeconds);
 
   if (a.confirm === undefined) {
     return previewText({ plan, unsigned, timeoutSeconds, log: tail(log), writes: false }, facts);
   }
-  const ok = await confirmed(d, "agentry_run", a.confirm, facts, {
+  const ok = await confirmed(d.server, "agentry_run", a.confirm, facts, {
     unsigned,
     acceptUnsigned: a.acceptUnsigned,
     refusal: plan.refusal,
@@ -218,22 +234,12 @@ export async function run(d: Driver, a: RunArgs, extra: Extra): Promise<CallTool
   });
   if (!isConsent(ok)) return ok;
 
-  // The run names the release the digest covered — plan.ref is resolved
-  // (ns/name@version) — never the floating ref the call carried; a local
-  // workspace is the directory itself.
-  const argv = [
-    "run",
-    ...(a.local !== undefined ? tgt : [value("ref", plan.ref)]),
-    "--output-format",
-    "json",
-  ];
-  commonFlags(argv, a, timeoutSeconds);
+  const argv = ["run", ...target(a, plan.ref), "--output-format", "json"];
+  commonFlags(argv, a);
   flag(argv, "out", a.out);
   let tmp: string | undefined;
   try {
     if (a.input !== undefined) {
-      if (a.inputFile !== undefined)
-        throw new ArgumentError("give input (text) or inputFile (a path), not both");
       tmp = await mkdtemp(join(tmpdir(), "agentry-mcp-run-"));
       const file = join(tmp, "input.txt");
       await writeFile(file, a.input, { mode: 0o600 });
@@ -258,7 +264,7 @@ export async function run(d: Driver, a: RunArgs, extra: Extra): Promise<CallTool
 function decorateRun(r: CallToolResult): CallToolResult {
   if (r.isError) return r;
   const env = JSON.parse(textOf(r)) as {
-    result: { receipts?: { dir?: string }; resultFile?: string; outDir?: string };
+    result?: { receipts?: { dir?: string }; resultFile?: string; outDir?: string };
     exitClass: string;
     log: string;
     timedOut?: boolean;
@@ -282,10 +288,6 @@ export async function validate(d: Driver, a: ValidateArgs): Promise<CallToolResu
   const argv = ["validate", value("dir", a.dir), "--json"];
   bool(argv, "strict", a.strict);
   return d.run("agentry_validate", argv);
-}
-
-function isConsent(v: Consent | CallToolResult): v is Consent {
-  return !("content" in v);
 }
 
 function textOf(r: CallToolResult): string {

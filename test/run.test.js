@@ -61,7 +61,7 @@ test("run preview: `run --plan --json`, the compiled plan and a digest, no run, 
   });
   assert.equal(p.writes, false);
   assert.equal(p.unsigned, false);
-  assert.equal(p.timeoutSeconds, 900);
+  assert.equal(p.timeoutSeconds, 900, "the plan's own budget when the call names none");
   assert.equal(p.plan.ref, "acme/widget@1.0.0");
   assert.equal(p.plan.attestation, "verified");
   assert.equal(p.plan.planSha256, "abc");
@@ -75,8 +75,6 @@ test("run preview: `run --plan --json`, the compiled plan and a digest, no run, 
     "--json",
     "--mode",
     "autonomous",
-    "--timeout",
-    "900",
     "--file",
     "/tmp/in",
     "--intake",
@@ -94,6 +92,8 @@ test("the digest covers the whole plan and the call's own contribution: a change
     { ref: "acme/widget", timeoutSeconds: 120 },
     { ref: "acme/widget", intake: { audience: "ops" } },
     { ref: "acme/widget", files: ["/tmp/in"] },
+    { ref: "acme/widget", inputFile: "/tmp/task.txt" },
+    { ref: "acme/widget", out: "/tmp/elsewhere" },
   ]) {
     const p = await previewRun(client, args);
     assert.notEqual(p.digest, base.digest, JSON.stringify(args));
@@ -105,12 +105,13 @@ test("the digest covers the whole plan and the call's own contribution: a change
 
 test("run confirm: re-plans, then runs the resolved release with the consented flag, --timeout, the input written 0600 to a temp file and removed", async () => {
   const writes = writesFile();
-  const { client, argvFile } = await connect({ FAKE_WRITES: writes, FAKE_ARGV_STAT: "1" });
+  const { client, argvFile } = await connect({ FAKE_WRITES: writes });
   const p = await previewRun(client, {
     ref: "acme/widget",
     input: "summarise this",
     timeoutSeconds: 120,
   });
+  assert.equal(p.timeoutSeconds, 120);
   const r = await client.callTool({
     name: "agentry_run",
     arguments: {
@@ -202,8 +203,6 @@ test("a preview never lifts the gate; a wrong digest is refused; unsigned needs 
     "--json",
     "--mode",
     "autonomous",
-    "--timeout",
-    "900",
   ]);
   const lrun = await local.client.callTool({
     name: "agentry_run",
@@ -257,13 +256,18 @@ test("an unanswered required intake question is a tool error naming it, from the
   assert.equal(ok.isError, undefined, ok.content[0].text);
 });
 
-test("ref and local together, or neither, is a tool error, not a crash", async () => {
-  const { client } = await connect();
-  for (const args of [{}, { ref: "acme/widget", local: "/x" }]) {
+test("ref and local together, or neither, or input with inputFile, is a tool error before any plan or person", async () => {
+  const { client, argvFile } = await connect();
+  for (const [args, want] of [
+    [{}, /exactly one of ref/],
+    [{ ref: "acme/widget", local: "/x" }, /exactly one of ref/],
+    [{ ref: "acme/widget", input: "x", inputFile: "/tmp/t" }, /not both/],
+  ]) {
     const r = await client.callTool({ name: "agentry_run", arguments: args });
     assert.equal(r.isError, true);
-    assert.match(r.content[0].text, /exactly one of ref/);
+    assert.match(r.content[0].text, want);
   }
+  assert.deepEqual(receivedArgv(argvFile), [], "the CLI was never run");
 });
 
 test("progress: stderr lines become notifications only when the host sent a progress token", async () => {
@@ -324,21 +328,38 @@ test("validate: the report comes back with exitClass cli when it failed", async 
   ]);
 });
 
-test("no result carries a secret value: the key and the registry token in the server's env never appear", async () => {
+test("no result or progress carries a secret value: the key and the registry token in the server's env never appear", async () => {
   const { client } = await connect({ OPENAI_API_KEY: "sk-leak-me", AGENTRY_TOKEN: "agy_leak_me" });
+  const seen = [];
+  client.setNotificationHandler(
+    (await import("@modelcontextprotocol/sdk/types.js")).ProgressNotificationSchema,
+    (n) => {
+      seen.push(n.params.message);
+    },
+  );
+  const p = await previewRun(client, { ref: "acme/widget", input: "the task" });
   for (const [name, args] of [
     ["agentry_setup", { provider: "openai", apiKeyEnv: "OPENAI_API_KEY", skipImages: true }],
-    ["agentry_run", { ref: "acme/widget" }],
+    ["agentry_run", { ref: "acme/widget", input: "the task" }],
+    ["agentry_run", { ref: "acme/widget", input: "the task", confirm: p.digest }],
     ["agentry_doctor", {}],
   ]) {
-    const r = await client.callTool({ name, arguments: args });
+    const r = await client.callTool({ name, arguments: args }, undefined, { onprogress: () => {} });
     assert.doesNotMatch(r.content[0].text, /sk-leak-me|agy_leak_me/, name);
   }
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(
+    seen.some((m) => /gateway up/.test(m)),
+    `the run streamed progress: ${JSON.stringify(seen)}`,
+  );
+  for (const m of seen) assert.doesNotMatch(m, /sk-leak-me|agy_leak_me/);
 });
 
 test("the tool list is the ten", async () => {
   const { client } = await connect();
   const { tools } = await client.listTools();
   assert.equal(tools.length, 10);
-  assert.ok(tools.find((t) => t.name === "agentry_run").description.includes("default 900"));
+  assert.ok(
+    tools.find((t) => t.name === "agentry_run").description.includes("runner policy's own budget"),
+  );
 });

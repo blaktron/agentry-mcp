@@ -92,13 +92,6 @@ export interface InstallArgs {
   acceptUnsigned?: boolean;
 }
 
-/** What a preview returns: the CLI's plan, plus the digest to confirm with. */
-export interface Preview<P> {
-  plan: P;
-  digest: string;
-  log: string;
-}
-
 export type ToolText = CallToolResult;
 
 function text(t: string, isError = false): ToolText {
@@ -203,7 +196,7 @@ export interface ConfirmOptions {
  * host can ask. Returns the Consent, or the tool error to return.
  */
 export async function confirmed(
-  d: Driver,
+  server: McpServer,
   tool: string,
   confirm: string,
   facts: unknown,
@@ -213,9 +206,10 @@ export async function confirmed(
   if (confirm !== digest) {
     return text(
       `${tool}: the confirm digest does not match this preview (${confirm} vs ${digest}). ` +
-        "Something changed since the preview was shown — the resolved version, the contract, the signature, " +
-        "the target or the directory — or the digest was not taken from a preview of this server. Preview again, " +
-        "show the person what it says, and confirm with the digest that preview returned.",
+        "Something changed since the preview was shown (the resolved version, the contract, the signature, the " +
+        "plan, where it lands), or this call differs from the one previewed, or the digest was not taken from a " +
+        "preview of this server. Preview again with exactly this call, show the person what it says, and confirm " +
+        "with the digest that preview returned.",
       true,
     );
   }
@@ -229,7 +223,7 @@ export async function confirmed(
       true,
     );
   }
-  const asked = await askPerson(d.server, o.ask);
+  const asked = await askPerson(server, o.ask);
   if (!asked.yes) return text(`${tool}: the person declined; nothing was done.`, true);
   return { allowUnsigned: o.unsigned && o.acceptUnsigned === true };
 }
@@ -256,7 +250,7 @@ export async function install(d: Driver, a: InstallArgs): Promise<ToolText> {
   if (a.confirm === undefined) {
     return previewText({ plan, log: tail(log), unsigned, writes: false }, facts);
   }
-  const ok = await confirmed(d, "agentry_install", a.confirm, facts, {
+  const ok = await confirmed(d.server, "agentry_install", a.confirm, facts, {
     unsigned,
     acceptUnsigned: a.acceptUnsigned,
     refusal: plan.refusal,
@@ -278,7 +272,8 @@ export async function install(d: Driver, a: InstallArgs): Promise<ToolText> {
   return d.run("agentry_install", consentedArgv(argv, ok));
 }
 
-function isConsent(v: Consent | ToolText): v is Consent {
+/** A Consent, as against the tool error `confirmed` returns instead. */
+export function isConsent(v: Consent | ToolText): v is Consent {
   return !("content" in v);
 }
 
@@ -315,7 +310,7 @@ export async function uninstall(d: Driver, a: UninstallArgs): Promise<ToolText> 
   if (a.confirm === undefined) {
     return previewText({ plan, log: tail(log), writes: false }, facts);
   }
-  const ok = await confirmed(d, "agentry_uninstall", a.confirm, facts, {
+  const ok = await confirmed(d.server, "agentry_uninstall", a.confirm, facts, {
     unsigned: false,
     ask: `Remove ${plan.ref} from this machine? Installs: ${plan.installs.join(", ") || "none"}. Profiles (keys, servers): ${plan.profiles.join(", ") || "none"}.`,
   });

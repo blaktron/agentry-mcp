@@ -88,9 +88,10 @@ exactly what the run enforces, with the attestation verdict and the refusal
 a run would meet. The CLI asks nothing and records nothing for it, and the
 server lifts nothing: the preview carries no consent flag. The digest is
 over the whole plan plus what the call itself brings to the run — the intake
-answers, the files, the timeout — so a policy, an image, a budget or an
-answer that changed between the two calls changes the digest; the task input
-is not in it, since it changes nothing about what the run may reach. The
+answers, the files and the input file, where the output lands, the budget —
+so a policy, an image, a budget or an answer that changed between the two
+calls changes the digest; the task input as text is not in it, since it
+changes nothing about what the run may reach. The
 confirm re-plans, asks you when the host can, and runs the release the
 preview resolved. The runner's isolation and receipts are the CLI's,
 untouched: the server invokes `agentry run` as you would from a terminal,
@@ -104,11 +105,13 @@ instead of asking.
 `input` text is written to a temp file the server removes after the run;
 `inputFile` passes a path you already have; `intake` answers the
 BriefAgent's questions by id, and a required one left unanswered is an
-error from the run naming it. A run stops at `timeoutSeconds` (default 900,
-the runner policy's own budget): the CLI's `--timeout` ends it, and if the
-process is still there 30 s later the server sends SIGINT, on which the CLI
-tears down and writes its envelope (`error: interrupted`, class `cli`) —
-the result comes back with `timedOut: true` beside it. Progress — the CLI's
+error from the run naming it. A run stops at `timeoutSeconds`, or at the
+runner policy's own budget when the call names none (the preview shows
+which): the CLI ends it, and if the process is still there 30 s later the
+server sends SIGINT, on which the CLI tears down and writes its envelope
+(`error: interrupted`, class `cli`) — the result comes back with
+`timedOut: true` beside it. A CLI that has not exited 60 s after that is
+killed, and the error says so and that its teardown may not have run. Progress — the CLI's
 own narration — streams as MCP progress notifications when the host asks
 for them, and the last lines come back as `log`. A local workspace
 (`local`) has attestation `local` and needs `acceptUnsigned` on the

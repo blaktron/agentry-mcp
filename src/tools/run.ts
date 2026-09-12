@@ -74,8 +74,9 @@ export function registerRunTools(d: Driver): void {
         "(status, exitClass, result, usage, receipts) with `receiptsDir`, `resultFile` and `outDir` beside it. " +
         "The receipts are the record of what was enforced; name them when you report a run. An unsigned " +
         "release, and every local workspace, needs `acceptUnsigned: true` on the confirm, which you pass only " +
-        `if the person said so. A run stops at timeoutSeconds (default ${DEFAULT_RUN_TIMEOUT_SECONDS}); ` +
-        "the CLI's teardown runs on every path. Progress streams from the CLI's log when the host asks for it.",
+        "if the person said so. A run stops at timeoutSeconds, or the runner policy's own budget when omitted " +
+        "(the preview shows which); the CLI's teardown runs on every path. Progress streams from the CLI's " +
+        "log when the host asks for it.",
       inputSchema: {
         ref: z
           .string()
@@ -114,7 +115,7 @@ export function registerRunTools(d: Driver): void {
           .max(86400)
           .optional()
           .describe(
-            `Stop the run after this many seconds (default ${DEFAULT_RUN_TIMEOUT_SECONDS}).`,
+            `Stop the run after this many seconds; the runner policy's budget when omitted (${DEFAULT_RUN_TIMEOUT_SECONDS} by default).`,
           ),
         adapter: z.string().optional().describe("The harness adapter (default docker-agent)."),
         out: z
