@@ -65,7 +65,7 @@ export interface ServerOptions {
   runTimeoutSlackMs?: number;
 }
 
-export function createServer(opts: ServerOptions): McpServer {
+export function createServer(opts: ServerOptions): { server: McpServer; driver: Driver } {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     { instructions: instructions(opts.bin, opts.cliVersion) },
@@ -75,5 +75,5 @@ export function createServer(opts: ServerOptions): McpServer {
   registerWriteTools(driver);
   registerRunTools(driver);
   registerSessionTools(driver);
-  return server;
+  return { server, driver };
 }

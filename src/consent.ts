@@ -21,7 +21,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { flag, value } from "./argv.js";
 import type { Driver } from "./driver.js";
-import { tail } from "./envelope.js";
+import { tail, toolText as text } from "./envelope.js";
 
 /** Canonical JSON: keys sorted at every level, compact. */
 export function canonical(v: unknown): string {
@@ -93,12 +93,6 @@ export interface InstallArgs {
 }
 
 export type ToolText = CallToolResult;
-
-function text(t: string, isError = false): ToolText {
-  return isError
-    ? { content: [{ type: "text", text: t }], isError: true }
-    : { content: [{ type: "text", text: t }] };
-}
 
 /** Runs the CLI's plan mode and parses the plan; a refusal or non-JSON is the error. */
 export async function runPlan<P>(

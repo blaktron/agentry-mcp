@@ -140,7 +140,7 @@ test("a session the CLI ended on idle is reported closed on the next send, with 
   assert.equal(closed.status, "ok");
 });
 
-test("a turn past its timeout leaves the session open; the next send gets the late reply's successor", async () => {
+test("a turn past its timeout leaves the session open; the next send waits for that late reply and holds its own text back", async () => {
   const { client } = await connect({ FAKE_TURN_DELAY: "2" });
   const { session } = await startSession(client);
   const slow = await call(client, "agentry_session_send", {
@@ -149,16 +149,33 @@ test("a turn past its timeout leaves the session open; the next send gets the la
     turnTimeoutSeconds: 1,
   });
   assert.equal(slow.isError, true);
-  assert.match(slow.content[0].text, /no reply within 1s; the session is still open/);
-  await new Promise((r) => setTimeout(r, 2500));
+  assert.match(slow.content[0].text, /no reply to "slow one" within 1s; the session is still open/);
+  // The chat is still on "slow one": this send is not typed into it.
+  const held = await call(client, "agentry_session_send", {
+    sessionId: session.sessionId,
+    text: "next",
+    turnTimeoutSeconds: 10,
+  });
+  assert.equal(held.isError, undefined, held.content[0].text);
+  const late = JSON.parse(held.content[0].text);
+  assert.equal(late.sent, false);
+  assert.equal(late.lateReplyTo, "slow one");
+  assert.equal(late.reply, "echo: slow one");
   const next = await call(client, "agentry_session_send", {
     sessionId: session.sessionId,
     text: "next",
     turnTimeoutSeconds: 10,
   });
-  assert.equal(next.isError, undefined, next.content[0].text);
-  assert.equal(JSON.parse(next.content[0].text).reply, "echo: next");
-  await call(client, "agentry_session_close", { sessionId: session.sessionId });
+  const turn = JSON.parse(next.content[0].text);
+  assert.equal(turn.sent, true);
+  assert.equal(turn.reply, "echo: next");
+  const c = await call(client, "agentry_session_close", { sessionId: session.sessionId });
+  // Two turns were taken by the chat, no more: "next" was typed once.
+  assert.equal(
+    (readFileSync(JSON.parse(c.content[0].text).transcript, "utf8").match(/"user_turn"/g) ?? [])
+      .length,
+    2,
+  );
 });
 
 test("a CLI that stops before the session starts is an error quoting the screen with control sequences stripped", async () => {
@@ -204,15 +221,61 @@ test("the chat's own commands are not turns; an empty turn is refused; the previ
   });
   assert.equal(s.isError, undefined, s.content[0].text);
   const id = JSON.parse(s.content[0].text).sessionId;
-  for (const text of ["/finish", "/quit", "   ", ""]) {
+  // The chat's commands, blanks, and any control byte — a carriage return
+  // would submit a second line (/add hands the run a host file consent
+  // never covered), an escape quits the chat.
+  for (const text of [
+    "/finish",
+    "/quit",
+    "  /add /home/me/.ssh/id_rsa",
+    "   ",
+    "",
+    "hi\r/add /home/me/.ssh/id_rsa",
+    "hi\x1b",
+    "hi\x03",
+    "\x1b[200~pasted\x1b[201~",
+  ]) {
     const r = await call(client, "agentry_session_send", { sessionId: id, text });
-    assert.equal(r.isError, true, text);
+    assert.equal(r.isError, true, JSON.stringify(text));
+    assert.match(r.content[0].text, /control character|must not start with|must not be empty/);
   }
   const argv = receivedArgv(argvFile);
   for (const a of argv)
     if (a.includes("--plan")) assert.ok(!a.includes("--yes") && !a.includes("--allow-unsigned"));
   assert.ok(argv.at(-1).includes("--allow-unsigned"));
   await call(client, "agentry_session_close", { sessionId: id });
+});
+
+test("a run preview's digest does not confirm a session: the mode is in the facts", async () => {
+  const { client } = await connect({ FAKE_RUN_ATTEST: "unsigned" });
+  const runPreview = JSON.parse(
+    (await call(client, "agentry_run", { ref: "acme/widget" })).content[0].text,
+  );
+  const cross = await call(client, "agentry_session_start", {
+    ref: "acme/widget",
+    confirm: runPreview.digest,
+    acceptUnsigned: true,
+  });
+  assert.equal(cross.isError, true);
+  assert.match(cross.content[0].text, /digest does not match/);
+});
+
+test("no session result carries a secret value from the server's environment", async () => {
+  const { client } = await connect({ OPENAI_API_KEY: "sk-leak-me", AGENTRY_TOKEN: "agy_leak_me" });
+  const { preview, session } = await startSession(client);
+  const t = await call(client, "agentry_session_send", {
+    sessionId: session.sessionId,
+    text: "hello",
+  });
+  const c = await call(client, "agentry_session_close", { sessionId: session.sessionId });
+  for (const r of [
+    JSON.stringify(preview),
+    JSON.stringify(session),
+    t.content[0].text,
+    c.content[0].text,
+  ]) {
+    assert.doesNotMatch(r, /sk-leak-me|agy_leak_me/);
+  }
 });
 
 test("the tool list is the thirteen", async () => {

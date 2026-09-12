@@ -12,12 +12,12 @@
  * goes — `assistant_turn` closes a turn with the full text, `session_end`
  * says why it is over — rather than scraped off the screen: the chat is a
  * full-screen redraw, and the receipt is the record anyway. Everything the
- * pty said is kept raw in `pty.log` beside the run's output folder, and its
- * last lines, control sequences stripped, are what an error names when the
- * CLI stopped before the receipt existed.
+ * pty said is kept raw in `<out>.pty.log` beside the run's output folder,
+ * and its last lines, control sequences stripped, are what an error names
+ * when the CLI stopped before the chat was up.
  *
- * One session per server process at a time (M5); a second start is refused
- * naming the open one.
+ * One session per server at a time (M5), held on the Driver; a second
+ * start is refused naming the open one.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -31,6 +31,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { ArgumentError } from "./argv.js";
 import type { Driver } from "./driver.js";
+import { toolJSON as json, toolText as text } from "./envelope.js";
 import { isRunConsent, runArgv, runConsent, taskInput, type RunArgs } from "./run.js";
 
 /** How long the sandbox gets to come up before a start is given up on. */
@@ -42,9 +43,19 @@ const CLOSE_GRACE_MS = 120_000;
 const KILL_GRACE_MS = 30_000;
 /** How long a typed turn may go unrecorded before Enter is pressed again. */
 const ENTER_RETRY_MS = 5_000;
+/** After the chat's status line shows, a moment for its input reader to be up too. */
+const SETTLE_MS = 300;
+/** How often the receipt is read for new lines. */
+const POLL_MS = 200;
+/** After SIGKILL, how long the process gets to be reaped before the close returns. */
+const REAP_MS = 5_000;
+/** How much of the pty stream is kept in memory for the error path; the file has all of it. */
+const SCREEN_KEEP = 65536;
 /** The terminal the CLI's chat is given. */
 const COLS = 200;
 const ROWS = 50;
+/** A C0 control byte or DEL: a key the chat would act on, not text. */
+const CONTROL_BYTE = /[\x00-\x1f\x7f]/;
 
 /** One line of the engine's events receipt (pkg/runner/session). */
 interface SessionEvent {
@@ -77,16 +88,6 @@ function screenTail(raw: string, lines = 12): string {
     .filter((l) => l.trim() !== "")
     .slice(-lines)
     .join("\n");
-}
-
-function text(t: string, isError = false): CallToolResult {
-  return isError
-    ? { content: [{ type: "text", text: t }], isError: true }
-    : { content: [{ type: "text", text: t }] };
-}
-
-function json(v: unknown): CallToolResult {
-  return text(JSON.stringify(v));
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -123,7 +124,7 @@ class EventTail {
         try {
           out.push(JSON.parse(l) as SessionEvent);
         } catch {
-          // A line the engine is still writing arrives whole on the next read.
+          // Not the engine's JSON: kept out of the turn, left in the file.
         }
       }
       return out;
@@ -135,12 +136,21 @@ class EventTail {
 
 /** What a turn produced: the reply, the tools called, the usage, or the end. */
 export interface Turn {
+  /** The receipt recorded the user turn (Enter was taken). */
+  taken: boolean;
   reply?: string;
   toolCalls: string[];
   usage: { inputTokens: number; outputTokens: number; totalTokens: number; costUsd: number };
   ended?: string;
   errors: string[];
 }
+
+/** How a send came out: the reply to this text, the late reply to an earlier one, a timeout, or the end. */
+export type SendOutcome =
+  | { kind: "reply"; turn: Turn; text: string }
+  | { kind: "late"; turn: Turn; text: string }
+  | { kind: "timeout"; turn: Turn; text: string }
+  | { kind: "ended"; reason: string };
 
 export class PtySession {
   readonly id: string;
@@ -152,6 +162,8 @@ export class PtySession {
   private tail: EventTail;
   private endedReason: string | undefined;
   private busy = false;
+  /** The text of a turn that went unanswered within its limit; the chat is still on it. */
+  private awaiting: string | undefined;
 
   constructor(
     readonly child: ChildProcess,
@@ -166,11 +178,11 @@ export class PtySession {
     child.stdout?.on("data", (d: Buffer) => {
       this.log.write(d);
       // Keep the last 64 KB for the error path; the file has all of it.
-      this.raw = (this.raw + d.toString("utf8")).slice(-65536);
+      this.raw = (this.raw + d.toString("utf8")).slice(-SCREEN_KEEP);
     });
     child.stderr?.on("data", (d: Buffer) => {
       this.log.write(d);
-      this.raw = (this.raw + d.toString("utf8")).slice(-65536);
+      this.raw = (this.raw + d.toString("utf8")).slice(-SCREEN_KEEP);
     });
     this.exit = new Promise((resolve) => {
       child.on("close", (code, signal) => {
@@ -192,11 +204,42 @@ export class PtySession {
   /** Why the session is over, once the receipt or the process said so. */
   async ended(): Promise<string | undefined> {
     if (this.endedReason) return this.endedReason;
-    for (const ev of await this.tail.next()) {
-      if (ev.kind === "session_end") this.endedReason = ev.reason ?? "ended";
-    }
+    this.absorb(await this.tail.next(), undefined);
     if (!this.endedReason && this.exited) this.endedReason = "harness_exit";
     return this.endedReason;
+  }
+
+  /** Folds receipt lines into a turn (when one is open) and notes the end. */
+  private absorb(events: SessionEvent[], turn: Turn | undefined): void {
+    for (const ev of events) {
+      switch (ev.kind) {
+        case "user_turn":
+          if (turn) turn.taken = true;
+          break;
+        case "assistant_turn":
+          if (turn) turn.reply = ev.text ?? "";
+          break;
+        case "tool_call":
+          if (turn) turn.toolCalls.push(ev.text ?? "");
+          break;
+        case "usage":
+          if (turn) {
+            turn.usage.inputTokens += ev.inputTokens ?? 0;
+            turn.usage.outputTokens += ev.outputTokens ?? 0;
+            turn.usage.totalTokens += ev.totalTokens ?? 0;
+            // The engine reports cost as a running total, not a delta.
+            turn.usage.costUsd = Math.max(turn.usage.costUsd, ev.costUsd ?? 0);
+          }
+          break;
+        case "error":
+          if (turn) turn.errors.push(ev.text ?? "");
+          break;
+        case "session_end":
+          this.endedReason = ev.reason ?? "ended";
+          if (turn) turn.ended = this.endedReason;
+          break;
+      }
+    }
   }
 
   /**
@@ -217,10 +260,10 @@ export class PtySession {
         };
       }
       if (STATUS_LINE.test(stripControl(this.raw))) {
-        await sleep(300);
+        await sleep(SETTLE_MS);
         return { ok: true };
       }
-      await sleep(250);
+      await sleep(POLL_MS);
     }
     return {
       ok: false,
@@ -234,69 +277,76 @@ export class PtySession {
   }
 
   /**
-   * One user turn: typed into the chat, then the receipt is read until the
-   * assistant's turn closes, the session ends, or the limit passes.
+   * One user turn. Typed into the chat, then the receipt is read until the
+   * assistant's turn closes, the session ends, or the limit passes — in
+   * which case the chat is still answering, and the next send waits for
+   * that answer instead of typing (a busy chat drops the line): it comes
+   * back as the late reply to the earlier text, and `sent` says the new
+   * text was not sent.
    */
-  async send(line: string, timeoutMs: number): Promise<Turn | { timedOut: true; partial: Turn }> {
+  async send(line: string, timeoutMs: number): Promise<SendOutcome> {
     if (this.busy) throw new ArgumentError("a turn is already in progress on this session");
     this.busy = true;
     try {
-      // Anything the receipt gained since the last turn is not this turn's.
-      await this.tail.next();
-      this.type(line);
       const turn: Turn = {
+        taken: false,
         toolCalls: [],
         usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 },
         errors: [],
       };
-      const until = Date.now() + timeoutMs;
-      // Until the receipt shows the turn was taken; an Enter the chat
-      // missed is pressed once more (on an empty input it does nothing).
-      let taken = false;
-      let retryAt = Date.now() + ENTER_RETRY_MS;
-      while (Date.now() < until) {
-        if (!taken && Date.now() > retryAt) {
-          this.child.stdin?.write("\r");
-          retryAt = Number.POSITIVE_INFINITY;
-        }
-        for (const ev of await this.tail.next()) {
-          switch (ev.kind) {
-            case "user_turn":
-              taken = true;
-              break;
-            case "assistant_turn":
-              turn.reply = ev.text ?? "";
-              break;
-            case "tool_call":
-              turn.toolCalls.push(ev.text ?? "");
-              break;
-            case "usage":
-              turn.usage.inputTokens += ev.inputTokens ?? 0;
-              turn.usage.outputTokens += ev.outputTokens ?? 0;
-              turn.usage.totalTokens += ev.totalTokens ?? 0;
-              turn.usage.costUsd = Math.max(turn.usage.costUsd, ev.costUsd ?? 0);
-              break;
-            case "error":
-              turn.errors.push(ev.text ?? "");
-              break;
-            case "session_end":
-              this.endedReason = ev.reason ?? "ended";
-              turn.ended = this.endedReason;
-              break;
+      // What the receipt gained since the last turn: the end of the
+      // session, or the answer to a turn that went past its limit.
+      const late = this.awaiting;
+      this.absorb(await this.tail.next(), late === undefined ? undefined : turn);
+      if (this.endedReason) return { kind: "ended", reason: this.endedReason };
+      if (late !== undefined) {
+        turn.taken = true;
+        this.awaiting = undefined;
+        if (turn.reply === undefined) {
+          const got = await this.awaitTurn(turn, timeoutMs, false);
+          if (got === "timeout") {
+            this.awaiting = late;
+            return { kind: "timeout", turn, text: late };
           }
         }
-        if (turn.reply !== undefined || turn.ended !== undefined) return turn;
-        if (this.exited) {
-          this.endedReason ??= "harness_exit";
-          turn.ended = this.endedReason;
-          return turn;
-        }
-        await sleep(200);
+        return { kind: "late", turn, text: late };
       }
-      return { timedOut: true, partial: turn };
+      this.type(line);
+      const got = await this.awaitTurn(turn, timeoutMs, true);
+      if (got === "timeout") {
+        this.awaiting = line;
+        return { kind: "timeout", turn, text: line };
+      }
+      return { kind: "reply", turn, text: line };
     } finally {
       this.busy = false;
     }
+  }
+
+  /** Reads the receipt until the turn has its reply or its end, or the limit passes. */
+  private async awaitTurn(
+    turn: Turn,
+    timeoutMs: number,
+    retryEnter: boolean,
+  ): Promise<"done" | "timeout"> {
+    const until = Date.now() + timeoutMs;
+    // An Enter the chat missed is pressed once more (on an empty input it does nothing).
+    let retryAt = retryEnter ? Date.now() + ENTER_RETRY_MS : Number.POSITIVE_INFINITY;
+    while (Date.now() < until) {
+      if (!turn.taken && Date.now() > retryAt) {
+        this.child.stdin?.write("\r");
+        retryAt = Number.POSITIVE_INFINITY;
+      }
+      this.absorb(await this.tail.next(), turn);
+      if (turn.reply !== undefined || turn.ended !== undefined) return "done";
+      if (this.exited) {
+        this.endedReason ??= "harness_exit";
+        turn.ended = this.endedReason;
+        return "done";
+      }
+      await sleep(POLL_MS);
+    }
+    return "timeout";
   }
 
   /**
@@ -313,7 +363,7 @@ export class PtySession {
         forced = true;
         this.child.kill("SIGINT");
         if (!(await this.waitExit(KILL_GRACE_MS))) this.child.kill("SIGKILL");
-        await this.waitExit(5000);
+        await this.waitExit(REAP_MS);
       }
     }
     await this.cleanup();
@@ -326,25 +376,32 @@ export class PtySession {
   }
 }
 
-/** The one open session, if any. */
-let current: PtySession | undefined;
-
-// The server going away must not leave a chat running on its own: the CLI
-// gets the interrupt it handles (teardown, envelope, receipts).
-for (const sig of ["SIGINT", "SIGTERM"] as const) {
-  process.once(sig, () => {
-    if (current && !current.exited) {
-      current.child.kill("SIGINT");
-      current.child.on("close", () => process.exit(0));
-      setTimeout(() => process.exit(0), KILL_GRACE_MS).unref();
+/**
+ * The server going away must not leave a chat running on its own: on the
+ * server's own interrupt, and when the host closes the transport, the CLI
+ * gets the interrupt it handles (teardown, envelope, receipts). Installed
+ * by the entry point, not at import.
+ */
+export function installShutdown(d: Driver): void {
+  const stop = (then: () => void) => {
+    const s = d.sessions.current;
+    if (s && !s.exited) {
+      s.child.kill("SIGINT");
+      s.child.once("close", then);
+      setTimeout(then, KILL_GRACE_MS).unref();
     } else {
-      process.exit(0);
+      then();
     }
+  };
+  for (const sig of ["SIGINT", "SIGTERM"] as const) {
+    process.once(sig, () => stop(() => process.exit(0)));
+  }
+  process.on("exit", () => {
+    const s = d.sessions.current;
+    if (s && !s.exited) s.child.kill("SIGKILL");
   });
+  d.server.server.onclose = () => stop(() => {});
 }
-process.on("exit", () => {
-  if (current && !current.exited) current.child.kill("SIGKILL");
-});
 
 export type SessionStartArgs = Omit<RunArgs, "timeoutSeconds">;
 
@@ -353,39 +410,48 @@ export type SessionStartArgs = Omit<RunArgs, "timeoutSeconds">;
  * then the CLI on a pty; returns when the sandbox is up.
  */
 export async function sessionStart(d: Driver, a: SessionStartArgs): Promise<CallToolResult> {
-  if (current) {
+  const slot = d.sessions;
+  const open = slot.current;
+  if (open) {
     return text(
-      `agentry_session_start: session ${current.id} (${current.ref}) is open; one session at a time — ` +
+      `agentry_session_start: session ${open.id} (${open.ref}) is open; one session at a time — ` +
         "send to it, or close it first (agentry_session_close).",
       true,
     );
   }
   const c = await runConsent(d, a, "interactive", "agentry_session_start");
   if (!isRunConsent(c)) return c;
-  // The person was asked meanwhile; a start that raced this one wins.
-  const raced = current as PtySession | undefined;
-  if (raced) {
+  // The person was asked meanwhile; a start that raced this one holds the
+  // slot, from here (no await between the check and the claim) until it
+  // has spawned or failed.
+  if (slot.current || slot.reserved) {
     return text(
-      `agentry_session_start: session ${raced.id} was started while this one was being confirmed.`,
+      "agentry_session_start: another session was started while this one was being confirmed.",
       true,
     );
   }
-  // The output folder is where the receipt the server reads lives, so the
-  // server names one when the call did not.
-  const base = a.out ?? join(await mkdtemp(join(tmpdir(), "agentry-mcp-session-")), "out");
-  const task = await taskInput(a);
-  const argv = runArgv({ ...a, out: base }, c, "interactive", task.path);
-  const child = spawn("python3", [PTY_HOST, String(COLS), String(ROWS), "--", d.bin, ...argv], {
-    env: { ...process.env, TERM: "xterm-256color", ...d.env },
-    cwd: d.cwd,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-  const session = new PtySession(child, c.plan.ref, base, `${base}.pty.log`, task.done);
-  current = session;
+  slot.reserved = true;
+  let session: PtySession;
+  try {
+    // The output folder is where the receipt the server reads lives, so
+    // the server names one when the call did not.
+    const base = a.out ?? join(await mkdtemp(join(tmpdir(), "agentry-mcp-session-")), "out");
+    const task = await taskInput(a);
+    const argv = runArgv({ ...a, out: base }, c, "interactive", task.path);
+    const child = spawn("python3", [PTY_HOST, String(COLS), String(ROWS), "--", d.bin, ...argv], {
+      env: { ...process.env, TERM: "xterm-256color", ...d.env },
+      cwd: d.cwd,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    session = new PtySession(child, c.plan.ref, base, `${base}.pty.log`, task.done);
+    slot.current = session;
+  } finally {
+    slot.reserved = false;
+  }
   const started = await session.awaitStart(START_TIMEOUT_MS);
   if (!started.ok) {
     await session.close(false);
-    current = undefined;
+    slot.current = undefined;
     return text(`agentry_session_start: ${started.why}`, true);
   }
   return json({
@@ -393,7 +459,7 @@ export async function sessionStart(d: Driver, a: SessionStartArgs): Promise<Call
     ref: session.ref,
     version: c.plan.version,
     mode: "interactive",
-    outDir: base,
+    outDir: session.outDir,
     receiptsDir: session.receiptsDir,
     ptyLog: session.ptyLog,
     startedAt: session.startedAt.toISOString(),
@@ -406,43 +472,69 @@ export interface SessionSendArgs {
   turnTimeoutSeconds?: number;
 }
 
-function open_(id: string, tool: string): PtySession | CallToolResult {
-  if (!current)
-    return text(`${tool}: no session is open; start one with agentry_session_start.`, true);
-  if (current.id !== id)
-    return text(`${tool}: session ${id} is not open; the open session is ${current.id}.`, true);
-  return current;
+/** The open session under that id, or the tool error naming what is open. */
+function openSession(d: Driver, id: string, tool: string): PtySession | CallToolResult {
+  const s = d.sessions.current;
+  if (!s) return text(`${tool}: no session is open; start one with agentry_session_start.`, true);
+  if (s.id !== id)
+    return text(`${tool}: session ${id} is not open; the open session is ${s.id}.`, true);
+  return s;
 }
 
-/** agentry_session_send: one user turn in, the agent's reply out. */
-export async function sessionSend(a: SessionSendArgs): Promise<CallToolResult> {
-  const s = open_(a.sessionId, "agentry_session_send");
-  if (!(s instanceof PtySession)) return s;
-  const line = a.text.replace(/\r?\n/g, " ").trim();
+/**
+ * The text as one line the chat takes as a turn: newlines fold to spaces,
+ * and anything the chat would act on rather than read — a control byte
+ * (a carriage return submits, an escape quits) or a leading slash (the
+ * chat's own commands: /add would hand the run a host file consent never
+ * covered) — is refused.
+ */
+export function turnLine(textIn: string): string {
+  const line = textIn.replace(/\r?\n/g, " ").trim();
   if (line === "") throw new ArgumentError("text must not be empty");
+  if (CONTROL_BYTE.test(line)) {
+    throw new ArgumentError(
+      "text must be plain text: a control character is a key the chat would act on, not a turn",
+    );
+  }
   if (line.startsWith("/")) {
     throw new ArgumentError(
       'text must not start with "/": the chat\'s own commands (/finish, /quit, /add, /caps) are not turns; close the session with agentry_session_close',
     );
   }
-  const already = await s.ended();
-  if (already) {
-    return text(
-      `agentry_session_send: session ${s.id} ended (${already}); nothing was sent. Close it with agentry_session_close for the transcript and receipts.`,
-      true,
-    );
-  }
+  return line;
+}
+
+/** agentry_session_send: one user turn in, the agent's reply out. */
+export async function sessionSend(d: Driver, a: SessionSendArgs): Promise<CallToolResult> {
+  const s = openSession(d, a.sessionId, "agentry_session_send");
+  if (!(s instanceof PtySession)) return s;
+  const line = turnLine(a.text);
   const timeoutMs = (a.turnTimeoutSeconds ?? DEFAULT_TURN_TIMEOUT_SECONDS) * 1000;
   const r = await s.send(line, timeoutMs);
-  if ("timedOut" in r) {
-    return text(
-      `agentry_session_send: no reply within ${timeoutMs / 1000}s; the session is still open and the agent may still be working` +
-        (r.partial.toolCalls.length ? ` (tools so far: ${r.partial.toolCalls.join(", ")})` : "") +
-        ". Send again with a longer turnTimeoutSeconds, or close the session.",
-      true,
-    );
+  switch (r.kind) {
+    case "ended":
+      return text(
+        `agentry_session_send: session ${s.id} ended (${r.reason}); nothing was sent. Close it with agentry_session_close for the transcript and receipts.`,
+        true,
+      );
+    case "timeout":
+      return text(
+        `agentry_session_send: no reply to ${JSON.stringify(r.text)} within ${timeoutMs / 1000}s; the session is still open and the agent is still on it` +
+          (r.turn.toolCalls.length ? ` (tools so far: ${r.turn.toolCalls.join(", ")})` : "") +
+          ". Send again to wait for that reply (the new text is held back until it arrives), or close the session.",
+        true,
+      );
+    case "late":
+      return json({
+        sessionId: s.id,
+        sent: false,
+        lateReplyTo: r.text,
+        ...r.turn,
+        note: `the reply to the earlier turn ${JSON.stringify(r.text)}; ${JSON.stringify(line)} was not sent — send it again`,
+      });
+    case "reply":
+      return json({ sessionId: s.id, sent: true, ...r.turn });
   }
-  return json({ sessionId: s.id, ...r });
 }
 
 export interface SessionCloseArgs {
@@ -451,12 +543,12 @@ export interface SessionCloseArgs {
 }
 
 /** agentry_session_close: end the chat, wait for the CLI's teardown, name the record. */
-export async function sessionClose(a: SessionCloseArgs): Promise<CallToolResult> {
-  const s = open_(a.sessionId, "agentry_session_close");
+export async function sessionClose(d: Driver, a: SessionCloseArgs): Promise<CallToolResult> {
+  const s = openSession(d, a.sessionId, "agentry_session_close");
   if (!(s instanceof PtySession)) return s;
   const reasonBefore = await s.ended();
   const { exitCode, forced } = await s.close(a.finish ?? true);
-  current = undefined;
+  d.sessions.current = undefined;
   const reason = (await s.ended()) ?? reasonBefore;
   let envelope:
     { status?: string; result?: unknown; error?: string; exitClass?: string } | undefined;

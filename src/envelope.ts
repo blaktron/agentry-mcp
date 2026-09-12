@@ -54,6 +54,18 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 export type ToolResult = CallToolResult;
 
+/** A text result; isError marks the tool's own refusal or failure. */
+export function toolText(t: string, isError = false): ToolResult {
+  return isError
+    ? { content: [{ type: "text", text: t }], isError: true }
+    : { content: [{ type: "text", text: t }] };
+}
+
+/** A JSON result. */
+export function toolJSON(v: unknown): ToolResult {
+  return toolText(JSON.stringify(v));
+}
+
 /**
  * Turns a finished CLI process into the tool result: the envelope whenever
  * stdout is JSON, whatever the exit class (the class is in the envelope);

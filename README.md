@@ -143,14 +143,18 @@ control sequences stripped, are what the error quotes.
 
 One session per server at a time; a second start is refused naming the open
 one. A turn waits up to `turnTimeoutSeconds` (default 300) and past that the
-session stays open; a host that caps a tool call lower (the MCP SDK's own
-default is 60 s) needs `turnTimeoutSeconds` under its cap, or the host gives
-up on a turn the session is still answering. The release's idle timeout and budgets end a session as
+session stays open with the agent still on that turn: the next send waits
+for that reply and returns it as `lateReplyTo` with `sent: false`, holding
+its own text back (a busy chat drops what is typed at it) — send it again
+after. A host that caps a tool call lower (the MCP SDK's own default is
+60 s) needs `turnTimeoutSeconds` under its cap, or the host gives up on a
+turn the session is still answering. Text is plain, one line — a control
+character is a key the chat would act on, and the chat's own commands
+(`/finish`, `/quit`, `/add`, `/caps`) are not turns, so both are refused. The release's idle timeout and budgets end a session as
 they would in a terminal, and the next send reports it, with the reason;
-close then returns the record. Text is one line — the chat's own commands
-(`/finish`, `/quit`, `/add`, `/caps`) are not turns. When the server is told
-to stop with an open session, the CLI gets the interrupt it handles, so the
-teardown, the envelope and the receipts are written.
+close then returns the record. When the server is told to stop with an
+open session, or the host closes the connection, the CLI gets the interrupt
+it handles, so the teardown, the envelope and the receipts are written.
 
 Not here, on purpose: **signing in** (`agentry login` once in a terminal; the
 server uses that login) and **publishing** (`agentry publish` in a terminal,

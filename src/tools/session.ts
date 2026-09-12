@@ -96,8 +96,10 @@ export function registerSessionTools(d: Driver): void {
         "the run's events receipt recorded it, with the tools it called and the usage beside it. A session the " +
         "release's idle timeout or a budget has ended is reported as such, with the reason, and nothing is " +
         `sent. The turn waits up to turnTimeoutSeconds (default ${DEFAULT_TURN_TIMEOUT_SECONDS}); past that the ` +
-        "session is still open. Set it under your own tool-call limit if you have one. Text is one line; the " +
-        "chat's own /commands are not turns.",
+        "session is still open and the agent still on that turn: the next send waits for that reply and " +
+        "returns it as `lateReplyTo` with `sent: false`, holding the new text back — send it again after. Set " +
+        "the limit under your own tool-call limit if you have one. Text is plain, one line; the chat's own " +
+        "/commands are not turns.",
       inputSchema: {
         sessionId: z.string().describe("The id agentry_session_start returned."),
         text: z.string().describe("The user's message. One line; newlines become spaces."),
@@ -116,7 +118,7 @@ export function registerSessionTools(d: Driver): void {
         openWorldHint: true,
       },
     },
-    (a) => guard("agentry_session_send", () => sessionSend(a)),
+    (a) => guard("agentry_session_send", () => sessionSend(d, a)),
   );
 
   d.server.registerTool(
@@ -142,6 +144,6 @@ export function registerSessionTools(d: Driver): void {
         openWorldHint: true,
       },
     },
-    (a) => guard("agentry_session_close", () => sessionClose(a)),
+    (a) => guard("agentry_session_close", () => sessionClose(d, a)),
   );
 }
