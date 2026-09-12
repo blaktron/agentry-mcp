@@ -1,0 +1,42 @@
+/**
+ * Driver: one found CLI and one way to run it. Tools register themselves on
+ * the server with the SDK's own shape and wrap their handler in `guard`, so
+ * an ArgumentError (a value that looks like a flag, an empty ref) becomes a
+ * tool error rather than a crash.
+ */
+
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+
+import { ArgumentError } from "./argv.js";
+import { runCli, type CliOptions } from "./cli.js";
+import { toToolResult } from "./envelope.js";
+
+export class Driver {
+  constructor(
+    readonly server: McpServer,
+    readonly bin: string,
+    private readonly defaults: CliOptions = {},
+  ) {}
+
+  /** Runs `agentry argv…` and returns the envelope or the error. */
+  async run(what: string, argv: string[], opts: CliOptions = {}): Promise<CallToolResult> {
+    const r = await runCli(this.bin, argv, { ...this.defaults, ...opts });
+    return toToolResult(what, r);
+  }
+}
+
+/** Runs a handler; an ArgumentError is the tool's answer, not the server's crash. */
+export async function guard(
+  name: string,
+  fn: () => Promise<CallToolResult>,
+): Promise<CallToolResult> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof ArgumentError) {
+      return { content: [{ type: "text", text: `${name}: ${err.message}` }], isError: true };
+    }
+    throw err;
+  }
+}

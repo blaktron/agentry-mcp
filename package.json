@@ -1,8 +1,8 @@
 {
   "name": "@blaktron/agentry-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "MCP server for Agentry account and repo automation",
+  "description": "MCP server that drives the installed agentry CLI: search, read contracts, verify, check the machine, install, run and manage BriefAgents from Claude Code, Codex or any MCP host",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -18,20 +18,18 @@
     "LICENSE"
   ],
   "scripts": {
-    "generate": "node scripts/generate-catalog.mjs",
-    "sync-spec": "scripts/sync-spec.sh",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest": "npm run build",
     "test": "node --test test/*.test.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run typecheck && npm run format:check && npm test",
+    "prose-check": "node scripts/prose-check.mjs",
+    "check": "npm run typecheck && npm run format:check && npm run prose-check && npm test",
     "start": "node dist/index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "yaml": "^2.9.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {

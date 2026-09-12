@@ -1,0 +1,6 @@
+# Allowlisted spans: a never-word that appears inside one of these exact
+# phrases is a mention of the rule, not a claim. One phrase per line.
+never as safe
+never safe
+not as safe
+never "safe"

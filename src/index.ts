@@ -1,34 +1,31 @@
 #!/usr/bin/env node
 /**
- * stdio entry point.
- *
- * Nothing may be written to stdout but MCP frames, so every diagnostic goes to
- * stderr. A configuration failure is reported and exits non-zero rather than
- * starting a server whose every tool would fail the same way.
+ * stdio entry point. Nothing may reach stdout but MCP frames, so every
+ * diagnostic goes to stderr; a missing or too-old CLI is reported and the
+ * process exits non-zero rather than starting a server whose every tool
+ * would fail the same way.
  */
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
-import { loadConfig } from "./config.js";
-import { AgentryMcpError } from "./errors.js";
+import { checkCli, findCli, CliUnavailableError } from "./cli.js";
 import { SERVER_NAME, SERVER_VERSION, createServer } from "./server.js";
 
 async function main(): Promise<void> {
-  const config = loadConfig();
-  const server = createServer(config);
-
+  const bin = await findCli();
+  const v = await checkCli(bin);
+  const server = createServer({ bin, cliVersion: v.raw });
   await server.connect(new StdioServerTransport());
-
   process.stderr.write(
-    `${SERVER_NAME} ${SERVER_VERSION} ready: ${config.registry} ` +
-      `(credential: ${config.credentialSource}${config.readOnly ? ", read-only" : ""})\n`,
+    `${SERVER_NAME} ${SERVER_VERSION} ready: driving ${bin} (agentry ${v.raw}` +
+      `${v.floorChecked ? "" : ", a dev build; the version floor is not checked"})\n`,
   );
 }
 
 main().catch((err: unknown) => {
   const message =
-    err instanceof AgentryMcpError
-      ? err.toToolMessage()
+    err instanceof CliUnavailableError
+      ? err.message
       : err instanceof Error
         ? (err.stack ?? err.message)
         : String(err);
