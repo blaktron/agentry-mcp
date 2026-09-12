@@ -72,10 +72,38 @@ floating range. When your host supports MCP elicitation, the server also
 asks you directly before the write, and a "no" cancels. Removing is the
 same two calls.
 
+## Running
+
+| Tool               | Runs                                                                                     | Returns                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `agentry_setup`    | `agentry setup --yes --json` (with or without the image pulls)                           | the policy as configured — provider, model, the key's variable **name** — and whether the images are ready   |
+| `agentry_run`      | `agentry run --dry-run`, then `agentry run --mode autonomous --output-format json --yes` | the compiled plan with a `digest`, then the CLI's result envelope with `receiptsDir`, `resultFile`, `outDir` |
+| `agentry_validate` | `agentry validate DIR --json`                                                            | the rules and scan findings as data, and whether publish would pass                                          |
+
+A run is the same two calls as an install. The preview is the compiled run
+plan — the release that resolved, the capabilities and enforcement a run
+would apply, the tools it would be served, the gateway and proxy shape, the
+budgets — which is exactly what the run enforces, and the digest is over it.
+The confirm re-plans, asks you when the host can, and runs. The runner's
+isolation and receipts are the CLI's, untouched: the server invokes
+`agentry run` as you would from a terminal, and the result names the
+receipts directory, which is the record of what was enforced.
+
+`input` text is written to a temp file the server removes after the run;
+`inputFile` passes a path you already have; `intake` answers the
+BriefAgent's questions by id, and a required one left unanswered is an
+error naming it. A run stops at `timeoutSeconds` (default 900, the runner
+policy's own budget): the CLI's `--timeout` ends it, and if the process is
+still there 30 s later the server sends SIGINT and the CLI's teardown runs.
+Progress — the CLI's own narration — streams as MCP progress notifications
+when the host asks for them, and the last lines come back as `log`. A local
+workspace (`local`) is always unsigned and needs `acceptUnsigned` on the
+confirm, like an unsigned release.
+
 Not here, on purpose: **signing in** (`agentry login` once in a terminal; the
 server uses that login) and **publishing** (`agentry publish` in a terminal,
-where the person sees the pipeline's verdict). Running BriefAgents arrives in
-the next version, behind the same consent.
+where the person sees the pipeline's verdict). Interactive sessions arrive in
+the next version.
 
 ## Install
 

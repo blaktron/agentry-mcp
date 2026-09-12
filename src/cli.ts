@@ -36,6 +36,8 @@ export interface CliResult {
   stderr: string;
   /** Set when the process could not be started or was killed by a signal. */
   spawnError?: string;
+  /** Set when the timeout's SIGINT ended the run and the CLI exited by itself. */
+  timedOut?: boolean;
 }
 
 export interface CliOptions {
@@ -43,6 +45,14 @@ export interface CliOptions {
   cwd?: string;
   /** Extra environment on top of the server's own; never a credential. */
   env?: Record<string, string>;
+  /** Called with each complete stderr line as it arrives (the CLI's narration). */
+  onStderrLine?: (line: string) => void;
+  /**
+   * How a timeout ends the process: SIGINT first (the CLI's teardown runs
+   * on every path), SIGKILL after graceMs if it is still there. Default
+   * SIGKILL at once, for the short commands.
+   */
+  graceMs?: number;
 }
 
 /** Thrown at start when no usable CLI is found. */
@@ -107,25 +117,46 @@ export function runCli(bin: string, argv: string[], opts: CliOptions = {}): Prom
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (d: string) => (stdout += d));
-    child.stderr.on("data", (d: string) => (stderr += d));
+    let pending = "";
+    child.stderr.on("data", (d: string) => {
+      stderr += d;
+      if (!opts.onStderrLine) return;
+      pending += d;
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) if (line.trim()) opts.onStderrLine(line);
+    });
     child.on("error", (err) => finish({ code: -1, stdout, stderr, spawnError: err.message }));
     child.on("close", (code, signal) => {
-      if (timedOut) {
+      if (timedOut && (signal || code === null)) {
         finish({
           code: -1,
           stdout,
           stderr,
           spawnError: `timed out after ${opts.timeoutMs}ms and was killed`,
         });
+      } else if (timedOut) {
+        // SIGINT let the CLI finish its teardown and exit on its own: its
+        // exit class is the answer, and the timeout is noted.
+        finish({ code: code ?? -1, stdout, stderr, timedOut: true });
       } else if (signal) finish({ code: -1, stdout, stderr, spawnError: `killed by ${signal}` });
       else finish({ code: code ?? -1, stdout, stderr });
     });
     if (opts.timeoutMs && opts.timeoutMs > 0) {
+      let hard: NodeJS.Timeout | undefined;
       const t = setTimeout(() => {
         timedOut = true;
-        child.kill("SIGKILL");
+        if (opts.graceMs && opts.graceMs > 0) {
+          child.kill("SIGINT");
+          hard = setTimeout(() => child.kill("SIGKILL"), opts.graceMs);
+        } else {
+          child.kill("SIGKILL");
+        }
       }, opts.timeoutMs);
-      child.on("close", () => clearTimeout(t));
+      child.on("close", () => {
+        clearTimeout(t);
+        if (hard) clearTimeout(hard);
+      });
     }
   });
 }

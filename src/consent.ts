@@ -174,56 +174,112 @@ async function askPerson(
   return { asked: true, yes };
 }
 
+/** A preview result: the plan the CLI printed, the digest over `facts`, writes: false. */
+export function previewText(preview: Record<string, unknown>, facts: unknown): ToolText {
+  return text(JSON.stringify({ ...preview, digest: consentDigest(facts) }));
+}
+
+/**
+ * What a matched confirm hands back: the only value the consented flags
+ * are appended for. Opaque on purpose — a tool cannot make one.
+ */
+export interface Consent {
+  readonly allowUnsigned: boolean;
+}
+
+export interface ConfirmOptions {
+  unsigned: boolean;
+  acceptUnsigned?: boolean;
+  /** The refusal the CLI's plan reported, if any; unsigned's own is liftable. */
+  refusal?: string;
+  /** What the person is asked through elicitation. */
+  ask: string;
+}
+
+/**
+ * The confirm half, shared by every writing tool: the digest must match
+ * the re-run preview's facts, a refusal the person cannot lift stops it, an
+ * unsigned release needs acceptUnsigned, and the person is asked when the
+ * host can ask. Returns the Consent, or the tool error to return.
+ */
+export async function confirmed(
+  d: Driver,
+  tool: string,
+  confirm: string,
+  facts: unknown,
+  o: ConfirmOptions,
+): Promise<Consent | ToolText> {
+  const digest = consentDigest(facts);
+  if (confirm !== digest) {
+    return text(
+      `${tool}: the confirm digest does not match this preview (${confirm} vs ${digest}). ` +
+        "Something changed since the preview was shown — the resolved version, the contract, the signature, " +
+        "the target or the directory — or the digest was not taken from a preview of this server. Preview again, " +
+        "show the person what it says, and confirm with the digest that preview returned.",
+      true,
+    );
+  }
+  if (o.refusal && !o.unsigned) {
+    return text(`${tool}: the CLI would refuse this: ${o.refusal}`, true);
+  }
+  if (o.unsigned && !o.acceptUnsigned) {
+    return text(
+      `${tool}: the release is unsigned${o.refusal ? ` (${o.refusal})` : ""}. Going ahead needs the person's explicit ` +
+        "acceptance: confirm again with acceptUnsigned: true only if they said so.",
+      true,
+    );
+  }
+  const asked = await askPerson(d.server, o.ask);
+  if (!asked.yes) return text(`${tool}: the person declined; nothing was done.`, true);
+  return { allowUnsigned: o.unsigned && o.acceptUnsigned === true };
+}
+
+/**
+ * Appends the consented flags — the only place in the server that spells
+ * them (CI greps): --yes for a matched confirm, --allow-unsigned only when
+ * the preview said unsigned and the person accepted that.
+ */
+export function consentedArgv(argv: string[], c: Consent): string[] {
+  const out = [...argv, "--yes"];
+  if (c.allowUnsigned) out.push("--allow-unsigned");
+  return out;
+}
+
 /** agentry_install: preview without `confirm`, write with it. */
 export async function install(d: Driver, a: InstallArgs): Promise<ToolText> {
   const planned = await runPlan<InstallPlan>(d, "agentry_install (plan)", installPlanArgv(a));
   if (!planned.ok) return planned.result;
   const { plan, log } = planned;
-  const digest = consentDigest(installFacts(plan));
+  const facts = installFacts(plan);
+  const unsigned = plan.attestation === "unsigned";
 
   if (a.confirm === undefined) {
-    const preview: Preview<InstallPlan> = { plan, digest, log: tail(log) };
-    return text(
-      JSON.stringify({ ...preview, unsigned: plan.attestation === "unsigned", writes: false }),
-    );
+    return previewText({ plan, log: tail(log), unsigned, writes: false }, facts);
   }
-  if (a.confirm !== digest) {
-    return text(
-      `agentry_install: the confirm digest does not match this preview (${a.confirm} vs ${digest}). ` +
-        "Something changed since the contract was shown — the resolved version, the contract, the signature, the " +
-        "target or the directory — or the digest was not taken from a preview. Preview again, show the person " +
-        "the contract, and confirm with the digest that preview returned.",
-      true,
-    );
-  }
-  if (plan.refusal && plan.attestation !== "unsigned") {
-    return text(`agentry_install: the CLI would refuse this install: ${plan.refusal}`, true);
-  }
-  if (plan.attestation === "unsigned" && !a.acceptUnsigned) {
-    return text(
-      `agentry_install: ${plan.ref} is unsigned (${plan.refusal ?? "the registry published no attestation"}). ` +
-        "Installing it needs the person's explicit acceptance: confirm again with acceptUnsigned: true only if they said so.",
-      true,
-    );
-  }
-  const asked = await askPerson(
-    d.server,
-    `Install ${plan.ref} to ${plan.dir} (${plan.target})? Contract: ${canonical(plan.contract)}. ` +
+  const ok = await confirmed(d, "agentry_install", a.confirm, facts, {
+    unsigned,
+    acceptUnsigned: a.acceptUnsigned,
+    refusal: plan.refusal,
+    ask:
+      `Install ${plan.ref} to ${plan.dir} (${plan.target})? Contract: ${canonical(plan.contract)}. ` +
       `Attestation: ${plan.attestation}.${plan.reason ? ` The CLI would ask because: ${plan.reason}.` : ""}`,
-  );
-  if (!asked.yes) return text("agentry_install: the person declined; nothing was written.", true);
+  });
+  if (!isConsent(ok)) return ok;
 
   // The write names the release the digest covered — plan.ref is resolved
   // (ns/name@version) — never the floating ref the call carried, so a
   // range that moves between the re-plan and the write cannot install a
   // release the person did not see.
-  const argv = ["install", value("ref", plan.ref), "--json", "--yes"];
-  if (plan.attestation === "unsigned" && a.acceptUnsigned) argv.push("--allow-unsigned");
+  const argv = ["install", value("ref", plan.ref), "--json"];
   flag(argv, "target", a.target);
   flag(argv, "provider", a.provider);
   flag(argv, "dir", a.dir);
   flag(argv, "registry", a.registry);
-  return d.run("agentry_install", argv);
+  return d.run("agentry_install", consentedArgv(argv, ok));
+}
+
+function isConsent(v: Consent | ToolText): v is Consent {
+  return !("content" in v);
 }
 
 /** The uninstall plan the CLI prints. */
@@ -249,28 +305,23 @@ export async function uninstall(d: Driver, a: UninstallArgs): Promise<ToolText> 
   const planned = await runPlan<UninstallPlan>(d, "agentry_uninstall (plan)", planArgv);
   if (!planned.ok) return planned.result;
   const { plan, log } = planned;
-  const digest = consentDigest({
+  const facts = {
     ref: plan.ref,
     installs: plan.installs,
     profiles: plan.profiles,
     keptProfiles: plan.keptProfiles ?? [],
     consentRecord: plan.consentRecord,
-  });
+  };
   if (a.confirm === undefined) {
-    const preview: Preview<UninstallPlan> = { plan, digest, log: tail(log) };
-    return text(JSON.stringify({ ...preview, writes: false }));
+    return previewText({ plan, log: tail(log), writes: false }, facts);
   }
-  if (a.confirm !== digest) {
-    return text(
-      `agentry_uninstall: the confirm digest does not match this preview (${a.confirm} vs ${digest}); what would be removed changed. Preview again and confirm with the digest that preview returned.`,
-      true,
-    );
-  }
-  const asked = await askPerson(
-    d.server,
-    `Remove ${plan.ref} from this machine? Installs: ${plan.installs.join(", ") || "none"}. Profiles (keys, servers): ${plan.profiles.join(", ") || "none"}.`,
-  );
-  if (!asked.yes) return text("agentry_uninstall: the person declined; nothing was removed.", true);
+  const ok = await confirmed(d, "agentry_uninstall", a.confirm, facts, {
+    unsigned: false,
+    ask: `Remove ${plan.ref} from this machine? Installs: ${plan.installs.join(", ") || "none"}. Profiles (keys, servers): ${plan.profiles.join(", ") || "none"}.`,
+  });
+  if (!isConsent(ok)) return ok;
+  // Removal has no CLI gate, so no consented flag is needed; the Consent is
+  // still what let this line run.
   const argv = ["uninstall", value("ref", a.ref), "--json"];
   if (a.keepMcp) argv.push("--keep-mcp");
   return d.run("agentry_uninstall", argv);

@@ -80,7 +80,7 @@ test("confirm with the preview's digest re-plans, then installs with --yes and n
   );
   assert.deepEqual(
     argv[2],
-    ["install", "acme/widget@1.0.0", "--json", "--yes", "--provider", "claude"],
+    ["install", "acme/widget@1.0.0", "--json", "--provider", "claude", "--yes"],
     "the write names the resolved release",
   );
   assert.equal(readFileSync(writes, "utf8"), "written\n");
@@ -172,7 +172,7 @@ test("a refusal the person cannot lift (an attestation mismatch) is refused at c
     arguments: { ref: "acme/widget", confirm: p.digest, acceptUnsigned: true },
   });
   assert.equal(r.isError, true);
-  assert.match(r.content[0].text, /would refuse this install/);
+  assert.match(r.content[0].text, /would refuse this/);
   assert.equal(existsSync(writes), false);
 });
 
@@ -198,7 +198,7 @@ test("elicitation: the host is asked when it can be; accept installs, decline an
     );
     assert.match(elicitations[0], /"read":"workspace"/);
     assert.equal(existsSync(writes), installs, `${answer}: written=${existsSync(writes)}`);
-    if (!installs) assert.match(r.content[0].text, /declined; nothing was written/);
+    if (!installs) assert.match(r.content[0].text, /declined; nothing was done/);
   }
   // A host without elicitation gets the two-call shape alone.
   const writes = writesFile();
@@ -265,19 +265,11 @@ test("list_installed passes list --json through; a gone directory carries presen
   );
 });
 
-test("the tool list is the seven, with the writing tools not read-only", async () => {
+test("the writing tools are not read-only and tell the model to show the person the contract", async () => {
   const { client } = await connect();
   const { tools } = await client.listTools();
-  assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "agentry_doctor",
-    "agentry_info",
-    "agentry_install",
-    "agentry_list_installed",
-    "agentry_search",
-    "agentry_uninstall",
-    "agentry_verify",
-  ]);
   const install = tools.find((t) => t.name === "agentry_install");
   assert.equal(install.annotations.readOnlyHint, false);
   assert.match(install.description, /Show the person the contract/);
+  assert.ok(tools.find((t) => t.name === "agentry_uninstall").annotations.destructiveHint);
 });

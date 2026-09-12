@@ -12,7 +12,12 @@
 #   FAKE_REFUSAL   the install plan's refusal (default none)
 #   FAKE_WRITES    a file the fake touches on a real install/uninstall
 set -u
-if [ -n "${FAKE_ARGV:-}" ]; then printf '%s\n' "$@" >> "$FAKE_ARGV"; printf -- '--\n' >> "$FAKE_ARGV"; fi
+if [ -n "${FAKE_ARGV:-}" ]; then
+  printf '%s\n' "$@" >> "$FAKE_ARGV"
+  # FAKE_STAT_INPUT: also record the mode of the --input file, while it exists.
+  if [ -n "${FAKE_STAT_INPUT:-}" ]; then prev=""; for a in "$@"; do if [ "$prev" = "--input" ]; then printf 'mode=%s\n' "$(stat -c %a "$a")" >> "$FAKE_ARGV"; fi; prev="$a"; done; fi
+  printf -- '--\n' >> "$FAKE_ARGV"
+fi
 if [ "${1:-}" = "--version" ]; then echo "agentry version ${FAKE_VERSION:-0.4.0}"; exit 0; fi
 if [ "${1:-}" = "install" ] && [ "${2:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_PLAN:-}" ]; then echo "Flags: --yes --allow-unsigned --target"; else echo "Flags: --plan --yes --allow-unsigned --target"; fi; exit 0
@@ -51,6 +56,30 @@ case "$1" in
     else
       [ -n "${FAKE_WRITES:-}" ] && echo removed >> "$FAKE_WRITES"
       echo '{"ref":"acme/widget","plan":false,"installs":["/home/me/.agentry/runner/agents/acme/widget/1.0.0-aaaa"],"profiles":[],"consentRecord":true}'
+    fi ;;
+  setup)
+    echo "narration: policy written: /home/me/.agentry/runner/policy.yaml" >&2
+    echo "narration: image gateway ready" >&2
+    images=ready; has --skip-images && images=skipped
+    echo '{"policyPath":"/home/me/.agentry/runner/policy.yaml","provider":"openai","model":"gpt-5.2","apiKeyEnv":"OPENAI_API_KEY","images":"'"$images"'"}' ;;
+  validate)
+    echo '{"passed":false,"manifest":{"name":"demo"},"issues":[{"rule":"V7","severity":"error","message":"public publish requires README.md"}],"inventory":[],"findings":[],"counts":{"errors":1}}'; exit 1 ;;
+  run)
+    if has --dry-run; then
+      if ! has --allow-unsigned; then
+        if [ -n "${FAKE_RUN_UNSIGNED:-}" ] || has --local; then echo "agentry: unsigned — registry offers no attestation; re-run with --allow-unsigned" >&2; exit 10; fi
+      fi
+      if [ -n "${FAKE_INTAKE_REQUIRED:-}" ] && ! has "--intake"; then echo 'agentry: intake question "audience" is required (answer it on a terminal or pass --intake audience=...)' >&2; exit 2; fi
+      echo "narration: compiled plan" >&2
+      echo '{"ref":"acme/widget@1.0.0","digest":"sha256:aaaa","mode":"autonomous","capabilities":{"egressMode":"none","fsReadMode":"workspace"},"enforcement":{"network":"gateway --block-network"},"tools":["write_report"],"gateway":{"image":"docker/mcp-gateway:v0.43.3"},"proxy":{},"budgets":{"timeoutSeconds":900}}'
+    else
+      [ -n "${FAKE_WRITES:-}" ] && echo ran >> "$FAKE_WRITES"
+      echo "narration: verify ok" >&2; echo "narration: gateway up" >&2
+      if [ -n "${FAKE_RUN_SLEEP:-}" ]; then
+        trap 'kill $SLEEPER 2>/dev/null; echo "narration: SIGINT: tearing down" >&2; echo "{\"status\":\"error\",\"exitCode\":15,\"exitClass\":\"timeout\",\"error\":\"interrupted\",\"outDir\":\"/tmp/out\",\"resultFile\":\"/tmp/out/result.json\",\"receipts\":{\"dir\":\"/tmp/out/receipts\"},\"result\":\"\"}"; exit 15' INT
+        sleep "$FAKE_RUN_SLEEP" & SLEEPER=$!; wait $SLEEPER
+      fi
+      echo '{"status":"ok","exitCode":0,"exitClass":"ok","runId":"r1","ref":"acme/widget@1.0.0","result":"done","outDir":"/tmp/out","resultFile":"/tmp/out/result.json","receipts":{"dir":"/tmp/out/receipts","runPlanSha256":"abc"},"usage":{"inputTokens":10}}'
     fi ;;
   *) echo "unknown command" >&2; exit 2 ;;
 esac

@@ -11,10 +11,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CliOptions } from "./cli.js";
 import { Driver } from "./driver.js";
 import { registerReadTools } from "./tools/read.js";
+import { registerRunTools } from "./tools/run.js";
 import { registerWriteTools } from "./tools/write.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.3.0";
+export const SERVER_VERSION = "0.4.0";
 
 export function instructions(bin: string, cliVersion: string): string {
   return [
@@ -34,9 +35,14 @@ export function instructions(bin: string, cliVersion: string): string {
       "the person the contract before you confirm, and never confirm on their behalf. An unsigned " +
       "release needs the person's explicit acceptance as well.",
     "",
+    "Running is the same two calls: the preview is the compiled run plan — what the run may reach " +
+      "and which tools it is served — and the confirm runs it; the result names the receipts, which are " +
+      "the record of what was enforced. A run that needs the machine prepared fails at agentry_doctor's " +
+      "checks first; agentry_setup writes the provider (key NAME only) and pulls the images.",
+    "",
     "Not here: signing in (the person runs `agentry login` in a terminal once; this server uses " +
       "that login) and publishing (`agentry publish` in a terminal, where the person sees the " +
-      "pipeline's verdict). Running BriefAgents arrives in a later version of this server.",
+      "pipeline's verdict). Interactive sessions arrive in a later version of this server.",
     "",
     "Start with agentry_doctor if a run or install is the goal: it says what this machine lacks.",
   ].join("\n");
@@ -49,6 +55,8 @@ export interface ServerOptions {
   cliVersion: string;
   /** Per-invocation defaults (timeouts, cwd), mostly for tests. */
   cli?: CliOptions;
+  /** The server's backstop past a run's own --timeout; tests shorten it. */
+  runTimeoutSlackMs?: number;
 }
 
 export function createServer(opts: ServerOptions): McpServer {
@@ -56,8 +64,9 @@ export function createServer(opts: ServerOptions): McpServer {
     { name: SERVER_NAME, version: SERVER_VERSION },
     { instructions: instructions(opts.bin, opts.cliVersion) },
   );
-  const driver = new Driver(server, opts.bin, opts.cli ?? {});
+  const driver = new Driver(server, opts.bin, opts.cli ?? {}, opts.runTimeoutSlackMs);
   registerReadTools(driver);
   registerWriteTools(driver);
+  registerRunTools(driver);
   return server;
 }

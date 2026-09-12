@@ -17,6 +17,12 @@ export class Driver {
     readonly server: McpServer,
     readonly bin: string,
     private readonly defaults: CliOptions = {},
+    /**
+     * How long past a run's own --timeout the server waits before SIGINT:
+     * the CLI's budget is what should end a run, the server's limit is the
+     * backstop. Tests shorten it.
+     */
+    readonly runTimeoutSlackMs = 30_000,
   ) {}
 
   /** Runs `agentry argv…` and returns the envelope or the error. */
