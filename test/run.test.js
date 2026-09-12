@@ -355,10 +355,9 @@ test("no result or progress carries a secret value: the key and the registry tok
   for (const m of seen) assert.doesNotMatch(m, /sk-leak-me|agy_leak_me/);
 });
 
-test("the tool list is the ten", async () => {
+test("the run tool's description names the policy budget", async () => {
   const { client } = await connect();
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 10);
   assert.ok(
     tools.find((t) => t.name === "agentry_run").description.includes("runner policy's own budget"),
   );

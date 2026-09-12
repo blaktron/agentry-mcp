@@ -25,6 +25,14 @@ export class Driver {
     readonly runTimeoutSlackMs = 30_000,
   ) {}
 
+  /** The extra environment and working directory every CLI process gets (a session's pty host too). */
+  get env(): Record<string, string> | undefined {
+    return this.defaults.env;
+  }
+  get cwd(): string | undefined {
+    return this.defaults.cwd;
+  }
+
   /** Runs `agentry argv…` and returns the envelope or the error. */
   async run(what: string, argv: string[], opts: CliOptions = {}): Promise<CallToolResult> {
     const r = await runCli(this.bin, argv, { ...this.defaults, ...opts });
