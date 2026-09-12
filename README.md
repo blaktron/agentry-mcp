@@ -143,7 +143,9 @@ control sequences stripped, are what the error quotes.
 
 One session per server at a time; a second start is refused naming the open
 one. A turn waits up to `turnTimeoutSeconds` (default 300) and past that the
-session stays open. The release's idle timeout and budgets end a session as
+session stays open; a host that caps a tool call lower (the MCP SDK's own
+default is 60 s) needs `turnTimeoutSeconds` under its cap, or the host gives
+up on a turn the session is still answering. The release's idle timeout and budgets end a session as
 they would in a terminal, and the next send reports it, with the reason;
 close then returns the record. Text is one line — the chat's own commands
 (`/finish`, `/quit`, `/add`, `/caps`) are not turns. When the server is told

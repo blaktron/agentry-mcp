@@ -103,7 +103,9 @@ case "$1" in
       j() { printf '%s' "$1" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))'; }
       event() { printf '{"kind":"%s","time":"2026-09-12T00:00:00Z"%s}\n' "$1" "$2" >> "$ev"; }
       end() { event session_end ",\"reason\":\"$1\""; printf '{"status":"ok","exitCode":0,"exitClass":"ok","result":"final: %s","outDir":"%s","receipts":{"dir":"%s/receipts"},"harness":{"mode":"interactive"}}' "$1" "$out" "$out" > "$out/result.json"; printf '# transcript\n\n%s\n' "$(cat "$ev")" > "$out/receipts/transcript.md"; printf '\033[?1049lsession ended: %s\r\n' "$1"; exit 0; }
-      printf '\033[?1049h\033[2J\033[H\033[1;34macme/widget@1.0.0 · interactive\033[0m\r\n\033[7m turns 0/200 \033[0m\r\n> '
+      # The handshake: the receipt exists before the chat is up, as in the CLI.
+      sleep 0.3
+      printf '\033[?1049h\033[2J\033[H\033[7m acme/widget@1.0.0 · interactive · turns 0/200 · tools 0/60 \033[0m\r\n> '
       turns=0
       while true; do
         if [ "${FAKE_SESSION_IDLE:-0}" -gt 0 ]; then
@@ -123,7 +125,7 @@ case "$1" in
             event assistant_text ',"text":"echo: "'
             event assistant_turn ",\"text\":$(j "echo: $line"),\"stopReason\":\"end_turn\""
             event usage ',"inputTokens":10,"outputTokens":4'
-            printf '\033[2J\033[H\033[1;34myou\033[0m %s\r\n\033[3magent\033[0m echo: %s\r\n\033[7m turns %s/200 \033[0m\r\n> ' "$line" "$line" "$turns"
+            printf '\033[2J\033[H\033[1;34myou\033[0m %s\r\n\033[3magent\033[0m echo: %s\r\n\033[7m acme/widget@1.0.0 · interactive · turns %s/200 · tools 1/60 \033[0m\r\n> ' "$line" "$line" "$turns"
             ;;
         esac
       done

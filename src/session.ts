@@ -40,6 +40,8 @@ export const DEFAULT_TURN_TIMEOUT_SECONDS = 300;
 /** After close asks the CLI to finish, how long its teardown gets before SIGINT, then SIGKILL. */
 const CLOSE_GRACE_MS = 120_000;
 const KILL_GRACE_MS = 30_000;
+/** How long a typed turn may go unrecorded before Enter is pressed again. */
+const ENTER_RETRY_MS = 5_000;
 /** The terminal the CLI's chat is given. */
 const COLS = 200;
 const ROWS = 50;
@@ -56,6 +58,9 @@ interface SessionEvent {
   totalTokens?: number;
   costUsd?: number;
 }
+
+/** The chat's status line (`… · interactive · turns N/M · …`): on the screen, the chat is up. */
+const STATUS_LINE = /· interactive · turns \d+/;
 
 /** Control sequences the chat paints with; stripped from screen text an error quotes. */
 const CONTROL = /\x1b\[[0-9;?]*[A-Za-z]|\x1b[()][B0]|\x1b[=>]|\x1b\][^\x07]*\x07|\r/g;
@@ -194,7 +199,14 @@ export class PtySession {
     return this.endedReason;
   }
 
-  /** Waits for the receipt to appear (the sandbox is up) or the CLI to stop. */
+  /**
+   * Waits for the chat to be up — its status line on the screen, which the
+   * CLI paints only once the sandbox is up and its chat is reading the
+   * terminal in raw mode — or for the CLI to stop. The receipt alone is
+   * too early: it exists while the harness is still shaking hands, and a
+   * line typed before the chat owns the terminal is cooked by the line
+   * discipline (Enter arrives as a newline the chat does not submit on).
+   */
   async awaitStart(timeoutMs: number): Promise<{ ok: true } | { ok: false; why: string }> {
     const until = Date.now() + timeoutMs;
     while (Date.now() < until) {
@@ -204,12 +216,11 @@ export class PtySession {
           why: `the CLI exited (${this.exitCode}) before the session started:\n${screenTail(this.raw)}`,
         };
       }
-      try {
-        await stat(this.tail.path);
+      if (STATUS_LINE.test(stripControl(this.raw))) {
+        await sleep(300);
         return { ok: true };
-      } catch {
-        await sleep(250);
       }
+      await sleep(250);
     }
     return {
       ok: false,
@@ -239,9 +250,20 @@ export class PtySession {
         errors: [],
       };
       const until = Date.now() + timeoutMs;
+      // Until the receipt shows the turn was taken; an Enter the chat
+      // missed is pressed once more (on an empty input it does nothing).
+      let taken = false;
+      let retryAt = Date.now() + ENTER_RETRY_MS;
       while (Date.now() < until) {
+        if (!taken && Date.now() > retryAt) {
+          this.child.stdin?.write("\r");
+          retryAt = Number.POSITIVE_INFINITY;
+        }
         for (const ev of await this.tail.next()) {
           switch (ev.kind) {
+            case "user_turn":
+              taken = true;
+              break;
             case "assistant_turn":
               turn.reply = ev.text ?? "";
               break;
