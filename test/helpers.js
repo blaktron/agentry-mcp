@@ -41,6 +41,7 @@ export async function connect(env = {}, cli = {}, elicit) {
     bin: FAKE,
     cliVersion: "0.4.0",
     cli: { env: { FAKE_ARGV: argvFile, ...env }, timeoutMs: 10_000, ...cli },
+    runTimeoutSlackMs: 500,
   });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(a);

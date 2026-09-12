@@ -40,6 +40,8 @@ export interface Envelope {
   exitClass: string;
   /** The last lines of the CLI's stderr: its narration, never its result. */
   log: string;
+  /** Set when the server's timeout interrupted the process and the CLI then exited by itself. */
+  timedOut?: boolean;
 }
 
 /** The tail of a stream, bounded so a long run's log does not swamp the host. */
@@ -67,6 +69,7 @@ export function toToolResult(what: string, r: CliResult): ToolResult {
   const parsed = parseJSON(r.stdout);
   if (parsed !== undefined) {
     const env: Envelope = { result: parsed.value, exitClass: cls, log: tail(r.stderr) };
+    if (r.timedOut) env.timedOut = true;
     return { content: [{ type: "text", text: JSON.stringify(env) }] };
   }
   if (r.code !== 0) {

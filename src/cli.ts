@@ -13,9 +13,10 @@ import { delimiter, join } from "node:path";
 /**
  * The oldest CLI this server drives. The writing tools need the plan-mode
  * output of agentry-cli#123 (`install --plan --json`, `uninstall --plan`,
- * `list --json`); the CLI repository carries no release tag for it yet, so
- * the floor stays nominal and checkCli probes `install --help` for `--plan`
- * instead. A dev build reports a git describe (`9d89740-dirty`, `0.0.0-dev`)
+ * `list --json`) and agentry-cli#124 (`run --plan --json`); the CLI
+ * repository carries no release tag for them yet, so the floor stays
+ * nominal and checkCli probes `install --help` and `run --help` for
+ * `--plan` instead. A dev build reports a git describe (`9d89740-dirty`, `0.0.0-dev`)
  * rather than a version; that is accepted and noted, since the floor cannot
  * be read from it. Raise this to the first tagged release that ships the
  * plan mode.
@@ -36,6 +37,8 @@ export interface CliResult {
   stderr: string;
   /** Set when the process could not be started or was killed by a signal. */
   spawnError?: string;
+  /** Set when the timeout's SIGINT ended the run and the CLI exited by itself. */
+  timedOut?: boolean;
 }
 
 export interface CliOptions {
@@ -43,6 +46,14 @@ export interface CliOptions {
   cwd?: string;
   /** Extra environment on top of the server's own; never a credential. */
   env?: Record<string, string>;
+  /** Called with each complete stderr line as it arrives (the CLI's narration). */
+  onStderrLine?: (line: string) => void;
+  /**
+   * How a timeout ends the process: SIGINT first (the CLI's teardown runs
+   * on every path), SIGKILL after graceMs if it is still there. Default
+   * SIGKILL at once, for the short commands.
+   */
+  graceMs?: number;
 }
 
 /** Thrown at start when no usable CLI is found. */
@@ -107,25 +118,50 @@ export function runCli(bin: string, argv: string[], opts: CliOptions = {}): Prom
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (d: string) => (stdout += d));
-    child.stderr.on("data", (d: string) => (stderr += d));
+    let pending = "";
+    child.stderr.on("data", (d: string) => {
+      stderr += d;
+      if (!opts.onStderrLine) return;
+      pending += d;
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) if (line.trim()) opts.onStderrLine(line);
+    });
     child.on("error", (err) => finish({ code: -1, stdout, stderr, spawnError: err.message }));
     child.on("close", (code, signal) => {
-      if (timedOut) {
+      if (timedOut && (signal || code === null)) {
         finish({
           code: -1,
           stdout,
           stderr,
-          spawnError: `timed out after ${opts.timeoutMs}ms and was killed`,
+          spawnError:
+            `timed out after ${opts.timeoutMs}ms and was killed` +
+            (opts.graceMs
+              ? `; SIGINT went unanswered for ${opts.graceMs}ms, so the CLI's teardown may not have run — check for leftover agentry-* containers`
+              : ""),
         });
+      } else if (timedOut) {
+        // SIGINT let the CLI finish its teardown and exit on its own: its
+        // exit class is the answer, and the timeout is noted.
+        finish({ code: code ?? -1, stdout, stderr, timedOut: true });
       } else if (signal) finish({ code: -1, stdout, stderr, spawnError: `killed by ${signal}` });
       else finish({ code: code ?? -1, stdout, stderr });
     });
     if (opts.timeoutMs && opts.timeoutMs > 0) {
+      let hard: NodeJS.Timeout | undefined;
       const t = setTimeout(() => {
         timedOut = true;
-        child.kill("SIGKILL");
+        if (opts.graceMs && opts.graceMs > 0) {
+          child.kill("SIGINT");
+          hard = setTimeout(() => child.kill("SIGKILL"), opts.graceMs);
+        } else {
+          child.kill("SIGKILL");
+        }
       }, opts.timeoutMs);
-      child.on("close", () => clearTimeout(t));
+      child.on("close", () => {
+        clearTimeout(t);
+        if (hard) clearTimeout(hard);
+      });
     }
   });
 }
@@ -179,13 +215,19 @@ export async function checkCli(
   }
   // The CLI has no release tags yet, so a dev build carries no version to
   // compare; the output the writing tools need is probed directly instead:
-  // `install --plan` (agentry-cli#123) is what the consent preview runs.
-  const help = await runCli(bin, ["install", "--help"], { timeoutMs: 10_000 });
-  if (help.spawnError || !/--plan\b/.test(help.stdout + help.stderr)) {
-    throw new CliUnavailableError(
-      `${bin} (agentry ${v.raw}) has no \`install --plan\`; this server needs the CLI from ` +
-        `agentry-cli#123 (${floor}) or newer. Update the CLI; the server never updates it for you.`,
-    );
+  // `install --plan` (agentry-cli#123) and `run --plan` (agentry-cli#124)
+  // are what the consent previews run.
+  for (const [command, issue] of [
+    ["install", "agentry-cli#123"],
+    ["run", "agentry-cli#124"],
+  ] as const) {
+    const help = await runCli(bin, [command, "--help"], { timeoutMs: 10_000 });
+    if (help.spawnError || !/--plan\b/.test(help.stdout + help.stderr)) {
+      throw new CliUnavailableError(
+        `${bin} (agentry ${v.raw}) has no \`${command} --plan\`; this server needs the CLI from ` +
+          `${issue} (${floor}) or newer. Update the CLI; the server never updates it for you.`,
+      );
+    }
   }
   return { ...v, floorChecked: v.semver !== undefined };
 }
