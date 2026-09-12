@@ -118,10 +118,47 @@ for them, and the last lines come back as `log`. A local workspace
 confirm, like an unsigned release; a verdict the person cannot lift
 (`mismatch`, `unverifiable`) stops the confirm.
 
+## Sessions
+
+| Tool                    | Runs                                                                                                      | Returns                                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `agentry_session_start` | `agentry run --plan --json --mode interactive`, then `agentry run --mode interactive` consented, on a pty | the plan with a `digest`, then the session id, the output folder and the receipts directory     |
+| `agentry_session_send`  | one line typed into the chat                                                                              | the agent's reply as the events receipt recorded it, the tools it called, the usage             |
+| `agentry_session_close` | `/finish` (or `/quit`) typed into the chat, then the CLI's teardown                                       | why the session ended, the envelope's status and result, the transcript, the receipts directory |
+
+An interactive run is the CLI's own chat: it insists on a terminal (the chat
+is the input) and has no JSON form (the transcript and receipts are the
+record). So the server gives it a terminal — `dist/pty-host.py`, a small
+Python program that forks the CLI on a pseudo-terminal and pumps bytes both
+ways, no shell in between; `python3` must be on the path — and drives it as
+you would: a line, Enter, the reply. The start is the run's two calls with
+the interactive plan. The reply to each turn is read from the run's own
+events receipt (`receipts/events.ndjson`), which the engine appends to as
+the session goes and redacts as it does — `assistant_turn` closes a turn,
+`session_end` says why the session is over — not scraped off the screen: the
+chat is a full-screen redraw, and the receipt is the record anyway.
+Everything the terminal showed is kept raw in a `.pty.log` beside the output
+folder; when the CLI stops before the session starts, its last lines,
+control sequences stripped, are what the error quotes.
+
+One session per server at a time; a second start is refused naming the open
+one. A turn waits up to `turnTimeoutSeconds` (default 300) and past that the
+session stays open with the agent still on that turn: the next send waits
+for that reply and returns it as `lateReplyTo` with `sent: false`, holding
+its own text back (a busy chat drops what is typed at it) — send it again
+after. A host that caps a tool call lower (the MCP SDK's own default is
+60 s) needs `turnTimeoutSeconds` under its cap, or the host gives up on a
+turn the session is still answering. Text is plain, one line — a control
+character is a key the chat would act on, and the chat's own commands
+(`/finish`, `/quit`, `/add`, `/caps`) are not turns, so both are refused. The release's idle timeout and budgets end a session as
+they would in a terminal, and the next send reports it, with the reason;
+close then returns the record. When the server is told to stop with an
+open session, or the host closes the connection, the CLI gets the interrupt
+it handles, so the teardown, the envelope and the receipts are written.
+
 Not here, on purpose: **signing in** (`agentry login` once in a terminal; the
 server uses that login) and **publishing** (`agentry publish` in a terminal,
-where the person sees the pipeline's verdict). Interactive sessions arrive in
-the next version.
+where the person sees the pipeline's verdict).
 
 ## Install
 

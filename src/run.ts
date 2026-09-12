@@ -28,7 +28,15 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { ArgumentError, bool, flag, value } from "./argv.js";
-import { canonical, confirmed, consentedArgv, isConsent, previewText, runPlan } from "./consent.js";
+import {
+  canonical,
+  confirmed,
+  consentedArgv,
+  isConsent,
+  previewText,
+  runPlan,
+  type Consent,
+} from "./consent.js";
 import type { Driver } from "./driver.js";
 import { tail } from "./envelope.js";
 
@@ -94,6 +102,9 @@ export async function setup(d: Driver, a: SetupArgs, extra: Extra): Promise<Call
   });
 }
 
+/** The run modes the CLI compiles a plan for. */
+export type RunMode = "autonomous" | "interactive";
+
 export interface RunArgs {
   ref?: string;
   local?: string;
@@ -158,8 +169,8 @@ function target(a: RunArgs, resolvedRef?: string): string[] {
  * --timeout only when the call named one; otherwise the compiled plan's own
  * budget (the policy's) is what the run gets.
  */
-function commonFlags(argv: string[], a: RunArgs): void {
-  argv.push("--mode", "autonomous");
+function commonFlags(argv: string[], a: RunArgs, mode: RunMode): void {
+  argv.push("--mode", mode);
   flag(argv, "timeout", a.timeoutSeconds);
   flag(argv, "adapter", a.adapter);
   flag(argv, "policy", a.policy);
@@ -202,16 +213,33 @@ function runFacts(p: RunPlan, a: RunArgs, timeoutSeconds: number) {
 }
 
 /**
- * agentry_run: preview = the CLI's run plan, digest over it; confirm = the
- * run. The preview never lifts the unsigned gate: the CLI reports
- * `attestation: unsigned` (a release with no attestation) or `local` (a
- * workspace) with the refusal, and only a confirm carrying acceptUnsigned
- * — the person's word — lifts it.
+ * What a matched, accepted confirm hands the run: the consent to append
+ * the flags for, the plan the digest covered, the budget it named.
  */
-export async function run(d: Driver, a: RunArgs, extra: Extra): Promise<CallToolResult> {
+export interface RunConsent {
+  consent: Consent;
+  plan: RunPlan;
+  timeoutSeconds: number;
+}
+
+/**
+ * The two-call consent for a run in either mode: preview = the CLI's run
+ * plan, digest over it; confirm = a Consent for the caller to run with.
+ * The preview never lifts the unsigned gate: the CLI reports `attestation:
+ * unsigned` (a release with no attestation) or `local` (a workspace) with
+ * the refusal, and only a confirm carrying acceptUnsigned — the person's
+ * word — lifts it. Returns the preview or the tool error to hand back, or
+ * the consent.
+ */
+export async function runConsent(
+  d: Driver,
+  a: RunArgs,
+  mode: RunMode,
+  tool: string,
+): Promise<RunConsent | CallToolResult> {
   const planArgv = ["run", ...target(a), "--plan", "--json"];
-  commonFlags(planArgv, a);
-  const planned = await runPlan<RunPlan>(d, "agentry_run (plan)", planArgv);
+  commonFlags(planArgv, a, mode);
+  const planned = await runPlan<RunPlan>(d, `${tool} (plan)`, planArgv);
   if (!planned.ok) return planned.result;
   const { plan, log } = planned;
   const unsigned = plan.attestation === "unsigned" || plan.attestation === "local";
@@ -224,40 +252,66 @@ export async function run(d: Driver, a: RunArgs, extra: Extra): Promise<CallTool
   if (a.confirm === undefined) {
     return previewText({ plan, unsigned, timeoutSeconds, log: tail(log), writes: false }, facts);
   }
-  const ok = await confirmed(d.server, "agentry_run", a.confirm, facts, {
+  const ok = await confirmed(d.server, tool, a.confirm, facts, {
     unsigned,
     acceptUnsigned: a.acceptUnsigned,
     refusal: plan.refusal,
     ask:
-      `Run ${plan.ref} (${plan.mode}, up to ${timeoutSeconds}s)? Contract: ${canonical(plan.contract)}. ` +
+      `${mode === "interactive" ? "Start a session with" : "Run"} ${plan.ref} (${plan.mode}` +
+      `${mode === "interactive" ? "" : `, up to ${timeoutSeconds}s`})? Contract: ${canonical(plan.contract)}. ` +
       `Attestation: ${plan.attestation}.${plan.reason ? ` The CLI would ask because: ${plan.reason}.` : ""}`,
   });
   if (!isConsent(ok)) return ok;
+  return { consent: ok, plan, timeoutSeconds };
+}
 
-  const argv = ["run", ...target(a, plan.ref), "--output-format", "json"];
-  commonFlags(argv, a);
-  flag(argv, "out", a.out);
-  let tmp: string | undefined;
+/** agentry_run: the consent above, then one CLI process the server waits on. */
+export async function run(d: Driver, a: RunArgs, extra: Extra): Promise<CallToolResult> {
+  const c = await runConsent(d, a, "autonomous", "agentry_run");
+  if (!isRunConsent(c)) return c;
+  const task = await taskInput(a);
   try {
-    if (a.input !== undefined) {
-      tmp = await mkdtemp(join(tmpdir(), "agentry-mcp-run-"));
-      const file = join(tmp, "input.txt");
-      await writeFile(file, a.input, { mode: 0o600 });
-      argv.push("--input", file);
-    } else if (a.inputFile !== undefined) {
-      argv.push("--input", value("inputFile", a.inputFile));
-    }
-    const r = await d.run("agentry_run", consentedArgv(argv, ok), {
+    const r = await d.run("agentry_run", runArgv(a, c, "autonomous", task.path), {
       onStderrLine: progressSink(extra),
       // The CLI enforces --timeout itself; the server's own limit sits
       // past it so the CLI's teardown is what ends the run.
-      timeoutMs: timeoutSeconds * 1000 + d.runTimeoutSlackMs,
+      timeoutMs: c.timeoutSeconds * 1000 + d.runTimeoutSlackMs,
       graceMs: TEARDOWN_GRACE_MS,
     });
     return decorateRun(r);
   } finally {
-    if (tmp) await rm(tmp, { recursive: true, force: true });
+    await task.done();
   }
+}
+
+/**
+ * The task input as a `--input` path: the call's own file, or its text
+ * written 0600 to a temp file that `done` removes whatever happened.
+ */
+export async function taskInput(a: RunArgs): Promise<{ path?: string; done(): Promise<void> }> {
+  if (a.input === undefined) {
+    return { path: a.inputFile, done: async () => {} };
+  }
+  const tmp = await mkdtemp(join(tmpdir(), "agentry-mcp-run-"));
+  const path = join(tmp, "input.txt");
+  await writeFile(path, a.input, { mode: 0o600 });
+  return { path, done: () => rm(tmp, { recursive: true, force: true }) };
+}
+
+/**
+ * The argv for a consented run in either mode: the target the digest
+ * covered, the mode and the flags that shaped the plan, the output folder,
+ * the task input, and the consented flags last. An autonomous run's
+ * stdout is its result envelope; an interactive one has no JSON form (the
+ * transcript and receipts are its record).
+ */
+export function runArgv(a: RunArgs, c: RunConsent, mode: RunMode, inputPath?: string): string[] {
+  const argv = ["run", ...target(a, c.plan.ref)];
+  if (mode === "autonomous") argv.push("--output-format", "json");
+  commonFlags(argv, a, mode);
+  flag(argv, "out", a.out);
+  if (inputPath !== undefined) argv.push("--input", value("inputFile", inputPath));
+  return consentedArgv(argv, c.consent);
 }
 
 /** Adds receiptsDir, resultFile and outDir beside the CLI's envelope. */
@@ -288,6 +342,10 @@ export async function validate(d: Driver, a: ValidateArgs): Promise<CallToolResu
   const argv = ["validate", value("dir", a.dir), "--json"];
   bool(argv, "strict", a.strict);
   return d.run("agentry_validate", argv);
+}
+
+export function isRunConsent(v: RunConsent | CallToolResult): v is RunConsent {
+  return !("content" in v);
 }
 
 function textOf(r: CallToolResult): string {

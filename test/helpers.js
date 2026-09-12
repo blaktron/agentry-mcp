@@ -37,7 +37,7 @@ export function receivedArgv(path) {
  */
 export async function connect(env = {}, cli = {}, elicit) {
   const argvFile = scratchArgv();
-  const server = createServer({
+  const { server } = createServer({
     bin: FAKE,
     cliVersion: "0.4.0",
     cli: { env: { FAKE_ARGV: argvFile, ...env }, timeoutMs: 10_000, ...cli },

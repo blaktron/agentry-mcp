@@ -11,6 +11,16 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { ArgumentError } from "./argv.js";
 import { runCli, type CliOptions } from "./cli.js";
 import { toToolResult } from "./envelope.js";
+import type { PtySession } from "./session.js";
+
+/**
+ * The one interactive session a server holds at a time (M5): the open one,
+ * or a reservation while a start is between its consent and its spawn.
+ */
+export interface SessionSlot {
+  current?: PtySession;
+  reserved: boolean;
+}
 
 export class Driver {
   constructor(
@@ -24,6 +34,16 @@ export class Driver {
      */
     readonly runTimeoutSlackMs = 30_000,
   ) {}
+
+  readonly sessions: SessionSlot = { reserved: false };
+
+  /** The extra environment and working directory every CLI process gets (a session's pty host too). */
+  get env(): Record<string, string> | undefined {
+    return this.defaults.env;
+  }
+  get cwd(): string | undefined {
+    return this.defaults.cwd;
+  }
 
   /** Runs `agentry argv…` and returns the envelope or the error. */
   async run(what: string, argv: string[], opts: CliOptions = {}): Promise<CallToolResult> {

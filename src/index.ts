@@ -10,11 +10,13 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 
 import { checkCli, findCli, CliUnavailableError } from "./cli.js";
 import { SERVER_NAME, SERVER_VERSION, createServer } from "./server.js";
+import { installShutdown } from "./session.js";
 
 async function main(): Promise<void> {
   const bin = await findCli();
   const v = await checkCli(bin);
-  const server = createServer({ bin, cliVersion: v.raw });
+  const { server, driver } = createServer({ bin, cliVersion: v.raw });
+  installShutdown(driver);
   await server.connect(new StdioServerTransport());
   process.stderr.write(
     `${SERVER_NAME} ${SERVER_VERSION} ready: driving ${bin} (agentry ${v.raw}` +

@@ -11,6 +11,9 @@
 #   FAKE_RUN_ATTEST   the run plan's attestation for a registry ref (default verified; --local is always local)
 #   FAKE_RUN_REFUSAL  a refusal the run plan reports besides the attestation's
 #   FAKE_INTAKE_REQUIRED  the run (not the plan) fails on a missing --intake, as the CLI does
+#   FAKE_SESSION_IDLE     seconds an interactive session waits for a turn before ending on idle_timeout
+#   FAKE_SESSION_FAIL_START  the interactive run stops (exit 13, colour on the screen) before any receipt
+#   FAKE_TURN_DELAY       seconds a session takes to answer a turn
 #   FAKE_CONTRACT  the install plan's contract (JSON; default a workspace read)
 #   FAKE_ATTEST    the install plan's attestation (default verified)
 #   FAKE_REFUSAL   the install plan's refusal (default none)
@@ -85,9 +88,47 @@ case "$1" in
         verified) ;;
         *) [ -z "$rrefusal" ] && rrefusal="attestation $ratt — a run refuses" ;;
       esac
-      timeout=900; prev=""; for a in "$@"; do if [ "$prev" = "--timeout" ]; then timeout=$a; fi; prev=$a; done
+      timeout=900; mode=autonomous; prev=""; for a in "$@"; do if [ "$prev" = "--timeout" ]; then timeout=$a; fi; if [ "$prev" = "--mode" ]; then mode=$a; fi; prev=$a; done
       echo "narration: compiled plan" >&2
-      printf '{"ref":"%s","version":"1.0.0","digest":"sha256:aaaa","mode":"autonomous","modes":["autonomous"],"summary":"x","plan":{"planVersion":2,"ref":"%s","digest":"sha256:aaaa","mode":"autonomous","policySha256":"sha256:pppp","capabilities":{"egressMode":"none","fsReadMode":"workspace"},"enforcement":{"network":"gateway --block-network"},"tools":["write_report"],"gateway":{"image":"docker/mcp-gateway:v0.43.3"},"proxy":{},"budgets":{"timeoutSeconds":%s}},"planSha256":"abc","contract":%s,"contractDigest":"sha256:cccc","attestation":"%s","signed":%s,"diff":{},"needsConfirmation":true,"reason":"a first run"%s}\n' "$rref" "$rref" "$timeout" "$contract" "$ratt" "$rsigned" "$( [ -n "$rrefusal" ] && printf ',"refusal":%s' "$(printf '%s' "$rrefusal" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')" )"
+      printf '{"ref":"%s","version":"1.0.0","digest":"sha256:aaaa","mode":"%s","modes":["autonomous","interactive"],"summary":"x","plan":{"planVersion":2,"ref":"%s","digest":"sha256:aaaa","mode":"%s","policySha256":"sha256:pppp","capabilities":{"egressMode":"none","fsReadMode":"workspace"},"enforcement":{"network":"gateway --block-network"},"tools":["write_report"],"gateway":{"image":"docker/mcp-gateway:v0.43.3"},"proxy":{},"budgets":{"timeoutSeconds":%s}},"planSha256":"abc","contract":%s,"contractDigest":"sha256:cccc","attestation":"%s","signed":%s,"diff":{},"needsConfirmation":true,"reason":"a first run"%s}\n' "$rref" "$mode" "$rref" "$mode" "$timeout" "$contract" "$ratt" "$rsigned" "$( [ -n "$rrefusal" ] && printf ',"refusal":%s' "$(printf '%s' "$rrefusal" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')" )"
+    elif has --mode && [ "$(prev=""; for a in "$@"; do if [ "$prev" = "--mode" ]; then echo "$a"; fi; prev=$a; done)" = interactive ]; then
+      # The chat on a terminal: colour and cursor codes on the screen, the
+      # record in the events receipt, /finish and /quit end it, idle ends it.
+      if [ ! -t 0 ]; then echo "agentry: an interactive run needs a terminal on stdin (the chat is the input)" >&2; exit 2; fi
+      if has --output-format; then echo "agentry: --output-format json is not available for an interactive run" >&2; exit 2; fi
+      if [ -n "${FAKE_SESSION_FAIL_START:-}" ]; then printf '\033[1;31magentry: gateway image \033[0mnot present\033[2K\r\n'; exit 13; fi
+      out=""; prev=""; for a in "$@"; do if [ "$prev" = "--out" ]; then out=$a; fi; prev=$a; done
+      [ -n "${FAKE_WRITES:-}" ] && echo session >> "$FAKE_WRITES"
+      mkdir -p "$out/receipts"; ev="$out/receipts/events.ndjson"; : > "$ev"
+      j() { printf '%s' "$1" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))'; }
+      event() { printf '{"kind":"%s","time":"2026-09-12T00:00:00Z"%s}\n' "$1" "$2" >> "$ev"; }
+      end() { event session_end ",\"reason\":\"$1\""; printf '{"status":"ok","exitCode":0,"exitClass":"ok","result":"final: %s","outDir":"%s","receipts":{"dir":"%s/receipts"},"harness":{"mode":"interactive"}}' "$1" "$out" "$out" > "$out/result.json"; printf '# transcript\n\n%s\n' "$(cat "$ev")" > "$out/receipts/transcript.md"; printf '\033[?1049lsession ended: %s\r\n' "$1"; exit 0; }
+      # The handshake: the receipt exists before the chat is up, as in the CLI.
+      sleep 0.3
+      printf '\033[?1049h\033[2J\033[H\033[7m acme/widget@1.0.0 · interactive · turns 0/200 · tools 0/60 \033[0m\r\n> '
+      turns=0
+      while true; do
+        if [ "${FAKE_SESSION_IDLE:-0}" -gt 0 ]; then
+          read -r -t "$FAKE_SESSION_IDLE" line || end idle_timeout
+        else
+          read -r line || end harness_exit
+        fi
+        case "$line" in
+          /finish) end finished ;;
+          /quit) end quit ;;
+          *)
+            turns=$((turns+1))
+            event user_turn ",\"text\":$(j "$line")"
+            sleep "${FAKE_TURN_DELAY:-0}"
+            event permission_granted ',"text":"fs_read"'
+            event tool_call ',"text":"fs_read"'
+            event assistant_text ',"text":"echo: "'
+            event assistant_turn ",\"text\":$(j "echo: $line"),\"stopReason\":\"end_turn\""
+            event usage ',"inputTokens":10,"outputTokens":4'
+            printf '\033[2J\033[H\033[1;34myou\033[0m %s\r\n\033[3magent\033[0m echo: %s\r\n\033[7m acme/widget@1.0.0 · interactive · turns %s/200 · tools 1/60 \033[0m\r\n> ' "$line" "$line" "$turns"
+            ;;
+        esac
+      done
     else
       if [ -n "${FAKE_INTAKE_REQUIRED:-}" ] && ! has "--intake"; then echo 'agentry: intake question "audience" is required (answer it on a terminal or pass --intake audience=...)' >&2; exit 2; fi
       [ -n "${FAKE_WRITES:-}" ] && echo ran >> "$FAKE_WRITES"
