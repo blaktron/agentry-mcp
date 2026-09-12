@@ -11,12 +11,14 @@ import { access, constants } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 
 /**
- * The oldest CLI this server drives. Bumped when a tool needs output the CLI
- * did not have before: M1 needs only `search`, `info`, `verify` and `doctor`
- * with `--json`, which every build serves, so the floor is nominal until M2's
- * `install --plan --json` lands and sets a real one. A dev build reports a
- * git describe (`9d89740-dirty`, `0.0.0-dev`) rather than a version; that is
- * accepted and noted, since the floor cannot be read from it.
+ * The oldest CLI this server drives. The writing tools need the plan-mode
+ * output of agentry-cli#123 (`install --plan --json`, `uninstall --plan`,
+ * `list --json`); the CLI repository carries no release tag for it yet, so
+ * the floor stays nominal and checkCli probes `install --help` for `--plan`
+ * instead. A dev build reports a git describe (`9d89740-dirty`, `0.0.0-dev`)
+ * rather than a version; that is accepted and noted, since the floor cannot
+ * be read from it. Raise this to the first tagged release that ships the
+ * plan mode.
  */
 export const MIN_CLI_VERSION = "0.0.0";
 
@@ -173,6 +175,16 @@ export async function checkCli(
     throw new CliUnavailableError(
       `${bin} is agentry ${v.raw}; this server needs ${floor} or newer. Update the CLI ` +
         `(https://secureagentry.net/download); the server never updates it for you.`,
+    );
+  }
+  // The CLI has no release tags yet, so a dev build carries no version to
+  // compare; the output the writing tools need is probed directly instead:
+  // `install --plan` (agentry-cli#123) is what the consent preview runs.
+  const help = await runCli(bin, ["install", "--help"], { timeoutMs: 10_000 });
+  if (help.spawnError || !/--plan\b/.test(help.stdout + help.stderr)) {
+    throw new CliUnavailableError(
+      `${bin} (agentry ${v.raw}) has no \`install --plan\`; this server needs the CLI from ` +
+        `agentry-cli#123 (${floor}) or newer. Update the CLI; the server never updates it for you.`,
     );
   }
   return { ...v, floorChecked: v.semver !== undefined };

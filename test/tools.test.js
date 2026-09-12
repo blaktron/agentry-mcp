@@ -5,16 +5,14 @@ import { test } from "node:test";
 
 import { connect, envelope, receivedArgv } from "./helpers.js";
 
-test("lists exactly the four read-only tools", async () => {
+test("the four read-only tools are read-only and name their command", async () => {
   const { client } = await connect();
   const { tools } = await client.listTools();
-  assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "agentry_doctor",
-    "agentry_info",
-    "agentry_search",
-    "agentry_verify",
-  ]);
-  for (const t of tools) {
+  const reads = tools.filter((t) =>
+    ["agentry_doctor", "agentry_info", "agentry_search", "agentry_verify"].includes(t.name),
+  );
+  assert.equal(reads.length, 4);
+  for (const t of reads) {
     assert.equal(t.annotations?.readOnlyHint, true, `${t.name} is read-only`);
     assert.match(
       t.description,

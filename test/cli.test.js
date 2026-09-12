@@ -67,3 +67,15 @@ test("checkCli: a dev build is accepted with the floor unchecked", async () => {
     delete process.env.FAKE_VERSION;
   }
 });
+
+test("checkCli: a CLI without install --plan is refused naming what is needed", async () => {
+  process.env.FAKE_NO_PLAN = "1";
+  try {
+    await assert.rejects(
+      checkCli(FAKE),
+      /has no `install --plan`; this server needs the CLI from agentry-cli#123/,
+    );
+  } finally {
+    delete process.env.FAKE_NO_PLAN;
+  }
+});

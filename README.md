@@ -11,7 +11,7 @@ Local stdio server, TypeScript, on the official
 It bundles nothing: the CLI is the person's, with the person's login, consent
 memory and runner policy. Plan: `agentry-notes/plans/mcp-cli-driver.md`.
 
-## What it exposes today
+## Reading
 
 | Tool             | Runs                    | Returns                                                                                                                  |
 | ---------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -40,12 +40,42 @@ the report is the answer. When there is no JSON, a non-zero exit is an MCP
 tool error naming the class and quoting the CLI's last lines; a zero exit
 without JSON is an error too. The server never reads the CLI's prose.
 
+## Installing, in two calls
+
+| Tool                     | Runs                                                                 | Returns                                                           |
+| ------------------------ | -------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `agentry_install`        | `agentry install --plan --json`, then `agentry install --json --yes` | the preview with a `digest`, then the install result              |
+| `agentry_uninstall`      | `agentry uninstall --plan --json`, then `agentry uninstall --json`   | the preview with a `digest`, then what was removed                |
+| `agentry_list_installed` | `agentry list --json`                                                | every install record, with `present` (its directory still exists) |
+
+The CLI asks you on a terminal before it installs. This server has no
+terminal, and the model is not you. So installing is two calls:
+
+1. **Preview.** `agentry_install` without `confirm` runs the CLI's plan mode
+   and writes nothing. It returns what consent would cover — the resolved
+   version, the capability contract, the diff against what this machine
+   accepted before, whether the release is signed, the refusal an install
+   would meet, where it would go — plus `digest`: an HMAC-SHA-256, under a
+   key only this server process holds, over exactly those facts. The model
+   is told to show you the contract.
+2. **Confirm.** The same call with `confirm` set to that digest. The server
+   runs the preview again, refuses if anything changed (the version, the
+   contract, the signature, the directory), and only then runs the install
+   with `--yes`. An unsigned release needs `acceptUnsigned: true` on the
+   confirm as well, which the model is told to pass only if you said so.
+
+The digest is the control, not the instruction: a model cannot confirm what
+the server did not show it — it cannot mint a digest from the facts, since
+the key is the server's — and `--yes` reaches the CLI from no other path (CI
+greps for it). The install names the release the preview resolved, never a
+floating range. When your host supports MCP elicitation, the server also
+asks you directly before the write, and a "no" cancels. Removing is the
+same two calls.
+
 Not here, on purpose: **signing in** (`agentry login` once in a terminal; the
 server uses that login) and **publishing** (`agentry publish` in a terminal,
-where the person sees the pipeline's verdict). Installing, running and
-managing BriefAgents arrive in the next versions, each behind the CLI's own
-consent — a preview call that shows the contract and a confirm call that
-carries the digest of what was shown.
+where the person sees the pipeline's verdict). Running BriefAgents arrives in
+the next version, behind the same consent.
 
 ## Install
 
@@ -57,10 +87,11 @@ claude mcp add agentry -- node /path/to/agentry-mcp/dist/index.js
 
 The server finds the CLI through `AGENTRY_BIN`, else `agentry` on `PATH`,
 runs `agentry --version` once at start, and refuses to start without a CLI
-at or above `MIN_CLI_VERSION` (`src/cli.ts`; nominal at `0.0.0` until the
-install tools need newer output). A dev build of the CLI reports a git
-describe rather than a version; it is accepted and the start-up line says
-the floor was not checked.
+at or above `MIN_CLI_VERSION` (`src/cli.ts`) that has `install --plan`
+(agentry-cli#123 or newer; the CLI has no release tag for it yet, so the
+floor is nominal and the plan mode is probed directly). A dev build of the
+CLI reports a git describe rather than a version; it is accepted and the
+start-up line says the floor was not checked.
 
 ## What the server holds
 
