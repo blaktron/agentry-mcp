@@ -1,5 +1,9 @@
 # Runs on the project's self-hosted runners: GitHub-hosted minutes for
 # this account are exhausted, so every repo in the estate builds there.
+#
+# Two packages, two jobs: the root is the server that drives the installed
+# agentry CLI; secureagentry-mcp/ is the parked registry-API server, kept
+# green as it was (plan mcp-cli-driver D7).
 name: ci
 
 on:
@@ -33,9 +37,47 @@ jobs:
       - name: Format
         run: npm run format:check
 
-      # The catalog is generated from the vendored contract. If regenerating it
-      # changes anything, the two have drifted and the committed catalog lies
-      # about what the API accepts.
+      # Tool descriptions and the instructions are what a host's model reads
+      # before it acts: no never-word in a string literal, ever.
+      - name: Prose gate
+        run: |
+          node scripts/prose-check.mjs --self-test
+          npm run prose-check
+
+      - name: Test
+        run: npm test
+
+      # --yes and --allow-unsigned reach the CLI only from a confirm call
+      # (plan §3); until M3 lands the confirm path, they appear nowhere.
+      - name: Consent flags appear only in the confirm path
+        run: |
+          if grep -rn -e '--yes' -e '--allow-unsigned' src/ | grep -v 'src/consent.ts'; then
+            echo "::error::--yes/--allow-unsigned outside src/consent.ts"; exit 1
+          fi
+          echo "ok: no consent flag outside the confirm path"
+
+  parked:
+    runs-on: [self-hosted, linux, x64]
+    defaults:
+      run:
+        working-directory: secureagentry-mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: secureagentry-mcp/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Format
+        run: npm run format:check
+
       - name: Catalog matches the vendored spec
         run: |
           npm run generate

@@ -1,68 +1,56 @@
 /**
- * Assembles the MCP server: configuration, one HTTP client, and the four tool
- * modules registered against it.
- *
- * The instructions block is worth its weight — it is the only place the model
- * learns the shape of the product (agents are repositories, versions are
- * immutable, publishing happens through the pipeline) before it starts calling
- * tools, which is what stops it from inventing a publish flow.
+ * Assembles the server: the found CLI, the driver, the tools. The
+ * instructions block is what the host's model reads before its first call,
+ * so it says what this server is (a driver of the person's CLI), what the
+ * registry says about BriefAgents (scanned, N findings, signed — never
+ * safe), and what is deliberately not here (login, publish).
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import { AgentryClient } from "./client.js";
-import { ACTIONS, API_VERSION } from "./catalog.generated.js";
-import { loadConfig, type Config } from "./config.js";
-import { TOOL_MODULES } from "./tools/index.js";
+import type { CliOptions } from "./cli.js";
+import { Driver } from "./driver.js";
+import { registerReadTools } from "./tools/read.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.1.0";
+export const SERVER_VERSION = "0.2.0";
 
-function instructions(config: Config): string {
+export function instructions(bin: string, cliVersion: string): string {
   return [
-    `Automation for an Agentry registry at ${config.registry}.`,
+    `This server drives the agentry CLI installed on this machine (${bin}, agentry ${cliVersion}) ` +
+      "so you can search a registry, read a BriefAgent's capability contract, verify a release and " +
+      "check the machine. Every tool is one CLI command; every result is the CLI's own JSON in an " +
+      "envelope with the exit class and the CLI's log.",
     "",
-    "Agentry is a registry and git host for BriefAgents: reviewable packages of instructions " +
-      "published as immutable, content-addressed, scanned and signed releases. An agent IS its " +
-      "repository — creating one creates its hosted git repo, and its versions are the releases " +
-      "cut from that repo. A release declares the run modes it supports: autonomous (runs from " +
-      "its files and ends) and/or interactive (a conversation with the same controls).",
+    "A BriefAgent is a reviewable package of instructions published as an immutable, " +
+      "content-addressed release. The registry reports each release as scanned, with a finding " +
+      "count, and signed or unsigned — never as safe. Say what the registry says. The capability " +
+      "contract on agentry_info is what a run enforces; read it before you propose an install or a run.",
     "",
-    "Things worth knowing before you call anything:",
-    "- Versions are history. A published version is never deleted, only yanked; an agent with any " +
-      "version cannot be deleted at all.",
-    "- Publishing is not exposed here. Versions reach the registry by pushing a tag or by the CLI " +
-      "uploading an archive it built, so that what is scanned is what was published. Do not try to " +
-      "publish through the catalog tools.",
-    "- Say what the registry says. It reports agents as scanned, with a finding count, and signed — " +
-      "never as safe. Static scanning reduces risk; the manifest's capability contract is what the " +
-      "runner enforces at run time.",
-    "- Token minting and revocation, SSH keys, sessions and 2FA refuse personal access tokens " +
-      "outright. Those tools will tell you when they need a browser session instead.",
-    "- A 404 on an agent means either no such agent or one this credential cannot read. Do not " +
-      "report it as proof the agent does not exist.",
+    "Not here: signing in (the person runs `agentry login` in a terminal once; this server uses " +
+      "that login) and publishing (`agentry publish` in a terminal, where the person sees the " +
+      "pipeline's verdict). Installing, running and managing BriefAgents arrive in later versions " +
+      "of this server, each behind the CLI's own consent.",
     "",
-    `Start with agentry_whoami if you do not yet know the account or its permissions. The dedicated ` +
-      `tools cover account and repository work; agentry_search_actions reaches the rest of the ` +
-      `${ACTIONS.length}-operation API (contract version ${API_VERSION}).`,
-    config.readOnly ? "\nThis server is running read-only: every write will be refused." : "",
-  ]
-    .join("\n")
-    .trim();
+    "Start with agentry_doctor if a run or install is the goal: it says what this machine lacks.",
+  ].join("\n");
 }
 
-/**
- * @param fetchImpl injected only by tests, so the tool surface can be exercised
- * end to end without a registry to talk to.
- */
-export function createServer(config: Config = loadConfig(), fetchImpl?: typeof fetch): McpServer {
+export interface ServerOptions {
+  /** The resolved CLI path. */
+  bin: string;
+  /** What `agentry --version` reported, for the instructions. */
+  cliVersion: string;
+  /** Per-invocation defaults (timeouts, cwd), mostly for tests. */
+  cli?: CliOptions;
+}
+
+export function createServer(opts: ServerOptions): McpServer {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
-    { instructions: instructions(config) },
+    { instructions: instructions(opts.bin, opts.cliVersion) },
   );
-
-  const ctx = { client: new AgentryClient(config, fetchImpl), config };
-  for (const register of TOOL_MODULES) register(server, ctx);
-
+  const driver = new Driver(server, opts.bin, opts.cli ?? {});
+  registerReadTools(driver);
   return server;
 }
