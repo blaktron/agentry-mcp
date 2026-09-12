@@ -11,9 +11,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CliOptions } from "./cli.js";
 import { Driver } from "./driver.js";
 import { registerReadTools } from "./tools/read.js";
+import { registerWriteTools } from "./tools/write.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.2.0";
+export const SERVER_VERSION = "0.3.0";
 
 export function instructions(bin: string, cliVersion: string): string {
   return [
@@ -27,10 +28,15 @@ export function instructions(bin: string, cliVersion: string): string {
       "count, and signed or unsigned — never as safe. Say what the registry says. The capability " +
       "contract on agentry_info is what a run enforces; read it before you propose an install or a run.",
     "",
+    "Installing and removing are two calls each: a preview that shows the person the contract (or " +
+      "what would be removed) and returns a digest, then a confirm that carries that digest. The " +
+      "digest is what makes the confirm valid — it is of exactly what the preview showed — so show " +
+      "the person the contract before you confirm, and never confirm on their behalf. An unsigned " +
+      "release needs the person's explicit acceptance as well.",
+    "",
     "Not here: signing in (the person runs `agentry login` in a terminal once; this server uses " +
       "that login) and publishing (`agentry publish` in a terminal, where the person sees the " +
-      "pipeline's verdict). Installing, running and managing BriefAgents arrive in later versions " +
-      "of this server, each behind the CLI's own consent.",
+      "pipeline's verdict). Running BriefAgents arrives in a later version of this server.",
     "",
     "Start with agentry_doctor if a run or install is the goal: it says what this machine lacks.",
   ].join("\n");
@@ -52,5 +58,6 @@ export function createServer(opts: ServerOptions): McpServer {
   );
   const driver = new Driver(server, opts.bin, opts.cli ?? {});
   registerReadTools(driver);
+  registerWriteTools(driver);
   return server;
 }

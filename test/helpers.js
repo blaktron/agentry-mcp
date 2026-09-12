@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { ElicitRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 import { createServer } from "../dist/server.js";
 
@@ -29,7 +30,12 @@ export function receivedArgv(path) {
     .map((s) => s.trimEnd().split("\n"));
 }
 
-export async function connect(env = {}, cli = {}) {
+/**
+ * connect wires a server driving the fake CLI to an in-memory client.
+ * `elicit` — when set, the client advertises elicitation and answers every
+ * request with it: "accept" | "decline" | "cancel"; the answers are recorded.
+ */
+export async function connect(env = {}, cli = {}, elicit) {
   const argvFile = scratchArgv();
   const server = createServer({
     bin: FAKE,
@@ -38,9 +44,21 @@ export async function connect(env = {}, cli = {}) {
   });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(a);
-  const client = new Client({ name: "test", version: "0" });
+  const elicitations = [];
+  const client = new Client(
+    { name: "test", version: "0" },
+    elicit ? { capabilities: { elicitation: {} } } : {},
+  );
+  if (elicit) {
+    client.setRequestHandler(ElicitRequestSchema, async (req) => {
+      elicitations.push(req.params.message);
+      if (elicit === "accept") return { action: "accept", content: { proceed: true } };
+      if (elicit === "accept-unticked") return { action: "accept", content: { proceed: false } };
+      return { action: elicit };
+    });
+  }
   await client.connect(b);
-  return { client, server, argvFile };
+  return { client, server, argvFile, elicitations };
 }
 
 export function envelope(result) {

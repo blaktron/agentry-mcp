@@ -1,0 +1,277 @@
+/**
+ * The two-call consent (plan mcp-cli-driver §5, D4). The CLI asks on a
+ * terminal; the server has none and the model is not the person. So every
+ * writing tool is two calls: a preview that runs the CLI's plan mode and
+ * writes nothing, returning what consent would cover plus `digest`; and a
+ * confirm carrying that digest, which recomputes the preview, refuses on
+ * any difference, and only then runs the writing command. The digest is
+ * the control, not the tool description: a model cannot confirm what the
+ * server did not show it.
+ *
+ * `--yes` and `--allow-unsigned` are spelled in this file and nowhere else
+ * (CI greps for it): `--yes` only after a digest matched, `--allow-unsigned`
+ * only when the preview said the release is unsigned AND the confirm call
+ * said `acceptUnsigned: true`.
+ */
+
+import { createHmac, randomBytes } from "node:crypto";
+
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+
+import { flag, value } from "./argv.js";
+import type { Driver } from "./driver.js";
+import { tail } from "./envelope.js";
+
+/** Canonical JSON: keys sorted at every level, compact. */
+export function canonical(v: unknown): string {
+  if (Array.isArray(v)) return "[" + v.map(canonical).join(",") + "]";
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return (
+      "{" +
+      Object.keys(o)
+        .sort()
+        .map((k) => JSON.stringify(k) + ":" + canonical(o[k]))
+        .join(",") +
+      "}"
+    );
+  }
+  return JSON.stringify(v);
+}
+
+/**
+ * The key under which this process digests consent facts: random, never
+ * exported, gone when the process ends. So a digest can only have come from
+ * a preview this server produced — not from a model that assembled the
+ * same facts out of the read tools — and a restart invalidates every
+ * outstanding preview (the confirm says to preview again).
+ */
+const sessionKey = randomBytes(32);
+
+/**
+ * The digest a preview returns and a confirm must carry: an HMAC-SHA-256,
+ * under the process key, over the canonical JSON of the facts consent
+ * covers. Everything that would change what the person is agreeing to is in
+ * it — the release that resolved, its archive digest, the attestation
+ * verdict, whether it is yanked, the contract, where it lands — so a release
+ * that moved, a contract that changed or a signature that appeared or
+ * vanished between the two calls changes the digest.
+ */
+export function consentDigest(facts: unknown): string {
+  return "sha256:" + createHmac("sha256", sessionKey).update(canonical(facts)).digest("hex");
+}
+
+/** The install plan the CLI prints (agentry-cli#102); the fields consent reads. */
+export interface InstallPlan {
+  ref: string;
+  version: string;
+  digest: string;
+  yanked?: boolean;
+  contract: unknown;
+  contractDigest: string;
+  attestation: string;
+  signed: boolean;
+  needsConfirmation: boolean;
+  reason?: string;
+  target: string;
+  dir: string;
+  managed: boolean;
+  refusal?: string;
+  installed?: { version: string; dir: string };
+  diff?: { widened?: string[]; narrowed?: string[] };
+}
+
+export interface InstallArgs {
+  ref: string;
+  target?: string;
+  provider?: string;
+  dir?: string;
+  registry?: string;
+  confirm?: string;
+  acceptUnsigned?: boolean;
+}
+
+/** What a preview returns: the CLI's plan, plus the digest to confirm with. */
+export interface Preview<P> {
+  plan: P;
+  digest: string;
+  log: string;
+}
+
+export type ToolText = CallToolResult;
+
+function text(t: string, isError = false): ToolText {
+  return isError
+    ? { content: [{ type: "text", text: t }], isError: true }
+    : { content: [{ type: "text", text: t }] };
+}
+
+/** Runs the CLI's plan mode and parses the plan; a refusal or non-JSON is the error. */
+async function runPlan<P>(
+  d: Driver,
+  what: string,
+  argv: string[],
+): Promise<{ ok: true; plan: P; log: string } | { ok: false; result: ToolText }> {
+  const r = await d.run(what, argv);
+  if (r.isError) return { ok: false, result: r };
+  const env = JSON.parse((r.content[0] as { text: string }).text) as { result: P; log: string };
+  return { ok: true, plan: env.result, log: env.log };
+}
+
+function installPlanArgv(a: InstallArgs): string[] {
+  const argv = ["install", value("ref", a.ref), "--plan", "--json"];
+  flag(argv, "target", a.target);
+  flag(argv, "provider", a.provider);
+  flag(argv, "dir", a.dir);
+  flag(argv, "registry", a.registry);
+  return argv;
+}
+
+/** The facts the install digest covers. */
+function installFacts(p: InstallPlan) {
+  return {
+    ref: p.ref,
+    version: p.version,
+    archiveDigest: p.digest,
+    yanked: p.yanked === true,
+    attestation: p.attestation,
+    contract: p.contract,
+    contractDigest: p.contractDigest,
+    target: p.target,
+    dir: p.dir,
+  };
+}
+
+/**
+ * Asks the person through MCP elicitation when the host advertises it; a
+ * host without it gets the two-call shape alone. "accept" with the box
+ * ticked is yes; decline, cancel or an unticked box is no.
+ */
+async function askPerson(
+  server: McpServer,
+  message: string,
+): Promise<{ asked: boolean; yes: boolean }> {
+  const caps = server.server.getClientCapabilities();
+  if (!caps?.elicitation) return { asked: false, yes: true };
+  const res = await server.server.elicitInput(
+    {
+      message,
+      requestedSchema: {
+        type: "object",
+        properties: {
+          proceed: { type: "boolean", title: "Proceed", description: "Tick to proceed." },
+        },
+        required: ["proceed"],
+      },
+    },
+    // A person reading a contract takes longer than the SDK's minute; a
+    // timeout is still a no (the SDK throws, nothing is written).
+    { timeout: 10 * 60 * 1000 },
+  );
+  const yes =
+    res.action === "accept" && (res.content as { proceed?: boolean } | undefined)?.proceed === true;
+  return { asked: true, yes };
+}
+
+/** agentry_install: preview without `confirm`, write with it. */
+export async function install(d: Driver, a: InstallArgs): Promise<ToolText> {
+  const planned = await runPlan<InstallPlan>(d, "agentry_install (plan)", installPlanArgv(a));
+  if (!planned.ok) return planned.result;
+  const { plan, log } = planned;
+  const digest = consentDigest(installFacts(plan));
+
+  if (a.confirm === undefined) {
+    const preview: Preview<InstallPlan> = { plan, digest, log: tail(log) };
+    return text(
+      JSON.stringify({ ...preview, unsigned: plan.attestation === "unsigned", writes: false }),
+    );
+  }
+  if (a.confirm !== digest) {
+    return text(
+      `agentry_install: the confirm digest does not match this preview (${a.confirm} vs ${digest}). ` +
+        "Something changed since the contract was shown — the resolved version, the contract, the signature, the " +
+        "target or the directory — or the digest was not taken from a preview. Preview again, show the person " +
+        "the contract, and confirm with the digest that preview returned.",
+      true,
+    );
+  }
+  if (plan.refusal && plan.attestation !== "unsigned") {
+    return text(`agentry_install: the CLI would refuse this install: ${plan.refusal}`, true);
+  }
+  if (plan.attestation === "unsigned" && !a.acceptUnsigned) {
+    return text(
+      `agentry_install: ${plan.ref} is unsigned (${plan.refusal ?? "the registry published no attestation"}). ` +
+        "Installing it needs the person's explicit acceptance: confirm again with acceptUnsigned: true only if they said so.",
+      true,
+    );
+  }
+  const asked = await askPerson(
+    d.server,
+    `Install ${plan.ref} to ${plan.dir} (${plan.target})? Contract: ${canonical(plan.contract)}. ` +
+      `Attestation: ${plan.attestation}.${plan.reason ? ` The CLI would ask because: ${plan.reason}.` : ""}`,
+  );
+  if (!asked.yes) return text("agentry_install: the person declined; nothing was written.", true);
+
+  // The write names the release the digest covered — plan.ref is resolved
+  // (ns/name@version) — never the floating ref the call carried, so a
+  // range that moves between the re-plan and the write cannot install a
+  // release the person did not see.
+  const argv = ["install", value("ref", plan.ref), "--json", "--yes"];
+  if (plan.attestation === "unsigned" && a.acceptUnsigned) argv.push("--allow-unsigned");
+  flag(argv, "target", a.target);
+  flag(argv, "provider", a.provider);
+  flag(argv, "dir", a.dir);
+  flag(argv, "registry", a.registry);
+  return d.run("agentry_install", argv);
+}
+
+/** The uninstall plan the CLI prints. */
+export interface UninstallPlan {
+  ref: string;
+  plan: boolean;
+  installs: string[];
+  profiles: string[];
+  keptProfiles?: string[];
+  consentRecord: boolean;
+}
+
+export interface UninstallArgs {
+  ref: string;
+  keepMcp?: boolean;
+  confirm?: string;
+}
+
+/** agentry_uninstall: the same two calls; uninstall has no CLI gate, but a removal is a write. */
+export async function uninstall(d: Driver, a: UninstallArgs): Promise<ToolText> {
+  const planArgv = ["uninstall", value("ref", a.ref), "--plan", "--json"];
+  if (a.keepMcp) planArgv.push("--keep-mcp");
+  const planned = await runPlan<UninstallPlan>(d, "agentry_uninstall (plan)", planArgv);
+  if (!planned.ok) return planned.result;
+  const { plan, log } = planned;
+  const digest = consentDigest({
+    ref: plan.ref,
+    installs: plan.installs,
+    profiles: plan.profiles,
+    keptProfiles: plan.keptProfiles ?? [],
+    consentRecord: plan.consentRecord,
+  });
+  if (a.confirm === undefined) {
+    const preview: Preview<UninstallPlan> = { plan, digest, log: tail(log) };
+    return text(JSON.stringify({ ...preview, writes: false }));
+  }
+  if (a.confirm !== digest) {
+    return text(
+      `agentry_uninstall: the confirm digest does not match this preview (${a.confirm} vs ${digest}); what would be removed changed. Preview again and confirm with the digest that preview returned.`,
+      true,
+    );
+  }
+  const asked = await askPerson(
+    d.server,
+    `Remove ${plan.ref} from this machine? Installs: ${plan.installs.join(", ") || "none"}. Profiles (keys, servers): ${plan.profiles.join(", ") || "none"}.`,
+  );
+  if (!asked.yes) return text("agentry_uninstall: the person declined; nothing was removed.", true);
+  const argv = ["uninstall", value("ref", a.ref), "--json"];
+  if (a.keepMcp) argv.push("--keep-mcp");
+  return d.run("agentry_uninstall", argv);
+}
