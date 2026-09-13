@@ -142,7 +142,7 @@ from `blaktron/agentry` with their source commit recorded in
 To track an API change:
 
 ```bash
-npm run sync-spec      # re-vendor both files from ../agentry, regenerate
+npm run sync-spec      # re-vendor both files from ../../agentry (or a path you pass), regenerate
 npm test
 ```
 
