@@ -165,24 +165,41 @@ where the person sees the pipeline's verdict).
 The server needs Node 20 or newer, the `agentry` CLI on this machine (from
 https://secureagentry.net/download, or built from
 [agentry-cli](https://github.com/blaktron/agentry-cli)), and `python3` for
-the session tools. Build it once:
+the session tools.
+
+**From the download page.** From the first tagged release on
+(agentry-web#250), https://secureagentry.net/download carries
+`agentry-mcp-<version>.tar.gz`: the built server with its dependencies, one
+file for every platform. Check its SHA-256 against the one on the card, then
+unpack it anywhere; nothing is installed and nothing is fetched afterwards:
+
+```sh
+tar -xzf agentry-mcp-<version>.tar.gz
+```
+
+The server is `agentry-mcp-<version>/dist/index.js`. A newer version is a new
+tarball: unpack it beside the old one and point your host at the new path.
+
+**From source**, for working on the server itself:
 
 ```sh
 git clone https://github.com/blaktron/agentry-mcp
 cd agentry-mcp && npm install && npm run build
 ```
 
+The server is then `agentry-mcp/dist/index.js`.
+
 **Claude Code** — one command, then `/mcp` in a Claude Code session lists
 `agentry` and its tools:
 
 ```sh
-claude mcp add agentry -- node /path/to/agentry-mcp/dist/index.js
+claude mcp add agentry -- node /path/to/agentry-mcp-<version>/dist/index.js
 ```
 
 **Codex** — the same shape; `codex mcp list` shows it afterwards:
 
 ```sh
-codex mcp add agentry -- node /path/to/agentry-mcp/dist/index.js
+codex mcp add agentry -- node /path/to/agentry-mcp-<version>/dist/index.js
 ```
 
 Either host can pass `AGENTRY_BIN` when the CLI is not on its `PATH`
@@ -218,7 +235,32 @@ any string literal under `src/` or in this README.
 
 ```sh
 npm run check     # typecheck, prettier, prose gate, tests (a fake agentry on stdin/stdout)
+scripts/package.sh 0.0.0-dev /tmp/out         # the downloadable tarball, as a release builds it
+node scripts/package-smoke.mjs /tmp/out/agentry-mcp-0.0.0-dev.tar.gz   # unpack it and start it
 ```
+
+## Releases
+
+A tag `v<major>.<minor>.<patch>` on `main` runs `.github/workflows/release.yaml`
+in two jobs. **`package`** refuses a tag that `package.json` and
+`SERVER_VERSION` (`src/server.ts`) do not both carry, runs `npm run check`,
+builds the tarball with `scripts/package.sh` (CI builds it twice on every
+pull request and requires the same digest), starts it unpacked, and writes
+`BUILD-INFO` and `SHA256SUMS`; it holds no secret. **`sign`** checks out no
+code and runs no npm: it takes that bundle, checks the sums, signs them with
+the estate's update-signing key through the desktop's
+`signrelease -product agentry-mcp`, and uploads the workflow artifact
+`agentry-mcp-<version>`, which the site's downloads importer takes once
+agentry-web#250 teaches it to. `sign` runs in the `release` environment,
+which admits only `main` and `v*` tags, and needs two secrets there:
+`AGENTRY_UPDATE_SIGNING_KEY` (the estate key, the desktop's) and
+`AGENTRY_BUILD_TOKEN` (read access to the private desktop module the signer
+is installed from). Without either, a release fails; it is never uploaded
+unsigned. `scripts/operator/release-setup.sh` sets up the environment and
+both secrets — the key decrypted from the operator's backup straight into
+the secret — and runs a dry run; re-run it after a key rotation. To release:
+bump both version strings in one pull request into `dev`, promote it, then
+tag `main`.
 
 `secureagentry-mcp/` is the registry-API server this repository shipped
 before 2026-09-12, parked as it was: its own `package.json`, its own

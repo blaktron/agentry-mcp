@@ -1,0 +1,213 @@
+# The MCP server's release (agentry-mcp#32, register DEV-125): a tag
+# v<semver> pushed to main packages the server as one self-contained tarball
+# (scripts/package.sh — the same script CI runs on every pull request),
+# starts it unpacked, writes BUILD-INFO and SHA256SUMS over both, signs the
+# sums with the estate's own update-signing key by the desktop's signrelease
+# at a pinned commit (which verifies what it wrote against the committed key
+# set, so a bundle no importer would accept is never uploaded), and uploads
+# the set as ONE workflow artifact named agentry-mcp-<version>. The site will
+# import it with build-downloads.sh once agentry-web#250 teaches it to. No
+# GitHub Release before 1.0 (the desktop's D-023 rule), and no npm publish.
+#
+# Two jobs, because the key is the desktop's own update key (D-026): `package`
+# runs npm and the repository's code and holds no secret; `sign` checks out
+# nothing, runs no npm, and is the only job in the `release` environment, so
+# nothing a dependency could do while packaging runs where the key is. Every
+# npm ci here runs with --ignore-scripts besides.
+#
+# The tarball is JavaScript for every platform, so there is no OS signature to
+# make: the estate's signature over SHA256SUMS is the whole provenance, and
+# BUILD-INFO says signed=false in the site's grammar (an OS code signature).
+#
+# workflow_dispatch runs the same jobs as a dry run, named by git describe; it
+# signs exactly as a tag does and the site's importer refuses its bundle by
+# event=. Nothing in the tree's build or tests needs any of this: npm run
+# check and scripts/package.sh work with no token and no signing tool.
+name: release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run per ref, never cancelled by a later one: a release in flight
+# finishes or fails on its own account.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+env:
+  # The desktop COMMIT whose internal/cmd/signrelease signs this bundle and
+  # whose internal/selfupdate/keys.json is the key set the signature is
+  # verified against before upload — the same key set the site's importer
+  # checks. The CLI pins the same commit. When the desktop rotates or retires
+  # a key (agentry-desktop#111), this pin and the release environment's
+  # AGENTRY_UPDATE_SIGNING_KEY move together (scripts/operator/release-setup.sh
+  # reloads the secret); either alone fails the next release closed.
+  DESKTOP_SIGNRELEASE_REF: c4b13867dd9fc9783f5daf9438e964e5d7fce05d
+
+jobs:
+  # Everything that runs npm or this repository's code. It holds no secret.
+  package:
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      # Refuses before anything is built: a tag that is not semver, or one the
+      # server would not report — package.json and SERVER_VERSION must both
+      # say the tag's version, or a person's host would show one number and
+      # the file another.
+      - name: The version this release is named for
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            [[ "${GITHUB_REF_NAME}" =~ ^v(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*)){2}$ ]] \
+              || { echo "::error::${GITHUB_REF_NAME} is not a v<major>.<minor>.<patch> tag"; exit 1; }
+            v="${GITHUB_REF_NAME#v}"
+            pkg=$(node -p 'require("./package.json").version')
+            [ "$pkg" = "$v" ] || { echo "::error::package.json says $pkg, the tag says $v"; exit 1; }
+            grep -qF "SERVER_VERSION = \"$v\";" src/server.ts \
+              || { echo "::error::src/server.ts's SERVER_VERSION is not \"$v\""; exit 1; }
+          else
+            v=$(git describe --tags --always 2>/dev/null | sed 's/^v//')
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "version $v (${GITHUB_EVENT_NAME} on ${GITHUB_REF})"
+      # The gate CI runs, again, on the tagged commit: a tag on a commit whose
+      # checks were never green does not ship.
+      - name: npm run check
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run check
+      - name: The tarball
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: scripts/package.sh "$VERSION" dist-release
+      - name: Start the unpacked server
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            node scripts/package-smoke.mjs "dist-release/agentry-mcp-$VERSION.tar.gz" --expect-version "$VERSION"
+          else
+            node scripts/package-smoke.mjs "dist-release/agentry-mcp-$VERSION.tar.gz"
+          fi
+      - name: BUILD-INFO and SHA256SUMS
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p bundle
+          cp "dist-release/agentry-mcp-$VERSION.tar.gz" bundle/
+          {
+            echo "product=agentry-mcp"
+            echo "version=$VERSION"
+            echo "event=${GITHUB_EVENT_NAME}"
+            echo "ref=${GITHUB_REF}"
+            echo "commit=${GITHUB_SHA}"
+            echo "node=$(node --version)"
+            # The site's grammar: an OS code signature, which a tarball of
+            # JavaScript does not carry. The estate's signature is the .minisig.
+            echo "signed=false"
+            echo "built_by=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > bundle/BUILD-INFO
+          cat bundle/BUILD-INFO
+          cd bundle
+          sha256sum agentry-mcp-* BUILD-INFO > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-agentry-mcp-${{ steps.version.outputs.version }}
+          path: bundle/
+          if-no-files-found: error
+          retention-days: 1
+
+  # The only job that sees the key. No checkout, no npm, no code of this
+  # repository: it takes the bundle, checks it, signs it, uploads it.
+  sign:
+    needs: package
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 15
+    # The `release` environment admits only main and v* tags, and both secrets
+    # below are its own, so no other ref's job can read them.
+    environment: release
+    env:
+      VERSION: ${{ needs.package.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: unsigned-agentry-mcp-${{ needs.package.outputs.version }}
+          path: bundle
+      - name: The bundle is what package wrote
+        run: |
+          set -euo pipefail
+          cd bundle
+          sha256sum -c SHA256SUMS
+          [ "$(ls | sort | tr '\n' ' ')" = "BUILD-INFO SHA256SUMS agentry-mcp-$VERSION.tar.gz " ] \
+            || { echo "::error::the bundle holds $(ls | tr '\n' ' ')"; exit 1; }
+          grep -qx "version=$VERSION" BUILD-INFO && grep -qx "commit=${GITHUB_SHA}" BUILD-INFO \
+            || { echo "::error::BUILD-INFO is not this run's"; exit 1; }
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.0"
+          # Shared persistent host module cache; restoring the Actions cache
+          # over it left partial modules in the core (agentry#225).
+          cache: false
+      # Job-scoped on this persistent runner, removed at the end: the token
+      # reaches a file the job deletes, not the runner's global git config. It
+      # exists for one thing, resolving the private desktop module the signer
+      # is installed from.
+      - name: Authenticate for the private blaktron modules (job-scoped)
+        env:
+          AGENTRY_BUILD_TOKEN: ${{ secrets.AGENTRY_BUILD_TOKEN }}
+        run: |
+          set -euo pipefail
+          [ -n "${AGENTRY_BUILD_TOKEN}" ] || { echo "::error::No AGENTRY_BUILD_TOKEN secret in the release environment: the signer is a private module, so this release cannot be signed and does not complete (agentry-mcp#33)."; exit 1; }
+          echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/gitconfig" >> "$GITHUB_ENV"
+          echo "GOPRIVATE=github.com/blaktron/*" >> "$GITHUB_ENV"
+          git config --file "$RUNNER_TEMP/gitconfig" url."https://x-access-token:${AGENTRY_BUILD_TOKEN}@github.com/".insteadOf "https://github.com/"
+      - name: The desktop's signrelease at the pinned commit
+        run: GOBIN="$RUNNER_TEMP" GOWORK=off go install "github.com/blaktron/agentry-desktop/internal/cmd/signrelease@${DESKTOP_SIGNRELEASE_REF}"
+      # The private half is an environment secret, piped to the signer on
+      # stdin, never written to disk, dropped from the signer's own
+      # environment (agentry-desktop D-026). -product agentry-mcp: the signed
+      # trusted comment names this product, and the signer refuses sums whose
+      # artifact names do not carry it, so this bundle can never be offered to
+      # the desktop as an update of itself.
+      - name: Sign SHA256SUMS with the estate's update-signing key
+        env:
+          AGENTRY_UPDATE_SIGNING_KEY: ${{ secrets.AGENTRY_UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "${AGENTRY_UPDATE_SIGNING_KEY}" ] || { echo "::error::No AGENTRY_UPDATE_SIGNING_KEY secret in the release environment: the bundle would carry no signature the site could check, so this release does not complete (agentry-mcp#33)."; exit 1; }
+          printf '%s' "${AGENTRY_UPDATE_SIGNING_KEY}" \
+            | env -u AGENTRY_UPDATE_SIGNING_KEY "$RUNNER_TEMP/signrelease" \
+                -key - \
+                -in bundle/SHA256SUMS \
+                -product agentry-mcp \
+                -version "$VERSION" \
+                -commit "${GITHUB_SHA}"
+          cat bundle/SHA256SUMS.minisig
+      - name: Remove the signing binary and the job-scoped git credential
+        if: always()
+        run: rm -f "$RUNNER_TEMP/signrelease" "$RUNNER_TEMP/gitconfig"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agentry-mcp-${{ needs.package.outputs.version }}
+          path: bundle/
+          if-no-files-found: error
+          retention-days: 90
