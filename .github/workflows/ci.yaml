@@ -58,6 +58,34 @@ jobs:
           fi
           echo "ok: no consent flag outside the confirm path"
 
+  # The downloadable tarball (agentry-mcp#32), built by the same script the
+  # release runs, twice, so a change that breaks packaging or makes it
+  # irreproducible fails here and not at a tag; then unpacked away from this
+  # checkout and started, with no CLI (it must refuse) and with the tests'
+  # fake CLI (it must answer initialize and list its tools).
+  package:
+    runs-on: [self-hosted, linux, x64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Package twice and compare
+        run: |
+          set -euo pipefail
+          scripts/package.sh 0.0.0-ci "$RUNNER_TEMP/a"
+          scripts/package.sh 0.0.0-ci "$RUNNER_TEMP/b"
+          a=$(sha256sum "$RUNNER_TEMP/a/agentry-mcp-0.0.0-ci.tar.gz" | cut -d' ' -f1)
+          b=$(sha256sum "$RUNNER_TEMP/b/agentry-mcp-0.0.0-ci.tar.gz" | cut -d' ' -f1)
+          [ "$a" = "$b" ] || { echo "::error::two packagings of one commit differ ($a, $b)"; exit 1; }
+          echo "reproducible: $a"
+
+      - name: Start the unpacked server
+        run: node scripts/package-smoke.mjs "$RUNNER_TEMP/a/agentry-mcp-0.0.0-ci.tar.gz"
+
   parked:
     runs-on: [self-hosted, linux, x64]
     defaults:
