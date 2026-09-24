@@ -55,8 +55,9 @@ terminal, and the model is not you. So installing is two calls:
 1. **Preview.** `agentry_install` without `confirm` runs the CLI's plan mode
    and writes nothing. It returns what consent would cover — the resolved
    version, the capability contract, the diff against what this machine
-   accepted before, the attestation verdict (`verified`, `unsigned` or
-   `unscanned`), the refusal an install would meet, where it would go — plus `digest`: an HMAC-SHA-256, under a
+   accepted before, the attestation verdict (`verified`, `unsigned`,
+   `unscanned`, `mismatch` or `unverifiable`), the refusal an install
+   would meet, where it would go — plus `digest`: an HMAC-SHA-256, under a
    key only this server process holds, over exactly those facts. The model
    is told to show you the contract.
 2. **Confirm.** The same call with `confirm` set to that digest. The server
@@ -231,8 +232,8 @@ only.
 
 ## Honest posture
 
-The registry reports each release as scanned, with a finding count, and
-signed or unsigned — never as safe. The tool descriptions and the
+The registry reports each release as scanned, with a finding count, or as
+unscanned, and as signed or unsigned — never as safe. The tool descriptions and the
 instructions say the same; `npm run prose-check` refuses a never-word in
 any string literal under `src/` or in this README.
 

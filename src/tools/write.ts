@@ -23,7 +23,7 @@ export function registerWriteTools(d: Driver): void {
       description:
         "Install a BriefAgent for an agent application with the installed agentry CLI, in two calls. " +
         "Without `confirm`: a preview (`agentry install --plan --json`) — the resolved version, the capability " +
-        "contract, the diff against what this machine accepted before, whether the release is signed, the " +
+        "contract, the diff against what this machine accepted before, the attestation verdict, the " +
         "refusal an install would meet, the target and directory — plus `digest`; nothing is written. Show the " +
         "person the contract and the directory, and only when they agree call again with `confirm` set to that " +
         "digest: the server re-runs the preview, refuses if anything changed, and then installs. An unsigned " +

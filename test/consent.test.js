@@ -199,6 +199,16 @@ test("unscanned is its own consent: the preview says so, acceptUnsigned does not
   ]);
   assert.equal(readFileSync(writes, "utf8"), "written\n");
 
+  // Unscanned's word does not lift unsigned either.
+  const unsignedOnly = await connect({ FAKE_WRITES: writesFile(), FAKE_ATTEST: "unsigned" });
+  const up = await preview(unsignedOnly.client);
+  const crossed = await unsignedOnly.client.callTool({
+    name: "agentry_install",
+    arguments: { ref: "acme/widget", confirm: up.digest, acceptUnscanned: true },
+  });
+  assert.equal(crossed.isError, true);
+  assert.match(crossed.content[0].text, /acceptUnsigned: true/);
+
   // A signed or an unsigned release never gets --allow-unscanned, whatever the call says.
   for (const attest of ["verified", "unsigned"]) {
     const other = await connect({ FAKE_WRITES: writesFile(), FAKE_ATTEST: attest });

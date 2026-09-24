@@ -198,9 +198,9 @@ export interface ConfirmOptions {
 
 /**
  * The confirm half, shared by every writing tool: the digest must match
- * the re-run preview's facts, a refusal the person cannot lift stops it, an
- * unsigned release needs acceptUnsigned, an unscanned one acceptUnscanned,
- * and the person is asked when the host can ask. Returns the Consent, or the tool error to return.
+ * the re-run preview's facts, a refusal the person cannot lift stops it,
+ * an unsigned release needs acceptUnsigned, an unscanned one
+ * acceptUnscanned, and the person is asked when the host can ask. Returns the Consent, or the tool error to return.
  */
 export async function confirmed(
   server: McpServer,
@@ -232,10 +232,9 @@ export async function confirmed(
   }
   if (o.unscanned && !o.acceptUnscanned) {
     return text(
-      `${tool}: the release is unscanned${o.refusal ? ` (${o.refusal})` : ""}: the registry admitted it without a ` +
-        "scan, so no findings, no report and no attestation stand behind it. Going ahead needs the person's " +
-        "explicit acceptance that nothing about its contents was checked: confirm again with acceptUnscanned: " +
-        "true only if they said so. acceptUnsigned does not cover it.",
+      `${tool}: the release is unscanned: ${o.refusal ?? "the registry admitted it without a scan"}. ` +
+        "Going ahead needs the person's explicit acceptance that nothing about its contents was checked: " +
+        "confirm again with acceptUnscanned: true only if they said so. acceptUnsigned does not cover it.",
       true,
     );
   }
