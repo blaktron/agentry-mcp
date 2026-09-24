@@ -73,8 +73,8 @@ export function registerRunTools(d: Driver): void {
         "runs `agentry run --mode autonomous --output-format json` and returns the CLI's result envelope " +
         "(status, exitClass, result, usage, receipts) with `receiptsDir`, `resultFile` and `outDir` beside it. " +
         "The receipts are the record of what was enforced; name them when you report a run. An unsigned " +
-        "release, and every local workspace, needs `acceptUnsigned: true` on the confirm, which you pass only " +
-        "if the person said so. A run stops at timeoutSeconds, or the runner policy's own budget when omitted " +
+        "release, and every local workspace, needs `acceptUnsigned: true` on the confirm; an unscanned release " +
+        "(admitted without a scan) needs `acceptUnscanned: true`; pass either only if the person said so. A run stops at timeoutSeconds, or the runner policy's own budget when omitted " +
         "(the preview shows which); the CLI's teardown runs on every path. Progress streams from the CLI's " +
         "log when the host asks for it.",
       inputSchema: {
@@ -141,6 +141,12 @@ export function registerRunTools(d: Driver): void {
           .optional()
           .describe(
             "Only with `confirm`, only when the preview said unsigned, and only if the person accepted that.",
+          ),
+        acceptUnscanned: z
+          .boolean()
+          .optional()
+          .describe(
+            "Only with `confirm`, only when the preview said unscanned (admitted without a scan), and only if the person accepted that nothing about its contents was checked.",
           ),
       },
       annotations: {

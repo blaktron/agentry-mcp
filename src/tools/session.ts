@@ -21,7 +21,7 @@ export function registerSessionTools(d: Driver): void {
         "Start an interactive session with a BriefAgent (`agentry run --mode interactive`), in the same two " +
         "calls as agentry_run: without `confirm`, a preview of the compiled plan for the interactive mode " +
         "with a `digest`; with `confirm` set to that digest (and `acceptUnsigned: true` only if the person " +
-        "accepted an unsigned or local release), the CLI's chat is started on a terminal this server owns " +
+        "accepted an unsigned or local release, `acceptUnscanned: true` only if they accepted an unscanned one), the CLI's chat is started on a terminal this server owns " +
         "and the call returns once the sandbox is up, with the session id, the output folder and the " +
         "receipts directory. Then agentry_session_send for each turn and agentry_session_close to end it. " +
         "One session at a time; a second start is refused naming the open one. The release's own idle " +
@@ -76,6 +76,12 @@ export function registerSessionTools(d: Driver): void {
           .optional()
           .describe(
             "Only with `confirm`, only when the preview said unsigned, and only if the person accepted that.",
+          ),
+        acceptUnscanned: z
+          .boolean()
+          .optional()
+          .describe(
+            "Only with `confirm`, only when the preview said unscanned (admitted without a scan), and only if the person accepted that nothing about its contents was checked.",
           ),
       },
       annotations: {

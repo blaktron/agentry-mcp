@@ -15,7 +15,7 @@
 #   FAKE_SESSION_FAIL_START  the interactive run stops (exit 13, colour on the screen) before any receipt
 #   FAKE_TURN_DELAY       seconds a session takes to answer a turn
 #   FAKE_CONTRACT  the install plan's contract (JSON; default a workspace read)
-#   FAKE_ATTEST    the install plan's attestation (default verified)
+#   FAKE_ATTEST    the install plan's attestation (default verified; unsigned and unscanned bring their refusal)
 #   FAKE_REFUSAL   the install plan's refusal (default none)
 #   FAKE_WRITES    a file the fake touches on a real install/uninstall
 set -u
@@ -43,6 +43,7 @@ attest="${FAKE_ATTEST:-verified}"
 signed=false; [ "$attest" = verified ] && signed=true
 refusal="${FAKE_REFUSAL:-}"
 [ "$attest" = unsigned ] && [ -z "$refusal" ] && refusal="unsigned — registry offers no attestation; re-run with --allow-unsigned to install it anyway"
+[ "$attest" = unscanned ] && [ -z "$refusal" ] && refusal="unscanned — the registry admitted acme/widget@1.0.0 without a scan: no findings, no report and no attestation stand behind it; re-run with --allow-unscanned to install it anyway, accepting that nothing about its contents was checked"
 case "$1" in
   search) echo '{"results":[{"namespace":"acme","name":"widget","modes":["autonomous"],"summary":"x","installs30d":2,"quarantineState":"none"}],"facets":{},"total":1}' ;;
   info) echo '{"agent":{"namespace":"acme","name":"widget"},"latest":{"version":"1.0.0","capabilities":{"network":{"egress":"none"}}}}' ;;
@@ -51,6 +52,8 @@ case "$1" in
   list) echo '{"path":"/home/me/.config/agentry/installed.yaml","records":[{"registry":"r","namespace":"acme","name":"widget","target":"claude-skill","dir":"/home/me/.claude/skills/widget","version":"1.0.0","present":true},{"registry":"runner","namespace":"acme","name":"gone","target":"runner","dir":"/tmp/gone","version":"1.0.0","present":false}]}' ;;
   install)
     if has --plan; then
+      # A plan lifts nothing: a consent flag on it is a test failure.
+      if has --allow-unsigned || has --allow-unscanned; then echo "fake: a consent flag on an install plan" >&2; exit 99; fi
       printf '{"ref":"acme/widget@1.0.0","namespace":"acme","name":"widget","version":"1.0.0","digest":"sha256:aaaa","modes":["autonomous"],"contract":%s,"contractDigest":"sha256:cccc","attestation":"%s","signed":%s,"diff":{},"needsConfirmation":true,"reason":"a first install","target":"claude-skill","dir":"/home/me/.claude/skills/widget","managed":true%s}\n' "$contract" "$attest" "$signed" "$( [ -n "$refusal" ] && printf ',"refusal":%s' "$(printf '%s' "$refusal" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')" )"
     else
       [ -n "${FAKE_WRITES:-}" ] && echo written >> "$FAKE_WRITES"
@@ -79,12 +82,14 @@ case "$1" in
       # The plan asks nothing and lifts nothing: the attestation and the
       # refusal are reported, --allow-unsigned on a plan is a test failure.
       if has --allow-unsigned; then echo "fake: --allow-unsigned on a plan" >&2; exit 99; fi
+      if has --allow-unscanned; then echo "fake: --allow-unscanned on a plan" >&2; exit 99; fi
       ratt="${FAKE_RUN_ATTEST:-verified}"; has --local && ratt=local
       rsigned=false; [ "$ratt" = verified ] && rsigned=true
       rref='acme/widget@1.0.0'; has --local && rref='fixtures/hello-report@1.0.0'
       rrefusal="${FAKE_RUN_REFUSAL:-}"
       case "$ratt" in
         unsigned|local) [ -z "$rrefusal" ] && rrefusal="the release is $ratt; a run needs --allow-unsigned" ;;
+        unscanned) [ -z "$rrefusal" ] && rrefusal="the release is unscanned — the registry admitted it without a scan; a run needs --allow-unscanned" ;;
         verified) ;;
         *) [ -z "$rrefusal" ] && rrefusal="attestation $ratt — a run refuses" ;;
       esac

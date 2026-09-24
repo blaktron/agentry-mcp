@@ -49,12 +49,12 @@ jobs:
       - name: Test
         run: npm test
 
-      # --yes and --allow-unsigned reach the CLI only from a confirm call
-      # (plan §3); until M3 lands the confirm path, they appear nowhere.
+      # --yes, --allow-unsigned and --allow-unscanned reach the CLI only from
+      # a confirm call (plan §3), so they are spelled only in src/consent.ts.
       - name: Consent flags appear only in the confirm path
         run: |
-          if grep -rn -e '--yes' -e '--allow-unsigned' src/ | grep -v 'src/consent.ts'; then
-            echo "::error::--yes/--allow-unsigned outside src/consent.ts"; exit 1
+          if grep -rn -e '--yes' -e '--allow-unsigned' -e '--allow-unscanned' src/ | grep -v 'src/consent.ts'; then
+            echo "::error::--yes/--allow-unsigned/--allow-unscanned outside src/consent.ts"; exit 1
           fi
           echo "ok: no consent flag outside the confirm path"
 

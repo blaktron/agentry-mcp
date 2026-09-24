@@ -55,8 +55,8 @@ terminal, and the model is not you. So installing is two calls:
 1. **Preview.** `agentry_install` without `confirm` runs the CLI's plan mode
    and writes nothing. It returns what consent would cover — the resolved
    version, the capability contract, the diff against what this machine
-   accepted before, whether the release is signed, the refusal an install
-   would meet, where it would go — plus `digest`: an HMAC-SHA-256, under a
+   accepted before, the attestation verdict (`verified`, `unsigned` or
+   `unscanned`), the refusal an install would meet, where it would go — plus `digest`: an HMAC-SHA-256, under a
    key only this server process holds, over exactly those facts. The model
    is told to show you the contract.
 2. **Confirm.** The same call with `confirm` set to that digest. The server
@@ -64,11 +64,15 @@ terminal, and the model is not you. So installing is two calls:
    contract, the signature, the directory), and only then runs the install
    with `--yes`. An unsigned release needs `acceptUnsigned: true` on the
    confirm as well, which the model is told to pass only if you said so.
+   An unscanned release, one the registry admitted without a scan, needs
+   `acceptUnscanned: true` in the same way. It is a consent of its own,
+   because no findings, report or attestation stand behind that release,
+   and `acceptUnsigned` does not cover it.
 
 The digest is the control, not the instruction: a model cannot confirm what
 the server did not show it — it cannot mint a digest from the facts, since
-the key is the server's — and `--yes` reaches the CLI from no other path (CI
-greps for it). The install names the release the preview resolved, never a
+the key is the server's — and `--yes`, `--allow-unsigned` and
+`--allow-unscanned` reach the CLI from no other path (CI greps for them). The install names the release the preview resolved, never a
 floating range. When your host supports MCP elicitation, the server also
 asks you directly before the write, and a "no" cancels. Removing is the
 same two calls.
@@ -115,8 +119,9 @@ killed, and the error says so and that its teardown may not have run. Progress �
 own narration — streams as MCP progress notifications when the host asks
 for them, and the last lines come back as `log`. A local workspace
 (`local`) has attestation `local` and needs `acceptUnsigned` on the
-confirm, like an unsigned release; a verdict the person cannot lift
-(`mismatch`, `unverifiable`) stops the confirm.
+confirm, like an unsigned release. An unscanned release needs
+`acceptUnscanned`. A verdict the person cannot lift (`mismatch`,
+`unverifiable`) stops the confirm.
 
 ## Sessions
 

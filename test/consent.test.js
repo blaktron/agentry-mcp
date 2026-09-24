@@ -2,7 +2,8 @@
 // nothing and returns a digest; a confirm with the right digest runs the
 // write with --yes; a stale, wrong or missing digest is refused with a
 // message that says to preview again; --allow-unsigned reaches argv only
-// with unsigned in the preview and acceptUnsigned in the call; elicitation
+// with unsigned in the preview and acceptUnsigned in the call, and
+// --allow-unscanned only with unscanned and acceptUnscanned; elicitation
 // asks the person when the host has it, and a "no" cancels.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -156,6 +157,65 @@ test("--allow-unsigned reaches argv only with unsigned in the preview and accept
   });
   for (const a of receivedArgv(signed.argvFile))
     assert.ok(!a.includes("--allow-unsigned"), `--allow-unsigned leaked: ${a}`);
+});
+
+test("unscanned is its own consent: the preview says so, acceptUnsigned does not lift it, acceptUnscanned adds --allow-unscanned alone", async () => {
+  const writes = writesFile();
+  const { client, argvFile } = await connect({ FAKE_WRITES: writes, FAKE_ATTEST: "unscanned" });
+  const p = await preview(client);
+  assert.equal(p.unscanned, true);
+  assert.equal(p.unsigned, false);
+  assert.equal(p.plan.attestation, "unscanned");
+  assert.match(p.plan.refusal, /--allow-unscanned/);
+
+  const without = await client.callTool({
+    name: "agentry_install",
+    arguments: { ref: "acme/widget", confirm: p.digest },
+  });
+  assert.equal(without.isError, true);
+  assert.match(without.content[0].text, /unscanned/);
+  assert.match(without.content[0].text, /acceptUnscanned: true/);
+
+  // The wrong acceptance: unsigned's word does not cover unscanned.
+  const wrongWord = await client.callTool({
+    name: "agentry_install",
+    arguments: { ref: "acme/widget", confirm: p.digest, acceptUnsigned: true },
+  });
+  assert.equal(wrongWord.isError, true);
+  assert.match(wrongWord.content[0].text, /acceptUnsigned does not cover it/);
+  assert.equal(existsSync(writes), false, "no refused confirm wrote");
+
+  const withIt = await client.callTool({
+    name: "agentry_install",
+    arguments: { ref: "acme/widget", confirm: p.digest, acceptUnscanned: true },
+  });
+  assert.equal(withIt.isError, undefined, withIt.content[0].text);
+  assert.deepEqual(receivedArgv(argvFile).at(-1), [
+    "install",
+    "acme/widget@1.0.0",
+    "--json",
+    "--yes",
+    "--allow-unscanned",
+  ]);
+  assert.equal(readFileSync(writes, "utf8"), "written\n");
+
+  // A signed or an unsigned release never gets --allow-unscanned, whatever the call says.
+  for (const attest of ["verified", "unsigned"]) {
+    const other = await connect({ FAKE_WRITES: writesFile(), FAKE_ATTEST: attest });
+    const op = await preview(other.client);
+    assert.equal(op.unscanned, false);
+    await other.client.callTool({
+      name: "agentry_install",
+      arguments: {
+        ref: "acme/widget",
+        confirm: op.digest,
+        acceptUnsigned: true,
+        acceptUnscanned: true,
+      },
+    });
+    for (const a of receivedArgv(other.argvFile))
+      assert.ok(!a.includes("--allow-unscanned"), `${attest}: --allow-unscanned leaked: ${a}`);
+  }
 });
 
 test("a refusal the person cannot lift (an attestation mismatch) is refused at confirm too", async () => {
