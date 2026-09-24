@@ -23,11 +23,12 @@ export function registerWriteTools(d: Driver): void {
       description:
         "Install a BriefAgent for an agent application with the installed agentry CLI, in two calls. " +
         "Without `confirm`: a preview (`agentry install --plan --json`) — the resolved version, the capability " +
-        "contract, the diff against what this machine accepted before, whether the release is signed, the " +
+        "contract, the diff against what this machine accepted before, the attestation verdict, the " +
         "refusal an install would meet, the target and directory — plus `digest`; nothing is written. Show the " +
         "person the contract and the directory, and only when they agree call again with `confirm` set to that " +
         "digest: the server re-runs the preview, refuses if anything changed, and then installs. An unsigned " +
-        "release also needs `acceptUnsigned: true` on the confirm call, which you pass only if the person said so. " +
+        "release also needs `acceptUnsigned: true` on the confirm call, and an unscanned one (admitted without a scan) " +
+        "`acceptUnscanned: true`; pass either only if the person said so. " +
         "The install goes where the CLI puts it: a Claude skill under ~/.claude/skills/<name>, or agents-md under " +
         "./agents/<name> with AGENTS.md updated.",
       inputSchema: {
@@ -56,6 +57,12 @@ export function registerWriteTools(d: Driver): void {
           .optional()
           .describe(
             "Only with `confirm`, only for a release the preview reported as unsigned, and only if the person accepted that.",
+          ),
+        acceptUnscanned: z
+          .boolean()
+          .optional()
+          .describe(
+            "Only with `confirm`, only for a release the preview reported as unscanned (admitted without a scan), and only if the person accepted that nothing about its contents was checked.",
           ),
       },
       annotations: {

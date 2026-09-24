@@ -119,6 +119,7 @@ export interface RunArgs {
   registry?: string;
   confirm?: string;
   acceptUnsigned?: boolean;
+  acceptUnscanned?: boolean;
 }
 
 /** The run plan the CLI prints (agentry-cli#124); the fields consent reads. */
@@ -228,7 +229,8 @@ export interface RunConsent {
  * The preview never lifts the unsigned gate: the CLI reports `attestation:
  * unsigned` (a release with no attestation) or `local` (a workspace) with
  * the refusal, and only a confirm carrying acceptUnsigned — the person's
- * word — lifts it. Returns the preview or the tool error to hand back, or
+ * word — lifts it. `unscanned` (admitted without a scan) is the same shape
+ * with its own word, acceptUnscanned. Returns the preview or the tool error to hand back, or
  * the consent.
  */
 export async function runConsent(
@@ -243,6 +245,7 @@ export async function runConsent(
   if (!planned.ok) return planned.result;
   const { plan, log } = planned;
   const unsigned = plan.attestation === "unsigned" || plan.attestation === "local";
+  const unscanned = plan.attestation === "unscanned";
   // The budget the run gets: the call's, else the compiled plan's (the
   // policy's), else the server's assumption.
   const timeoutSeconds =
@@ -250,11 +253,16 @@ export async function runConsent(
   const facts = runFacts(plan, a, timeoutSeconds);
 
   if (a.confirm === undefined) {
-    return previewText({ plan, unsigned, timeoutSeconds, log: tail(log), writes: false }, facts);
+    return previewText(
+      { plan, unsigned, unscanned, timeoutSeconds, log: tail(log), writes: false },
+      facts,
+    );
   }
   const ok = await confirmed(d.server, tool, a.confirm, facts, {
     unsigned,
     acceptUnsigned: a.acceptUnsigned,
+    unscanned,
+    acceptUnscanned: a.acceptUnscanned,
     refusal: plan.refusal,
     ask:
       `${mode === "interactive" ? "Start a session with" : "Run"} ${plan.ref} (${plan.mode}` +

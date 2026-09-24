@@ -8,10 +8,15 @@
  * the control, not the tool description: a model cannot confirm what the
  * server did not show it.
  *
- * `--yes` and `--allow-unsigned` are spelled in this file and nowhere else
- * (CI greps for it): `--yes` only after a digest matched, `--allow-unsigned`
- * only when the preview said the release is unsigned AND the confirm call
- * said `acceptUnsigned: true`.
+ * `--yes`, `--allow-unsigned` and `--allow-unscanned` are spelled in this
+ * file and nowhere else (CI greps for them): `--yes` only after a digest
+ * matched, `--allow-unsigned` only when the preview said the release is
+ * unsigned AND the confirm call said `acceptUnsigned: true`, and
+ * `--allow-unscanned` only when the preview said it is unscanned AND the
+ * confirm said `acceptUnscanned: true`. Unscanned is its own consent, not a
+ * kind of unsigned (DR-27): the registry admitted the release without a
+ * scan, so no findings, report or attestation stand behind it, and
+ * `acceptUnsigned` does not lift it.
  */
 
 import { createHmac, randomBytes } from "node:crypto";
@@ -90,6 +95,7 @@ export interface InstallArgs {
   registry?: string;
   confirm?: string;
   acceptUnsigned?: boolean;
+  acceptUnscanned?: boolean;
 }
 
 export type ToolText = CallToolResult;
@@ -172,12 +178,19 @@ export function previewText(preview: Record<string, unknown>, facts: unknown): T
  */
 export interface Consent {
   readonly allowUnsigned: boolean;
+  readonly allowUnscanned: boolean;
 }
 
 export interface ConfirmOptions {
   unsigned: boolean;
   acceptUnsigned?: boolean;
-  /** The refusal the CLI's plan reported, if any; unsigned's own is liftable. */
+  /** The preview's verdict was `unscanned`: admitted without a scan. */
+  unscanned?: boolean;
+  acceptUnscanned?: boolean;
+  /**
+   * The refusal the CLI's plan reported, if any. Unsigned's and unscanned's
+   * own are liftable, each by its own acceptance; any other is not.
+   */
   refusal?: string;
   /** What the person is asked through elicitation. */
   ask: string;
@@ -185,9 +198,9 @@ export interface ConfirmOptions {
 
 /**
  * The confirm half, shared by every writing tool: the digest must match
- * the re-run preview's facts, a refusal the person cannot lift stops it, an
- * unsigned release needs acceptUnsigned, and the person is asked when the
- * host can ask. Returns the Consent, or the tool error to return.
+ * the re-run preview's facts, a refusal the person cannot lift stops it,
+ * an unsigned release needs acceptUnsigned, an unscanned one
+ * acceptUnscanned, and the person is asked when the host can ask. Returns the Consent, or the tool error to return.
  */
 export async function confirmed(
   server: McpServer,
@@ -207,7 +220,7 @@ export async function confirmed(
       true,
     );
   }
-  if (o.refusal && !o.unsigned) {
+  if (o.refusal && !o.unsigned && !o.unscanned) {
     return text(`${tool}: the CLI would refuse this: ${o.refusal}`, true);
   }
   if (o.unsigned && !o.acceptUnsigned) {
@@ -217,19 +230,32 @@ export async function confirmed(
       true,
     );
   }
+  if (o.unscanned && !o.acceptUnscanned) {
+    return text(
+      `${tool}: the release is unscanned: ${o.refusal ?? "the registry admitted it without a scan"}. ` +
+        "Going ahead needs the person's explicit acceptance that nothing about its contents was checked: " +
+        "confirm again with acceptUnscanned: true only if they said so. acceptUnsigned does not cover it.",
+      true,
+    );
+  }
   const asked = await askPerson(server, o.ask);
   if (!asked.yes) return text(`${tool}: the person declined; nothing was done.`, true);
-  return { allowUnsigned: o.unsigned && o.acceptUnsigned === true };
+  return {
+    allowUnsigned: o.unsigned && o.acceptUnsigned === true,
+    allowUnscanned: o.unscanned === true && o.acceptUnscanned === true,
+  };
 }
 
 /**
  * Appends the consented flags — the only place in the server that spells
  * them (CI greps): --yes for a matched confirm, --allow-unsigned only when
- * the preview said unsigned and the person accepted that.
+ * the preview said unsigned and the person accepted that, --allow-unscanned
+ * only when the preview said unscanned and the person accepted that.
  */
 export function consentedArgv(argv: string[], c: Consent): string[] {
   const out = [...argv, "--yes"];
   if (c.allowUnsigned) out.push("--allow-unsigned");
+  if (c.allowUnscanned) out.push("--allow-unscanned");
   return out;
 }
 
@@ -240,13 +266,16 @@ export async function install(d: Driver, a: InstallArgs): Promise<ToolText> {
   const { plan, log } = planned;
   const facts = installFacts(plan);
   const unsigned = plan.attestation === "unsigned";
+  const unscanned = plan.attestation === "unscanned";
 
   if (a.confirm === undefined) {
-    return previewText({ plan, log: tail(log), unsigned, writes: false }, facts);
+    return previewText({ plan, log: tail(log), unsigned, unscanned, writes: false }, facts);
   }
   const ok = await confirmed(d.server, "agentry_install", a.confirm, facts, {
     unsigned,
     acceptUnsigned: a.acceptUnsigned,
+    unscanned,
+    acceptUnscanned: a.acceptUnscanned,
     refusal: plan.refusal,
     ask:
       `Install ${plan.ref} to ${plan.dir} (${plan.target})? Contract: ${canonical(plan.contract)}. ` +
