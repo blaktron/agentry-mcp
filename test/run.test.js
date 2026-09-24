@@ -224,6 +224,36 @@ test("a preview never lifts the gate; a wrong digest is refused; unsigned needs 
   }
 });
 
+test("an unscanned release: the preview reports it, acceptUnsigned does not lift it, acceptUnscanned runs with --allow-unscanned", async () => {
+  const writes = writesFile();
+  const { client, argvFile } = await connect({ FAKE_WRITES: writes, FAKE_RUN_ATTEST: "unscanned" });
+  const p = await previewRun(client, { ref: "acme/widget" });
+  assert.equal(p.unscanned, true);
+  assert.equal(p.unsigned, false);
+  assert.equal(p.plan.attestation, "unscanned");
+  assert.match(p.plan.refusal, /--allow-unscanned/);
+  for (const extra of [{}, { acceptUnsigned: true }]) {
+    const r = await client.callTool({
+      name: "agentry_run",
+      arguments: { ref: "acme/widget", confirm: p.digest, ...extra },
+    });
+    assert.equal(r.isError, true);
+    assert.match(r.content[0].text, /acceptUnscanned: true/);
+  }
+  assert.equal(existsSync(writes), false);
+  const ok = await client.callTool({
+    name: "agentry_run",
+    arguments: { ref: "acme/widget", confirm: p.digest, acceptUnscanned: true },
+  });
+  assert.equal(ok.isError, undefined, ok.content[0].text);
+  const last = receivedArgv(argvFile).at(-1);
+  assert.ok(last.includes("--yes") && last.includes("--allow-unscanned"), `argv: ${last}`);
+  assert.ok(!last.includes("--allow-unsigned"), `argv: ${last}`);
+  for (const a of receivedArgv(argvFile))
+    if (a.includes("--plan"))
+      assert.ok(!a.includes("--allow-unscanned"), `a plan was lifted: ${a}`);
+});
+
 test("a refusal the person cannot lift (attestation mismatch) stops the confirm", async () => {
   const writes = writesFile();
   const { client } = await connect({ FAKE_WRITES: writes, FAKE_RUN_ATTEST: "mismatch" });
