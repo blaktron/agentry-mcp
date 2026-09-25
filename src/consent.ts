@@ -181,6 +181,36 @@ export interface Consent {
   readonly allowUnscanned: boolean;
 }
 
+/**
+ * One refusal a plan reports (agentry-cli#126): the gate it comes from,
+ * what it says, and the flag that lifts it — absent when none does.
+ */
+export interface PlanRefusal {
+  kind: string;
+  message: string;
+  lift?: string;
+}
+
+/**
+ * Every refusal a plan reports, in the order a run meets them: the CLI's
+ * `refusals` when it prints them, else its one deprecated `refusal`, whose
+ * lift is what it always was here — the verdict's own flag for an unsigned
+ * or unscanned release, none for anything else.
+ */
+export function planRefusals(
+  p: { refusals?: PlanRefusal[]; refusal?: string },
+  verdict: { unsigned: boolean; unscanned?: boolean },
+): PlanRefusal[] {
+  if (p.refusals !== undefined) return p.refusals;
+  if (!p.refusal) return [];
+  const lift = verdict.unsigned
+    ? "--allow-unsigned"
+    : verdict.unscanned
+      ? "--allow-unscanned"
+      : undefined;
+  return [{ kind: "attestation", message: p.refusal, ...(lift ? { lift } : {}) }];
+}
+
 export interface ConfirmOptions {
   unsigned: boolean;
   acceptUnsigned?: boolean;
@@ -188,10 +218,13 @@ export interface ConfirmOptions {
   unscanned?: boolean;
   acceptUnscanned?: boolean;
   /**
-   * The refusal the CLI's plan reported, if any. Unsigned's and unscanned's
-   * own are liftable, each by its own acceptance; any other is not.
+   * Every refusal the CLI's plan reported (planRefusals). One lifted by
+   * --allow-unsigned on an unsigned release, or by --allow-unscanned on an
+   * unscanned one, waits for that acceptance; any other stops the confirm,
+   * since this server passes no other lift (--allow-vulnerable-mcp among
+   * them) and the run would meet it.
    */
-  refusal?: string;
+  refusals?: PlanRefusal[];
   /** What the person is asked through elicitation. */
   ask: string;
 }
@@ -220,19 +253,35 @@ export async function confirmed(
       true,
     );
   }
-  if (o.refusal && !o.unsigned && !o.unscanned) {
-    return text(`${tool}: the CLI would refuse this: ${o.refusal}`, true);
+  const liftedBy = (r: PlanRefusal): "unsigned" | "unscanned" | undefined =>
+    r.lift === "--allow-unsigned" && o.unsigned
+      ? "unsigned"
+      : r.lift === "--allow-unscanned" && o.unscanned
+        ? "unscanned"
+        : undefined;
+  const refusals = o.refusals ?? [];
+  const standing = refusals.filter((r) => liftedBy(r) === undefined);
+  if (standing.length > 0) {
+    return text(
+      `${tool}: the CLI would refuse this: ${standing.map((r) => r.message).join("; ")}`,
+      true,
+    );
   }
+  const said = (by: "unsigned" | "unscanned") =>
+    refusals
+      .filter((r) => liftedBy(r) === by)
+      .map((r) => r.message)
+      .join("; ");
   if (o.unsigned && !o.acceptUnsigned) {
     return text(
-      `${tool}: the release is unsigned${o.refusal ? ` (${o.refusal})` : ""}. Going ahead needs the person's explicit ` +
+      `${tool}: the release is unsigned${said("unsigned") ? ` (${said("unsigned")})` : ""}. Going ahead needs the person's explicit ` +
         "acceptance: confirm again with acceptUnsigned: true only if they said so.",
       true,
     );
   }
   if (o.unscanned && !o.acceptUnscanned) {
     return text(
-      `${tool}: the release is unscanned: ${o.refusal ?? "the registry admitted it without a scan"}. ` +
+      `${tool}: the release is unscanned: ${said("unscanned") || "the registry admitted it without a scan"}. ` +
         "Going ahead needs the person's explicit acceptance that nothing about its contents was checked: " +
         "confirm again with acceptUnscanned: true only if they said so. acceptUnsigned does not cover it.",
       true,
@@ -276,7 +325,7 @@ export async function install(d: Driver, a: InstallArgs): Promise<ToolText> {
     acceptUnsigned: a.acceptUnsigned,
     unscanned,
     acceptUnscanned: a.acceptUnscanned,
-    refusal: plan.refusal,
+    refusals: planRefusals(plan, { unsigned, unscanned }),
     ask:
       `Install ${plan.ref} to ${plan.dir} (${plan.target})? Contract: ${canonical(plan.contract)}. ` +
       `Attestation: ${plan.attestation}.${plan.reason ? ` The CLI would ask because: ${plan.reason}.` : ""}`,

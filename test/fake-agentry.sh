@@ -9,7 +9,9 @@
 #   FAKE_NO_PLAN   set to make `install --help` omit --plan (an old CLI)
 #   FAKE_NO_RUN_PLAN  set to make `run --help` omit --plan (a CLI between #123 and #124)
 #   FAKE_RUN_ATTEST   the run plan's attestation for a registry ref (default verified; --local is always local)
-#   FAKE_RUN_REFUSAL  a refusal the run plan reports besides the attestation's
+#   FAKE_RUN_REFUSAL  the run plan's attestation refusal, in place of the verdict's own (no lift)
+#   FAKE_RUN_VULN     a vulnerable_server refusal the run plan reports after the attestation's (lift --allow-vulnerable-mcp)
+#   FAKE_RUN_LEGACY   the run plan prints only the one deprecated `refusal`, as a CLI before agentry-cli#126
 #   FAKE_INTAKE_REQUIRED  the run (not the plan) fails on a missing --intake, as the CLI does
 #   FAKE_SESSION_IDLE     seconds an interactive session waits for a turn before ending on idle_timeout
 #   FAKE_SESSION_FAIL_START  the interactive run stops (exit 13, colour on the screen) before any receipt
@@ -86,16 +88,31 @@ case "$1" in
       ratt="${FAKE_RUN_ATTEST:-verified}"; has --local && ratt=local
       rsigned=false; [ "$ratt" = verified ] && rsigned=true
       rref='acme/widget@1.0.0'; has --local && rref='fixtures/hello-report@1.0.0'
-      rrefusal="${FAKE_RUN_REFUSAL:-}"
+      rrefusal="${FAKE_RUN_REFUSAL:-}"; rlift=""
       case "$ratt" in
-        unsigned|local) [ -z "$rrefusal" ] && rrefusal="the release is $ratt; a run needs --allow-unsigned" ;;
-        unscanned) [ -z "$rrefusal" ] && rrefusal="the release is unscanned — the registry admitted it without a scan; a run needs --allow-unscanned" ;;
+        unsigned|local) [ -z "$rrefusal" ] && rrefusal="the release is $ratt; a run needs --allow-unsigned" && rlift=--allow-unsigned ;;
+        unscanned) [ -z "$rrefusal" ] && rrefusal="the release is unscanned — the registry admitted it without a scan; a run needs --allow-unscanned" && rlift=--allow-unscanned ;;
         verified) ;;
         *) [ -z "$rrefusal" ] && rrefusal="attestation $ratt — a run refuses" ;;
       esac
+      # refusals[] as agentry-cli#126 prints it; refusal is its first message.
+      rjson=$(RREF="$rrefusal" RLIFT="$rlift" RVULN="${FAKE_RUN_VULN:-}" LEGACY="${FAKE_RUN_LEGACY:-}" python3 -c '
+import json, os
+rs = []
+if os.environ["RREF"]:
+    r = {"kind": "attestation", "message": os.environ["RREF"]}
+    if os.environ["RLIFT"]: r["lift"] = os.environ["RLIFT"]
+    rs.append(r)
+if os.environ["RVULN"]:
+    rs.append({"kind": "vulnerable_server", "message": os.environ["RVULN"], "lift": "--allow-vulnerable-mcp"})
+out = ""
+if rs:
+    out += ",\"refusal\":" + json.dumps(rs[0]["message"])
+    if not os.environ["LEGACY"]: out += ",\"refusals\":" + json.dumps(rs)
+print(out, end="")')
       timeout=900; mode=autonomous; prev=""; for a in "$@"; do if [ "$prev" = "--timeout" ]; then timeout=$a; fi; if [ "$prev" = "--mode" ]; then mode=$a; fi; prev=$a; done
       echo "narration: compiled plan" >&2
-      printf '{"ref":"%s","version":"1.0.0","digest":"sha256:aaaa","mode":"%s","modes":["autonomous","interactive"],"summary":"x","plan":{"planVersion":2,"ref":"%s","digest":"sha256:aaaa","mode":"%s","policySha256":"sha256:pppp","capabilities":{"egressMode":"none","fsReadMode":"workspace"},"enforcement":{"network":"gateway --block-network"},"tools":["write_report"],"gateway":{"image":"docker/mcp-gateway:v0.43.3"},"proxy":{},"budgets":{"timeoutSeconds":%s}},"planSha256":"abc","contract":%s,"contractDigest":"sha256:cccc","attestation":"%s","signed":%s,"diff":{},"needsConfirmation":true,"reason":"a first run"%s}\n' "$rref" "$mode" "$rref" "$mode" "$timeout" "$contract" "$ratt" "$rsigned" "$( [ -n "$rrefusal" ] && printf ',"refusal":%s' "$(printf '%s' "$rrefusal" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')" )"
+      printf '{"ref":"%s","version":"1.0.0","digest":"sha256:aaaa","mode":"%s","modes":["autonomous","interactive"],"summary":"x","plan":{"planVersion":2,"ref":"%s","digest":"sha256:aaaa","mode":"%s","policySha256":"sha256:pppp","capabilities":{"egressMode":"none","fsReadMode":"workspace"},"enforcement":{"network":"gateway --block-network"},"tools":["write_report"],"gateway":{"image":"docker/mcp-gateway:v0.43.3"},"proxy":{},"budgets":{"timeoutSeconds":%s}},"planSha256":"abc","contract":%s,"contractDigest":"sha256:cccc","attestation":"%s","signed":%s,"diff":{},"needsConfirmation":true,"reason":"a first run"%s}\n' "$rref" "$mode" "$rref" "$mode" "$timeout" "$contract" "$ratt" "$rsigned" "$rjson"
     elif has --mode && [ "$(prev=""; for a in "$@"; do if [ "$prev" = "--mode" ]; then echo "$a"; fi; prev=$a; done)" = interactive ]; then
       # The chat on a terminal: colour and cursor codes on the screen, the
       # record in the events receipt, /finish and /quit end it, idle ends it.
