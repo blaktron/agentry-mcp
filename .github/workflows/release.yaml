@@ -216,7 +216,8 @@ jobs:
           set -euo pipefail
           cd "$RUNNER_TEMP/bundle"
           sha256sum -c SHA256SUMS
-          [ "$(ls | sort | tr '\n' ' ')" = "BUILD-INFO SHA256SUMS agentry-mcp-$VERSION.tar.gz " ] \
+          # C collation: a locale sort puts agentry-mcp-… before BUILD-INFO.
+          [ "$(ls | LC_ALL=C sort | tr '\n' ' ')" = "BUILD-INFO SHA256SUMS agentry-mcp-$VERSION.tar.gz " ] \
             || { echo "::error::the bundle holds $(ls | tr '\n' ' ')"; exit 1; }
           grep -qx "version=$VERSION" BUILD-INFO && grep -qx "commit=${GITHUB_SHA}" BUILD-INFO \
             || { echo "::error::BUILD-INFO is not this run's"; exit 1; }
