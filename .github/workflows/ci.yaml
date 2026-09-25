@@ -85,6 +85,14 @@ jobs:
 
       - name: Start the unpacked server
         run: node scripts/package-smoke.mjs "$RUNNER_TEMP/a/agentry-mcp-0.0.0-ci.tar.gz"
+      # A tag's form must agree with the line its commit is on (vX.Y.Z on
+      # main's, vX.Y.Z-dev.N on dev's), 1.x waits for AGENTRY_ALLOW_V1, and
+      # the next tag follows the scheme (agentry-mcp#48; the CLI's scripts and
+      # tests, agentry-cli#240 and #327).
+      - name: Release channel and tags by branch
+        run: |
+          scripts/acceptance/release-registry.sh
+          scripts/acceptance/release-tag.sh
 
   parked:
     runs-on: [self-hosted, linux, x64]

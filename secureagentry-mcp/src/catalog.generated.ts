@@ -52,9 +52,37 @@ export const API_VERSION = "0.3.0";
 export const API_BASE_PATH = "/api/v1";
 
 /** sha256 of spec/openapi.yaml, so a drifted catalog is detectable. */
-export const SPEC_SHA256 = "9817e0ee568aa1b0cf3e97c8276fd72aaef3b4bb6061c482543effe6ab3900c2";
+export const SPEC_SHA256 = "1e013d77d2d210d49ccf9f19ccb120ff47f9647cc46c678081bd44b6a2fcb923";
 
 export const ACTIONS: readonly Action[] = [
+  {
+    "id": "acceptInvitation",
+    "method": "POST",
+    "path": "/invitations/{token}",
+    "tags": [
+      "orgs"
+    ],
+    "summary": "Accept an invitation (session only). Refused unless the session's verified email is the invited address; single use.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "token",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "Accepted; the membership is active."
+      }
+    ]
+  },
   {
     "id": "addSshKey",
     "method": "POST",
@@ -144,6 +172,84 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "approveOrgMember",
+    "method": "POST",
+    "path": "/orgs/{org}/members/{handle}/approve",
+    "tags": [
+      "orgs"
+    ],
+    "summary": "Approve a pending member (admin). The seat check fires here: a person provisioned by SCIM, or folded in from the organization's domain, holds no seat until an admin approves them.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
+      {
+        "name": "handle",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
+    "body": {
+      "required": false,
+      "contentType": "application/json",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "title": "OrgRoleAssignment",
+            "type": "string",
+            "description": "The role a PUT assigns. security_reviewer is refused outside a first-party organization, and owner — retired by agentry#360, kept here so an older client's request still parses — is refused with a 422 that names the roles that exist.\n",
+            "enum": [
+              "admin",
+              "member",
+              "security_reviewer",
+              "owner"
+            ]
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "Approved; the membership is active."
+      }
+    ]
+  },
+  {
+    "id": "clearCurrentUserData",
+    "method": "POST",
+    "path": "/user/clear-data",
+    "tags": [
+      "users"
+    ],
+    "summary": "Clear the caller's credentials, installs and settings, and keep the account (session only).",
+    "description": "Revokes every personal access token and SSH key, deletes every remembered browser (the ones that skip the second factor), consumes every pending desktop sign-in code, ends every session but the caller's, removes every account install, and resets the display name and the notification settings to their defaults (every switch on; mail still goes only to a verified address). The account itself stays: the handle, the email, the sign-in account at the directory, organization memberships, BriefAgents with their versions and repositories, stars, the subscription and credits are untouched. Audited as `user.data_clear` with the count of each class; after the commit an extension event `user.data_cleared` carries the user id, so an extension clears what it holds for the account (hosted run history). Session only: a token is refused, and so is a request without the session's CSRF token.",
+    "public": false,
+    "sessionOnly": true,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "204",
+        "description": "Cleared; the caller's session is still signed in."
+      }
+    ]
+  },
+  {
     "id": "createAgent",
     "method": "POST",
     "path": "/agents",
@@ -151,6 +257,7 @@ export const ACTIONS: readonly Action[] = [
       "agents"
     ],
     "summary": "Create an agent and its hosted git repository (§9.2).",
+    "description": "A private agent counts against the namespace's private-agent cap when the deployment's entitlements set one (the hosted product's subscription tiers): at the cap the answer is `422` with the problem type `private-agent-cap`, and the same on `PATCH` when an agent is turned private. A core registry caps nothing. A cap never deletes or hides an agent that is already private.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -211,6 +318,10 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "201",
         "description": "Agent created."
+      },
+      {
+        "code": "422",
+        "description": "Validation, or `private-agent-cap` when the namespace holds as many private agents as its tier allows (a core registry caps nothing)."
       }
     ]
   },
@@ -264,7 +375,7 @@ export const ACTIONS: readonly Action[] = [
       "users"
     ],
     "summary": "Record a one-time grant for the desktop app's browser sign-in.",
-    "description": "Session-only. The web tier's authorize page calls this after the user consents; the response is a short-lived, single-use `code` bound to the app's `state` nonce. No token is minted here — the desktop app exchanges the code at `POST /auth/desktop/exchange` from its own process, so the PAT never travels in a URL (DEV-058 hardening, agentry#19). The grant's scopes are fixed to the desktop set (agent:read, agent:publish, repo:read, repo:write, user:profile).",
+    "description": "Session-only. The server's own `/ui/authorize` page (DR-17) calls this after the user consents; the response is a short-lived, single-use `code` bound to the app's `state` nonce. No token is minted here — the desktop app exchanges the code at `POST /auth/desktop/exchange` from its own process, so the PAT never travels in a URL (DEV-058 hardening, agentry#19). The grant's scopes are fixed to the desktop set (agent:read, agent:publish, repo:read, repo:write, user:profile, run:read, run:write).",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -339,13 +450,69 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "createInvitation",
+    "method": "POST",
+    "path": "/orgs/{org}/invitations",
+    "tags": [
+      "orgs"
+    ],
+    "summary": "Invite someone by email (admin). The invitation reserves a seat when it is sent and expires in seven days. Its token is a credential shown once in this response and stored only as a hash. It is also mailed to the address when the registry may write there: an address at the organization's own verified domain always, and any other address only when it belongs to an account whose address the registry has confirmed. Accepting an invitation sent to the organization's verified domain also confirms the accepting account's address, because the organization proved it controls that domain.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "CreateInvitationRequest",
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "title": "OrgRoleAssignment",
+            "type": "string",
+            "description": "The role a PUT assigns. security_reviewer is refused outside a first-party organization, and owner — retired by agentry#360, kept here so an older client's request still parses — is refused with a 422 that names the roles that exist.\n",
+            "enum": [
+              "admin",
+              "member",
+              "security_reviewer",
+              "owner"
+            ]
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "201",
+        "description": "Invitation created; acceptUrl and token are shown once."
+      }
+    ]
+  },
+  {
     "id": "createOrg",
     "method": "POST",
     "path": "/orgs",
     "tags": [
       "orgs"
     ],
-    "summary": "Create an organization; caller becomes owner.",
+    "summary": "Create an organization; the caller becomes its first admin.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -368,6 +535,11 @@ export const ACTIONS: readonly Action[] = [
           "displayName": {
             "type": "string",
             "maxLength": 120
+          },
+          "domain": {
+            "type": "string",
+            "maxLength": 253,
+            "description": "The domain the organization is keyed on. Omitted, it is the domain of the creator's verified email address; `none` records no domain; the creator's own domain, spelled out, is accepted. Any other value is 422 — a further domain is claimed over DNS (`POST /orgs/{org}/domain-claims`). A domain no single organization owns (a public mail provider, a reserved name) is recorded as none whatever is sent. A domain that already belongs to an organization is `409 domain-claimed`.\n"
           }
         }
       }
@@ -431,7 +603,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "scim"
     ],
-    "summary": "Mint a SCIM bearer token (owner, §12.5).",
+    "summary": "Mint a SCIM bearer token (admin, §12.5).",
+    "description": "403 `feature-not-included` while the organization's subscription does not include directory provisioning. Tokens already issued are left alone by a subscription change and provision again the moment it includes SCIM.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -545,7 +718,7 @@ export const ACTIONS: readonly Action[] = [
             "items": {
               "title": "Scope",
               "type": "string",
-              "description": "PAT scopes (§12.3).",
+              "description": "PAT scopes (§12.3). A token can do only what its scopes allow; a\nsession acts with the account's full authority. `run:write` lets a\ntoken start, feed and cancel a hosted run of a BriefAgent and\n`run:read` lets it read a run, its log and its artefacts — both are\nconsumed only by a registry that mounts the runs extension, and\nunlock nothing on one that does not.\n",
               "enum": [
                 "repo:read",
                 "repo:write",
@@ -554,18 +727,20 @@ export const ACTIONS: readonly Action[] = [
                 "org:admin",
                 "review:act",
                 "audit:read",
-                "user:profile"
+                "user:profile",
+                "run:read",
+                "run:write"
               ]
             }
           },
           "expiresAt": {
             "type": "string",
             "format": "date-time",
-            "description": "Defaults to (and is capped at) the max PAT lifetime (§12.3)."
+            "description": "Defaults to the max PAT lifetime (§12.3); a later value is refused with 422, not clamped."
           },
           "orgHandle": {
             "type": "string",
-            "description": "Bind the token to this org (§12.4). Requires the current session to be SSO-fresh for the org; org-bound tokens are capped at 90 days and are the only tokens accepted against an enforced-SSO org's resources.\n"
+            "description": "Bind the token to this org (§12.4). Requires the current session to be SSO-fresh for the org; org-bound tokens live at most 90 days (a later expiresAt is refused with 422) and are the only tokens accepted against an enforced-SSO org's resources.\n"
           }
         }
       }
@@ -684,6 +859,136 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "declineOrgMember",
+    "method": "POST",
+    "path": "/orgs/{org}/members/{handle}/decline",
+    "tags": [
+      "orgs"
+    ],
+    "summary": "Decline a pending member (admin): the pending membership is removed and no seat is consumed. An active member is removed with DELETE instead.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
+      {
+        "name": "handle",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "204",
+        "description": "Declined."
+      }
+    ]
+  },
+  {
+    "id": "decommissionOrg",
+    "method": "POST",
+    "path": "/orgs/{org}/decommission",
+    "tags": [
+      "orgs"
+    ],
+    "summary": "Decommission the organization (admin; session only). It enters a read-only hold — members keep read and export — and at the end of the hold its agents, repositories, blobs and invitations are erased, its handle and domain released. The body must repeat the organization's handle. The last admin goes with it: this is the one way an organization loses its last admin (409 last-admin everywhere else).",
+    "public": false,
+    "sessionOnly": true,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "type": "object",
+        "required": [
+          "confirm"
+        ],
+        "properties": {
+          "confirm": {
+            "type": "string",
+            "description": "The organization's handle, typed again."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The organization, now decommissioning, with when the hold ends."
+      },
+      {
+        "code": "409",
+        "description": "The organization is not active, or `confirm` is not its handle (422)."
+      }
+    ]
+  },
+  {
+    "id": "deleteAccountInstall",
+    "method": "DELETE",
+    "path": "/user/installs/{ns}/{name}",
+    "tags": [
+      "installs"
+    ],
+    "summary": "Remove the caller's record for a BriefAgent (idempotent).",
+    "description": "204 whether or not a record existed, and whether or not the name resolves: the row is the caller's own, so no BriefAgent is read and nothing is learned about one — a record whose BriefAgent the caller can no longer read is removed by the ref the list shows for it. Audited as `agent.uninstall` when a record went. A PAT needs `user:profile`.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "ns",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
+      {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,63}[a-z0-9])?$"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "204",
+        "description": "Removed, or nothing to remove."
+      }
+    ]
+  },
+  {
     "id": "deleteAgent",
     "method": "DELETE",
     "path": "/agents/{ns}/{name}",
@@ -734,7 +1039,7 @@ export const ACTIONS: readonly Action[] = [
       "users"
     ],
     "summary": "Erase the caller's account (GDPR flow, §12.7).",
-    "description": "Purges personal data and pseudonymizes the account. Published public versions are never deleted (§12.7): they are either yanked, so already-installed copies keep verifying, or the personal-namespace agents are transferred to an organization the caller administers. When the account has published public versions the choice is explicit: omitting `publishedContent` is a 400, never a silent yank. When the deployment holds credentials in a directory service and is configured to reach it (`AGENTRY_IDP_ADMIN_URL`), the sign-in account there is deleted in the same step; the outcome is audited as `user.directory_erase`.",
+    "description": "Purges personal data and pseudonymizes the account. Published public versions are never deleted (§12.7): they are either yanked, so already-installed copies keep verifying, or the personal-namespace agents are transferred to an organization the caller administers. When the account has published public versions the choice is explicit: omitting `publishedContent` is a 400, never a silent yank. When the deployment holds credentials in a directory service and is configured to reach it (`AGENTRY_IDP_ADMIN_URL`), the sign-in account there is deleted in the same step; the outcome is audited as `user.directory_erase` and returned in the `X-Agentry-Directory-Erasure` header. A failed directory attempt does not undo the registry's erasure: it is retried by a job with backoff (each attempt audited) and the response says `pending`; a retry budget that runs out is audited as `abandoned` and raised to the operator. An account that is an organization's last admin is refused (409 last-admin) until another admin is in place; a transfer that would put the organization over its private-agent cap is refused (422 private-agent-cap) with nothing erased. The erased account's memberships go with it.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -756,7 +1061,7 @@ export const ACTIONS: readonly Action[] = [
         "name": "transferOrg",
         "in": "query",
         "required": false,
-        "description": "Destination org handle, required with publishedContent=transfer. The caller must be an owner or admin of that org.",
+        "description": "Destination org handle, required with publishedContent=transfer. The caller must be an admin of that org.",
         "schema": {
           "type": "string",
           "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
@@ -771,13 +1076,42 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "deleteOrgLogo",
+    "method": "DELETE",
+    "path": "/orgs/{org}/logo",
+    "tags": [
+      "orgs"
+    ],
+    "summary": "Remove the organization's logo (admin).",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "204",
+        "description": "Removed, or there was none."
+      }
+    ]
+  },
+  {
     "id": "deleteSsoConnection",
     "method": "DELETE",
     "path": "/orgs/{org}/sso/connections/{kind}",
     "tags": [
       "sso"
     ],
-    "summary": "Delete a connection (owner, §12.4).",
+    "summary": "Delete a connection (admin, §12.4).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -1065,6 +1399,7 @@ export const ACTIONS: readonly Action[] = [
       "agents"
     ],
     "summary": "Agent metadata (public agents readable by anyone).",
+    "description": "A public agent is readable by anyone. A private agent is readable by its owner, the owning org's admins, and anyone holding a grant on it; every other caller, anonymous included, gets the 404 a missing name gets — never a 401 or 403 that would confirm the name exists. The same rule holds on every route under `/agents/{ns}/{name}` (agentry#313).",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -1239,6 +1574,53 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "getDomainOrg",
+    "method": "GET",
+    "path": "/user/domain-org",
+    "tags": [
+      "users"
+    ],
+    "summary": "Which organization the caller's verified email domain belongs to. 403 email-unverified until the address is verified.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The domain and, when one holds it, the organization."
+      }
+    ]
+  },
+  {
+    "id": "getInvitation",
+    "method": "GET",
+    "path": "/invitations/{token}",
+    "tags": [
+      "orgs"
+    ],
+    "summary": "Read an invitation by its token (session only). Says which organization and role it offers and whether the signed-in account may accept it.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "token",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The offer."
+      }
+    ]
+  },
+  {
     "id": "getLatestRulesetAttestation",
     "method": "GET",
     "path": "/ruleset-releases/latest/attestation",
@@ -1246,7 +1628,7 @@ export const ACTIONS: readonly Action[] = [
       "platform"
     ],
     "summary": "DSSE attestation over the bundle `…/latest/bundle` serves.",
-    "description": "An in-toto statement (predicate `https://agentry.dev/attestation/ruleset/v1`) whose subject digest is the bundle's content digest, signed with the registry's release-signing key (`/.well-known/agentry/signing-keys.json`). Lets `agentry validate --rules-update` verify a fetched bundle by signature rather than only by the digest the same server advertised (agentry#25). 404 when the registry does not sign (`signing.kind: none`).",
+    "description": "An in-toto statement (predicate `https://agentry.dev/attestation/ruleset/v1`) whose subject digest is the bundle's content digest, signed with the registry's release-signing key (`/.well-known/agentry/signing-keys.json`). Lets `agentry validate --rules-update` verify a fetched bundle by signature rather than only by the digest the same server advertised (agentry#25). The worker signs it at start and stores it, so every replica serves the same envelope (agentry#479). 404 when the registry does not sign (`signing.kind: none`), or when no process holding the signing key has started with this bundle yet (a rolling deploy).",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -1287,7 +1669,7 @@ export const ACTIONS: readonly Action[] = [
     ],
     "summary": "The registry's last vulnerability check of one MCP server package version (agentry#177).",
     "description": "What S7 recorded for the exact package version: `safe` means no known advisories at `lastCheckedAt`, `vulnerable` lists them, `error` means the last lookup failed and the advisories are the last known. 404 when no manifest has ever declared this version. The runner asks here before installing a declared server.",
-    "public": false,
+    "public": true,
     "sessionOnly": false,
     "deprecated": false,
     "params": [
@@ -1372,6 +1754,44 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Organization."
+      },
+      {
+        "code": "404",
+        "description": "No active organisation holds this handle. Only that: a lookup that failed answers 500, so a client may take this as absence."
+      },
+      {
+        "code": "500",
+        "description": "The lookup failed; the handle may or may not exist. Retry."
+      }
+    ]
+  },
+  {
+    "id": "getOrgLogo",
+    "method": "GET",
+    "path": "/orgs/{org}/logo",
+    "tags": [
+      "orgs"
+    ],
+    "summary": "The organization's logo, as this registry re-encoded it.",
+    "description": "A raster the core decoded and encoded again from the pixels: the bytes an admin uploaded are never what is served (§10.3). The type is pinned and not sniffed. The URL an organization's resource carries (`logoUrl`) names the content by its `v`, and that URL is served as immutable for a year; the bare path, or one whose `v` is no longer the logo served, answers the current logo with `no-cache`. Clients render `logoUrl` as given and never build the path. 404 when the organization has none, or is not one the caller may see.",
+    "public": true,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The logo."
       }
     ]
   },
@@ -1547,7 +1967,7 @@ export const ACTIONS: readonly Action[] = [
       "users"
     ],
     "summary": "How the registry's alerts reach the caller (agentry#190).",
-    "description": "Email per kind of notification, and whether the dependency-alert banner shows in the web app. An account that never changed anything reads back with everything on.",
+    "description": "Email per kind of notification, and whether the dependency-alert banner shows in a front end (the site reads it). An account that never changed anything reads back with everything on.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -1585,6 +2005,14 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Public profile."
+      },
+      {
+        "code": "404",
+        "description": "No active account holds this handle. Only that: a lookup that failed answers 500, so a client may take this as absence."
+      },
+      {
+        "code": "500",
+        "description": "The lookup failed; the handle may or may not exist. Retry."
       }
     ]
   },
@@ -1925,6 +2353,26 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "listAccountInstalls",
+    "method": "GET",
+    "path": "/user/installs",
+    "tags": [
+      "installs"
+    ],
+    "summary": "The caller's account installs, composed for a list.",
+    "description": "Every record the caller holds, newest change first. A record whose BriefAgent the caller can no longer read — made private to them, its organization suspended — is listed as the bare `ref` with `readable: false` and nothing else, so the list tells a former reader nothing they did not already know. A PAT needs `user:profile`.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The list."
+      }
+    ]
+  },
+  {
     "id": "listAdvisories",
     "method": "GET",
     "path": "/advisories",
@@ -1932,7 +2380,7 @@ export const ACTIONS: readonly Action[] = [
       "platform"
     ],
     "summary": "Published advisories — for one agent, or the global feed (§8.7).",
-    "description": "With `affecting`, the advisories against that agent (newest first). Without it, the global feed: every published advisory against a public agent, newest first, keyset-paged with `cursor`/`limit` and a `Link: rel=\"next\"` header (§9.1). Each item carries `agent` (`ns/name`) so a feed reader can find the affected BriefAgent.",
+    "description": "With `affecting`, the advisories against that agent (newest first), under the agent's own read rule: a private agent's advisories are its readers' (the owning user, the owning org's admins, and anyone holding a grant on the agent), and anyone else — anonymous or signed in — gets the 404 a missing name gets, so the agent's existence is not discoverable here (agentry#313). Without it, the global feed: every published advisory against a public agent, newest first, keyset-paged with `cursor`/`limit` and a `Link: rel=\"next\"` header (§9.1). Each item carries `agent` (`ns/name`) so a feed reader can find the affected BriefAgent.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2178,6 +2626,35 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Domain claims."
+      }
+    ]
+  },
+  {
+    "id": "listInvitations",
+    "method": "GET",
+    "path": "/orgs/{org}/invitations",
+    "tags": [
+      "orgs"
+    ],
+    "summary": "List the organization's open invitations (admin).",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "Open invitations."
       }
     ]
   },
@@ -2461,7 +2938,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "scim"
     ],
-    "summary": "List active SCIM provisioning tokens (owner, §12.5).",
+    "summary": "List active SCIM provisioning tokens (admin, §12.5).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -2509,7 +2986,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "sso"
     ],
-    "summary": "List the org's SSO connections (owner, §12.4).",
+    "summary": "List the org's SSO connections (admin, §12.4).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -2665,7 +3142,7 @@ export const ACTIONS: readonly Action[] = [
       "users"
     ],
     "summary": "Open dependency alerts on published versions the caller submitted (agentry#177).",
-    "description": "A dependency alert says a published version declares an MCP server version that the daily sweep found to carry a newly known high or critical vulnerability. It closes on its own when the version is yanked, quarantined or blocked, or when the advisory is withdrawn; publishing a fixed version does not close the old version's alert. The web app shows these as the banner after sign-in and on the dashboard.",
+    "description": "A dependency alert says a published version declares an MCP server version that the daily sweep found to carry a newly known high or critical vulnerability. It closes on its own when the version is yanked, quarantined or blocked, or when the advisory is withdrawn; publishing a fixed version does not close the old version's alert. A front end shows these; the site renders them as the banner after sign-in and on the dashboard.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -2693,7 +3170,7 @@ export const ACTIONS: readonly Action[] = [
     "responses": [
       {
         "code": "200",
-        "description": "Active, unexpired, unrevoked sessions, newest first."
+        "description": "Active, unexpired, unrevoked sessions, most recently seen first."
       }
     ]
   },
@@ -2909,6 +3386,10 @@ export const ACTIONS: readonly Action[] = [
           "totpCode": {
             "type": "string",
             "description": "Required when the account has TOTP enabled."
+          },
+          "rememberDevice": {
+            "type": "boolean",
+            "description": "Remember this browser as a trusted device, so a later password sign-in from it skips the TOTP code. Defaults to false.\n\nWhat it does: on a sign-in that answered the code, issues an opaque httpOnly cookie recorded against the account, and later password sign-ins presenting it are not asked for the code. What it does not do: it is not a session, does not lengthen one, and carries no scope — the password is still required on every sign-in. It cannot be earned by a sign-in that skipped the code, so its lifetime is absolute rather than sliding, and it expires after auth.trustedDeviceTTL (30 days by default and by maximum). It has no effect on an account with no TOTP factor, where no code was answered, and on a deployment whose credentials are delegated to an external directory, where this endpoint answers 410.\n"
           }
         }
       }
@@ -2952,6 +3433,7 @@ export const ACTIONS: readonly Action[] = [
       "sso"
     ],
     "summary": "OIDC redirect URI: exchange the code and establish a session (§12.4).",
+    "description": "When the start carried a `next`, this is browser mode: the session and CSRF cookies are set and the answer is a 303 to that path, and a failure is a 303 to the sign-in page carrying the reason. Otherwise the answer is the JSON below. 404 while the organization's subscription does not include SSO.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2986,6 +3468,10 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "SSO session established."
+      },
+      {
+        "code": "303",
+        "description": "Browser mode — the session is set and the browser returns to the path `next` named, or to the sign-in page on a failure."
       }
     ]
   },
@@ -2997,6 +3483,7 @@ export const ACTIONS: readonly Action[] = [
       "sso"
     ],
     "summary": "Begin the OIDC auth-code + PKCE flow (redirect to IdP, §12.4).",
+    "description": "404 while the organization's subscription does not include SSO: the door is not there to be started. `next` puts the callback in browser mode.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -3008,6 +3495,15 @@ export const ACTIONS: readonly Action[] = [
         "schema": {
           "type": "string",
           "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
+      {
+        "name": "next",
+        "in": "query",
+        "required": false,
+        "description": "Where the browser returns after a successful sign-in. A same-origin path only (leading `/`, not `//`); anything else is ignored. It is sealed into the state the callback reads, so the identity provider's round trip cannot change it.",
+        "schema": {
+          "type": "string"
         }
       }
     ],
@@ -3125,13 +3621,116 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "putAccountInstall",
+    "method": "PUT",
+    "path": "/user/installs/{ns}/{name}",
+    "tags": [
+      "installs"
+    ],
+    "summary": "Record a BriefAgent release as installed to the account, or move the record to another version.",
+    "description": "The version must be a published release the caller can read: a non-reader gets the missing name's 404, an unpublished version `409 version-not-published`, a blocked BriefAgent `410 blocked`. The request carries the acceptances the release needs and is refused with `409 install-consent-required`, naming the missing ones in `missing`, when it lacks any: `capabilities` on a first install and, on an update, when the new version's declared capabilities widened against the accepted snapshot (`widened` lists what did); `unsigned` whenever the release carries no attestation; `unscanned` whenever it was admitted without a scan. A PUT on an existing record is the update, to any published version, an older one included: the version moves and the snapshot follows it. The action is audited as `agent.install`; no download counter moves. A PAT needs `user:profile`, and `agent:read` for a private BriefAgent.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "ns",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
+      {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,63}[a-z0-9])?$"
+        }
+      }
+    ],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "AccountInstallRequest",
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "description": "The published version to record, exactly (no range)."
+          },
+          "acceptCapabilities": {
+            "type": "boolean",
+            "description": "The caller accepts the declared capabilities of this version. Required true on a first install and on an update whose capabilities widened; not read otherwise."
+          },
+          "acceptUnsigned": {
+            "type": "boolean",
+            "description": "Required true when the release carries no attestation."
+          },
+          "acceptUnscanned": {
+            "type": "boolean",
+            "description": "Required true when the release was admitted without a scan."
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The record, composed as the list composes it."
+      }
+    ]
+  },
+  {
+    "id": "putOrgLogo",
+    "method": "PUT",
+    "path": "/orgs/{org}/logo",
+    "tags": [
+      "orgs"
+    ],
+    "summary": "Set the organization's logo (admin; the subscription must include branding).",
+    "description": "Multipart, one part named `file`: PNG or JPEG, at most 256 KB. Anything else is 415 `unsupported-image` — SVG in particular, for which this registry has no sanitiser. Over the cap, over 16 million pixels, or larger re-encoded than a logo may be, is 413 `upload-too-large`. The core decodes it and encodes it again; the pixels are kept, the bytes are not. Replaces any logo the organization had. 403 `feature-not-included` while the subscription does not include branding.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
+    "body": {
+      "required": true,
+      "contentType": "multipart/form-data"
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The logo is set."
+      }
+    ]
+  },
+  {
     "id": "putSsoConnection",
     "method": "PUT",
     "path": "/orgs/{org}/sso/connections/{kind}",
     "tags": [
       "sso"
     ],
-    "summary": "Create or update a SAML/OIDC connection (owner, §12.4).",
+    "summary": "Create or update a SAML/OIDC connection (admin, §12.4).",
+    "description": "403 `feature-not-included` while the organization's subscription does not include single sign-on. An existing connection is left alone by a subscription change and works again the moment the subscription includes SSO.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -3175,7 +3774,7 @@ export const ACTIONS: readonly Action[] = [
           "config": {
             "type": "object",
             "additionalProperties": true,
-            "description": "SAML (idpMetadataXml or idpEntityId+idpCertificatePem+idpSsoUrl) or OIDC (issuer, clientId, clientSecret) settings."
+            "description": "SAML (idpMetadataXml or idpEntityId+idpCertificatePem+idpSsoUrl) or OIDC (issuer, clientId, clientSecret) settings. An OIDC save that omits clientSecret keeps the stored one; to drop the secret, delete the connection."
           }
         }
       }
@@ -3236,6 +3835,35 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "201",
         "description": "Account created; verification email queued."
+      }
+    ]
+  },
+  {
+    "id": "reinstateOrg",
+    "method": "POST",
+    "path": "/orgs/{org}/reinstate",
+    "tags": [
+      "orgs"
+    ],
+    "summary": "Reinstate a suspended organization, or cancel a decommission hold before its erasure runs (platform staff). An organization already erased cannot come back (409).",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The organization, active again."
       }
     ]
   },
@@ -3340,7 +3968,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "orgs"
     ],
-    "summary": "Remove a member (admin+; owners removable only by owners).",
+    "summary": "Remove a member (admin), or leave: any active member may remove themselves, since a person belongs to one organization at a time and must be able to leave it. Removing a pending member is how an admin declines them; the last admin cannot be removed or leave (409 last-admin) — only a decommission removes them.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -3519,6 +4147,25 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "requestDomainOrgAccess",
+    "method": "POST",
+    "path": "/user/domain-org/request-access",
+    "tags": [
+      "users"
+    ],
+    "summary": "Ask the administrators of the organization that holds the caller's email domain to add them (session only). Mails the admins, once a day per person (429 rate-limited afterwards), audited as `org.access_request`. 404 when no organization holds the domain; 409 when the caller is already a member there.",
+    "public": false,
+    "sessionOnly": true,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "202",
+        "description": "The request was recorded and the admins mailed."
+      }
+    ]
+  },
+  {
     "id": "resolveRef",
     "method": "GET",
     "path": "/resolve",
@@ -3560,6 +4207,44 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "revokeInvitation",
+    "method": "DELETE",
+    "path": "/orgs/{org}/invitations/{id}",
+    "tags": [
+      "orgs"
+    ],
+    "summary": "Revoke an open invitation (admin); its seat is released.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
+      {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "204",
+        "description": "Revoked."
+      }
+    ]
+  },
+  {
     "id": "revokeOtherUserSessions",
     "method": "DELETE",
     "path": "/user/sessions",
@@ -3586,7 +4271,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "scim"
     ],
-    "summary": "Revoke a SCIM token (owner, §12.5).",
+    "summary": "Revoke a SCIM token (admin, §12.5).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -3684,6 +4369,7 @@ export const ACTIONS: readonly Action[] = [
       "sso"
     ],
     "summary": "SAML Assertion Consumer Service: consume a signed assertion (§12.4).",
+    "description": "A `RelayState` form field holding a same-origin path puts this in browser mode: the session and CSRF cookies are set and the answer is a 303 to that path, and a failure is a 303 to the sign-in page carrying the reason, because a browser cannot read a problem document. Anything else in `RelayState` is ignored. Without one the answer is the JSON below. 404 while the organization's subscription does not include SSO.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -3702,6 +4388,10 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "SSO session established."
+      },
+      {
+        "code": "303",
+        "description": "Browser mode — the session is set and the browser returns to the path RelayState named, or to the sign-in page on a failure."
       }
     ]
   },
@@ -4079,7 +4769,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "orgs"
     ],
-    "summary": "Add a member or change a role (admin+; owner grants owner/admin).",
+    "summary": "Change a member's role (admin). Adding is retired: an organization is joined by accepting an invitation, or by an admin approving someone the IdP provisioned, and a PUT for a handle that holds no membership answers 422 naming those doors.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -4113,14 +4803,14 @@ export const ACTIONS: readonly Action[] = [
         ],
         "properties": {
           "role": {
-            "title": "OrgRole",
+            "title": "OrgRoleAssignment",
             "type": "string",
-            "description": "Org roles, ordered owner > admin > security_reviewer | member (§12.2).",
+            "description": "The role a PUT assigns. security_reviewer is refused outside a first-party organization, and owner — retired by agentry#360, kept here so an older client's request still parses — is refused with a 422 that names the roles that exist.\n",
             "enum": [
-              "owner",
               "admin",
+              "member",
               "security_reviewer",
-              "member"
+              "owner"
             ]
           }
         }
@@ -4140,7 +4830,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "policies"
     ],
-    "summary": "Set the org policy overlay (owner; tighten-only, §8.6).",
+    "summary": "Set the org policy overlay (admin; tighten-only, §8.6).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -4266,7 +4956,7 @@ export const ACTIONS: readonly Action[] = [
         "name": "next",
         "in": "query",
         "required": false,
-        "description": "Browser mode. An in-app, path-absolute return target (e.g. `/dashboard`). When present and valid, the callback answers the browser with a 303 to it instead of the JSON result, and a failed login 303s to `/login?error=…`. Anything that is not a single-slash path on this origin is ignored (open-redirect guard), which leaves the API behaviour unchanged.",
+        "description": "Browser mode. An in-app, path-absolute return target (e.g. `/dashboard` on the site, `/ui/account` on the server's own pages). When present and valid, the callback answers the browser with a 303 to it instead of the JSON result, and a failed login 303s to the sign-in page with `?error=…` (the site's `/login`, or `/ui/login`). Anything that is not a single-slash path on this origin is ignored (open-redirect guard), which leaves the API behaviour unchanged.",
         "schema": {
           "type": "string"
         }
@@ -4326,7 +5016,7 @@ export const ACTIONS: readonly Action[] = [
     ],
     "summary": "Server-sent events for a version's pipeline progress (§11 \"SSE/poll\"; agentry#65).",
     "description": "Streams `event: status` messages (JSON: status, statusReason, the scan stages completed so far, done) whenever something changes, about once a second while a scan runs, and closes after the terminal state — published, rejected, needs_review, quarantined — or after five minutes, whichever comes first. Same visibility rules as the version itself. Clients that cannot consume SSE poll the version resource instead.",
-    "public": false,
+    "public": true,
     "sessionOnly": false,
     "deprecated": false,
     "params": [
@@ -4373,7 +5063,7 @@ export const ACTIONS: readonly Action[] = [
       "versions"
     ],
     "summary": "Submit a version for publication (§7 state machine entry).",
-    "description": "Two sources (§6.5): JSON {tag} submits an existing repo tag (git-tag source); multipart/form-data with an `archive` part (tar.zst) submits a client-built package (cli-upload source; the server re-validates, re-packs deterministically, and compares digests: client packing is never trusted).",
+    "description": "Two sources (§6.5): JSON {tag} submits an existing repo tag (git-tag source); multipart/form-data with an `archive` part (tar.zst) submits a client-built package (cli-upload source; the server re-validates, re-packs deterministically, and compares digests: client packing is never trusted). A deployment with an admission extension (the hosted product's subscription tiers) may refuse a submission after every core check has passed and before anything is stored: `402` with the problem type `credits-exhausted` carries `balance`, `resetsAt` and `account` — the handle whose balance is short, which is the submitter's own or, for a member of a paid organization, the organization's — at the top level of the problem body. `402 subscription-inactive` refuses one whose payer is an organization that is awaiting payment or has lapsed, and carries `account` the same way. `503 admission-unavailable` means the check could not be reached and nothing was recorded. A core registry never answers any of them. The gate's verdict never depends on admission.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -4417,6 +5107,60 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "202",
         "description": "Version accepted into the pipeline."
+      },
+      {
+        "code": "402",
+        "description": "Refused by the deployment's admission extension (problem type `credits-exhausted` with `balance`, `resetsAt` and `account`, or `subscription-inactive` with `account`); nothing was stored. Never answered by a core registry."
+      },
+      {
+        "code": "503",
+        "description": "`scan-not-scheduled` (the version was recorded and a watchdog routes it to review) or `admission-unavailable` (nothing was recorded; retry)."
+      }
+    ]
+  },
+  {
+    "id": "suspendOrg",
+    "method": "POST",
+    "path": "/orgs/{org}/suspend",
+    "tags": [
+      "orgs"
+    ],
+    "summary": "Suspend the organization (platform staff). It and everything under it answer 404 to everyone, over the API and over git, until it is reinstated. Nothing is deleted.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The organization, now suspended."
       }
     ]
   },
@@ -4427,7 +5171,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "sso"
     ],
-    "summary": "Probe a stored connection without signing in (owner, §12.4; agentry#50).",
+    "summary": "Probe a stored connection without signing in (admin, §12.4; agentry#50).",
     "description": "OIDC: runs discovery against the stored issuer and reports the endpoints it advertises. SAML: parses the stored IdP metadata and reports entity id, sign-on URLs and signing-certificate expiry. Neither contacts the IdP's sign-in flow or uses the client secret. A failed probe is a 200 with ok=false and the reason, so the admin page can show it inline.",
     "public": false,
     "sessionOnly": false,
@@ -4703,6 +5447,10 @@ export const ACTIONS: readonly Action[] = [
             "description": "Allow non-fast-forward pushes to the default branch (§6.3). Off by default; maintain only.\n",
             "type": "boolean"
           },
+          "pipelineSkip": {
+            "description": "Admit submissions to this agent without a scan (plan organization-subscriptions §4, D16). Settable by the namespace's administrators on a private agent of an organization's whose subscription includes unscanned agents; refused on a public agent (`pipeline-skip-public`) and in a personal namespace (`pipeline-skip-personal`), and with `feature-not-included` where the tier lacks it. While it is set, and while a version published unscanned stands, the agent cannot be made public (`agent-unscanned`). Clearing it changes nothing already published; the next submission goes through the whole pipeline.",
+            "type": "boolean"
+          },
           "modes": {
             "title": "AgentModes",
             "type": "array",
@@ -4800,7 +5548,7 @@ export const ACTIONS: readonly Action[] = [
           },
           "ssoRequired": {
             "type": "boolean",
-            "description": "Enforce SSO for org resources (§12.4). Owner only."
+            "description": "Enforce SSO for org resources (§12.4). Admin only."
           }
         }
       }
@@ -4857,7 +5605,7 @@ export const ACTIONS: readonly Action[] = [
               },
               "reviewDecisions": {
                 "type": "boolean",
-                "description": "A reviewer decided one of the person's submissions."
+                "description": "A reviewer decided one of the person's submissions, or the gate held one for review."
               },
               "advisories": {
                 "type": "boolean",
@@ -4866,6 +5614,10 @@ export const ACTIONS: readonly Action[] = [
               "orgInvites": {
                 "type": "boolean",
                 "description": "The person was added to an organization."
+              },
+              "billing": {
+                "type": "boolean",
+                "description": "The subscription that pays for the person's work: a checkout confirmed, a payment failed, an organization restricted, seats reached, \"your organization covers you\" (the hosted product's billing mail; a registry with no billing sends none). Not required on a write: a client that predates the switch leaves it as it was rather than turning it off by omission.\n"
               }
             }
           },
