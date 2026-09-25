@@ -30,17 +30,29 @@ test("findCli: AGENTRY_BIN first, then PATH, else a message naming what to do", 
 });
 
 test("checkCli: a release at or above the floor passes, an older one is refused naming the floor", async () => {
-  process.env.FAKE_VERSION = "0.4.0";
+  for (const [version, semver] of [
+    ["0.6.0", "0.6.0"],
+    ["0.6.1-dev.2", "0.6.1"],
+  ]) {
+    process.env.FAKE_VERSION = version;
+    try {
+      const v = await checkCli(FAKE);
+      assert.equal(v.semver, semver);
+      assert.equal(v.floorChecked, true);
+    } finally {
+      delete process.env.FAKE_VERSION;
+    }
+  }
+  process.env.FAKE_VERSION = "0.5.9";
   try {
-    const v = await checkCli(FAKE);
-    assert.equal(v.semver, "0.4.0");
-    assert.equal(v.floorChecked, true);
+    await assert.rejects(checkCli(FAKE), /is agentry 0\.5\.9; this server needs 0\.6\.0 or newer/);
   } finally {
     delete process.env.FAKE_VERSION;
   }
-  // The shipped floor is nominal until M2 sets a real one; the comparison is
-  // proven against an injected floor above the fake's version.
-  assert.equal(MIN_CLI_VERSION, "0.0.0");
+  // The shipped floor is the CLI's first tagged release (agentry-cli#327);
+  // the comparison is proven against an injected floor above the fake's
+  // version.
+  assert.equal(MIN_CLI_VERSION, "0.6.0");
   process.env.FAKE_VERSION = "0.4.0";
   try {
     await assert.rejects(

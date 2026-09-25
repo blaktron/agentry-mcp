@@ -305,6 +305,14 @@ step "set $TOKEN_SECRET (environment $ENV_NAME)"
 SUMMARY+=("$TOKEN_SECRET -> $REPO, environment $ENV_NAME")
 pause
 
+stage "Keep signing on"
+say "The release signs where it can and ships unsigned where it cannot (DEV-148):"
+say "with neither secret a tag is released unsigned, and says so. Now that both"
+say "exist, AGENTRY_REQUIRE_SIGNING=true makes a missing one fail the release, so"
+say "a recreated environment or a deleted secret cannot quietly turn signing off."
+set_var AGENTRY_REQUIRE_SIGNING true "$REPO"
+pause
+
 stage "Check what is set"
 gh secret list -R "$REPO" --env "$ENV_NAME" | sed 's/^/  /'
 gh api "repos/$REPO/environments/$ENV_NAME/deployment-branch-policies" \

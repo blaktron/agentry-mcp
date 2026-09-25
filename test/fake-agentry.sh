@@ -30,7 +30,7 @@ if [ -n "${FAKE_ARGV:-}" ]; then
   if [ -n "${FAKE_STAT_INPUT:-}" ]; then prev=""; for a in "$@"; do if [ "$prev" = "--input" ]; then printf 'mode=%s\n' "$(stat -c %a "$a")" >> "$FAKE_ARGV"; fi; prev="$a"; done; fi
   printf -- '--\n' >> "$FAKE_ARGV"
 fi
-if [ "${1:-}" = "--version" ]; then echo "agentry version ${FAKE_VERSION:-0.4.0}"; exit 0; fi
+if [ "${1:-}" = "--version" ]; then echo "agentry version ${FAKE_VERSION:-0.6.0}"; exit 0; fi
 if [ "${1:-}" = "install" ] && [ "${2:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_PLAN:-}" ]; then echo "Flags: --yes --allow-unsigned --target"; else echo "Flags: --plan --yes --allow-unsigned --target"; fi; exit 0
 fi

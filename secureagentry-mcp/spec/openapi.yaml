@@ -17,9 +17,10 @@ info:
     documented bounds is clamped, never rejected.
 
 
-    Rate limits (§19) are reported on every response with
+    Rate limits (§19) are reported on every rate-limited response with
     `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`
-    (plus `Retry-After` on 429).
+    (plus `Retry-After` on 429); an extension's signed-callback route that
+    opts out of the anonymous class carries none.
 
 
     Compatibility: 0.3.0 broke the additive-only rule once, deliberately
@@ -81,13 +82,24 @@ tags:
   - name: webhooks
     description: Org webhook endpoints and deliveries (§9.3).
   - name: domains
-    description: Domain verification for JIT auto-linking (§12.4).
+    description: >-
+      Domain verification (§12.4). A verified domain is what an
+      organization proves it controls, and three things rest on it: linking
+      an SSO identity to an existing member's account for the first time,
+      mailing an invitation to an address there, and treating that address
+      as confirmed when its invitation is accepted.
   - name: mcp-servers
     description: >-
       The registry of scanned MCP server package versions S7 keeps and the
       daily sweep refreshes (agentry#177).
   - name: stars
     description: Stars and per-agent counters (§9.2).
+  - name: installs
+    description: >-
+      Account installs (agentry#448): a signed-in person's record of a
+      BriefAgent release they accepted for their account and the contract
+      they consented to. Not a star, not the desktop's or the CLI's
+      per-machine record; no download counter moves.
 
 paths:
   /meta:
@@ -333,9 +345,11 @@ paths:
           in: query
           description: >
             Browser mode. An in-app, path-absolute return target (e.g.
-            `/dashboard`). When present and valid, the callback answers the
+            `/dashboard` on the site, `/ui/account` on the server's own
+            pages). When present and valid, the callback answers the
             browser with a 303 to it instead of the JSON result, and a
-            failed login 303s to `/login?error=…`. Anything that is not a
+            failed login 303s to the sign-in page with `?error=…` (the
+            site's `/login`, or `/ui/login`). Anything that is not a
             single-slash path on this origin is ignored (open-redirect
             guard), which leaves the API behaviour unchanged.
           schema:
@@ -445,7 +459,16 @@ paths:
         When the deployment holds credentials in a directory service and is
         configured to reach it (`AGENTRY_IDP_ADMIN_URL`), the sign-in account
         there is deleted in the same step; the outcome is audited as
-        `user.directory_erase`.
+        `user.directory_erase` and returned in the `X-Agentry-Directory-Erasure`
+        header. A failed
+        directory attempt does not undo the registry's erasure: it is retried
+        by a job with backoff (each attempt audited) and the response says
+        `pending`; a retry budget that runs out is audited as `abandoned` and
+        raised to the operator. An account that is an organization's last
+        admin is refused (409 last-admin) until another admin is in
+        place; a transfer that would put the organization over its
+        private-agent cap is refused (422 private-agent-cap) with nothing
+        erased. The erased account's memberships go with it.
       parameters:
         - name: publishedContent
           in: query
@@ -462,10 +485,88 @@ paths:
             pattern: "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
           description: >
             Destination org handle, required with publishedContent=transfer.
-            The caller must be an owner or admin of that org.
+            The caller must be an admin of that org.
       responses:
         "204":
           description: Account erased; session revoked.
+          headers:
+            X-Agentry-Directory-Erasure:
+              description: >
+                The directory half of the erasure (agentry#499). `deleted`:
+                the sign-in account at the directory is gone. `not-found`:
+                the directory holds no account with this address.
+                `not-configured`: the deployment reaches no directory, so
+                erasure is registry-only. `pending`: the directory could not
+                be reached; a job retries it with backoff for about four and
+                a half hours, and the operator is alerted if it never
+                succeeds. `failed`: the retry could not be queued; the
+                operator is alerted and finishes it by hand.
+              schema:
+                type: string
+                enum: [deleted, not-found, not-configured, pending, failed]
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /user/clear-data:
+    post:
+      operationId: clearCurrentUserData
+      tags: [users]
+      summary: Clear the caller's credentials, installs and settings, and keep the account (session only).
+      description: >
+        Revokes every personal access token and SSH key, deletes every
+        remembered browser (the ones that skip the second factor), consumes
+        every pending desktop sign-in code, ends every session but the
+        caller's, removes every account install, and resets the display name
+        and the notification settings to their defaults (every switch on; mail
+        still goes only to a verified address). The account itself stays: the
+        handle, the email, the sign-in account at the directory, organization
+        memberships, BriefAgents with their versions and repositories, stars,
+        the subscription and credits are untouched. Audited as
+        `user.data_clear` with the count of each class; after the commit an
+        extension event `user.data_cleared` carries the user id, so an
+        extension clears what it holds for the account (hosted run history).
+        Session only: a token is refused, and so is a request without the
+        session's CSRF token.
+      responses:
+        "204":
+          description: Cleared; the caller's session is still signed in.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /user/domain-org:
+    get:
+      operationId: getDomainOrg
+      tags: [users]
+      summary: >
+        Which organization the caller's verified email domain belongs to.
+        403 email-unverified until the address is verified.
+      responses:
+        "200":
+          description: The domain and, when one holds it, the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DomainOrg"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /user/domain-org/request-access:
+    post:
+      operationId: requestDomainOrgAccess
+      tags: [users]
+      summary: >
+        Ask the administrators of the organization that holds the caller's
+        email domain to add them (session only). Mails the admins, once a
+        day per person (429 rate-limited afterwards), audited as
+        `org.access_request`. 404 when no organization holds the domain;
+        409 when the caller is already a member there.
+      responses:
+        "202":
+          description: The request was recorded and the admins mailed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessRequestResult"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -495,6 +596,88 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /user/installs:
+    get:
+      operationId: listAccountInstalls
+      tags: [installs]
+      summary: The caller's account installs, composed for a list.
+      description: >-
+        Every record the caller holds, newest change first. A record whose
+        BriefAgent the caller can no longer read — made private to them,
+        its organization suspended — is listed as the bare `ref` with
+        `readable: false` and nothing else, so the list tells a former
+        reader nothing they did not already know. A PAT needs
+        `user:profile`.
+      responses:
+        "200":
+          description: The list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AccountInstall"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /user/installs/{ns}/{name}:
+    put:
+      operationId: putAccountInstall
+      tags: [installs]
+      summary: Record a BriefAgent release as installed to the account, or move the record to another version.
+      description: >-
+        The version must be a published release the caller can read: a
+        non-reader gets the missing name's 404, an unpublished version `409
+        version-not-published`, a blocked BriefAgent `410 blocked`. The
+        request carries the acceptances the release needs and is refused
+        with `409 install-consent-required`, naming the missing ones in
+        `missing`, when it lacks any: `capabilities` on a first install and,
+        on an update, when the new version's declared capabilities widened
+        against the accepted snapshot (`widened` lists what did); `unsigned`
+        whenever the release carries no attestation; `unscanned` whenever it
+        was admitted without a scan. A PUT on an existing record is the
+        update, to any published version, an older one included: the
+        version moves and the snapshot follows it. The action is
+        audited as `agent.install`; no download counter moves. A PAT needs
+        `user:profile`, and `agent:read` for a private BriefAgent.
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountInstallRequest"
+      responses:
+        "200":
+          description: The record, composed as the list composes it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountInstall"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteAccountInstall
+      tags: [installs]
+      summary: Remove the caller's record for a BriefAgent (idempotent).
+      description: >-
+        204 whether or not a record existed, and whether or not the name
+        resolves: the row is the caller's own, so no BriefAgent is read and
+        nothing is learned about one — a record whose BriefAgent the caller
+        can no longer read is removed by the ref the list shows for it.
+        Audited as `agent.uninstall` when a record went. A PAT needs
+        `user:profile`.
+      parameters:
+        - $ref: "#/components/parameters/Namespace"
+        - $ref: "#/components/parameters/AgentName"
+      responses:
+        "204":
+          description: Removed, or nothing to remove.
+        default:
+          $ref: "#/components/responses/Problem"
+
   /users/{handle}:
     get:
       operationId: getUserProfile
@@ -510,6 +693,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PublicUser"
+        "404":
+          description: >-
+            No active account holds this handle. Only that: a lookup that
+            failed answers 500, so a client may take this as absence.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: The lookup failed; the handle may or may not exist. Retry.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -610,8 +807,8 @@ paths:
       summary: How the registry's alerts reach the caller (agentry#190).
       description: >-
         Email per kind of notification, and whether the dependency-alert
-        banner shows in the web app. An account that never changed anything
-        reads back with everything on.
+        banner shows in a front end (the site reads it). An account that
+        never changed anything reads back with everything on.
       responses:
         "200":
           description: The settings.
@@ -682,8 +879,8 @@ paths:
         critical vulnerability. It closes on its own when the version is
         yanked, quarantined or blocked, or when the advisory is withdrawn;
         publishing a fixed version does not close the old version's alert.
-        The web app shows these as the banner after sign-in and on the
-        dashboard.
+        A front end shows these; the site renders them as the banner after
+        sign-in and on the dashboard.
       responses:
         "200":
           description: Open alerts, newest first.
@@ -701,13 +898,13 @@ paths:
       tags: [users]
       summary: Record a one-time grant for the desktop app's browser sign-in.
       description: >
-        Session-only. The web tier's authorize page calls this after the user
+        Session-only. The server's own `/ui/authorize` page (DR-17) calls this after the user
         consents; the response is a short-lived, single-use `code` bound to the
         app's `state` nonce. No token is minted here — the desktop app
         exchanges the code at `POST /auth/desktop/exchange` from its own
         process, so the PAT never travels in a URL (DEV-058 hardening,
         agentry#19). The grant's scopes are fixed to the desktop set
-        (agent:read, agent:publish, repo:read, repo:write, user:profile).
+        (agent:read, agent:publish, repo:read, repo:write, user:profile, run:read, run:write).
       requestBody:
         required: true
         content:
@@ -804,7 +1001,7 @@ paths:
         A PAT is not a way to enumerate someone's browser sessions.
       responses:
         "200":
-          description: Active, unexpired, unrevoked sessions, newest first.
+          description: Active, unexpired, unrevoked sessions, most recently seen first.
           content:
             application/json:
               schema:
@@ -904,7 +1101,10 @@ paths:
         registry's release-signing key (`/.well-known/agentry/signing-keys.json`).
         Lets `agentry validate --rules-update` verify a fetched bundle by
         signature rather than only by the digest the same server advertised
-        (agentry#25). 404 when the registry does not sign (`signing.kind: none`).
+        (agentry#25). The worker signs it at start and stores it, so every
+        replica serves the same envelope (agentry#479). 404 when the registry
+        does not sign (`signing.kind: none`), or when no process holding the
+        signing key has started with this bundle yet (a rolling deploy).
       security: []
       responses:
         "200":
@@ -921,7 +1121,7 @@ paths:
     post:
       operationId: createOrg
       tags: [orgs]
-      summary: Create an organization; caller becomes owner.
+      summary: Create an organization; the caller becomes its first admin.
       requestBody:
         required: true
         content:
@@ -953,6 +1153,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Org"
+        "404":
+          description: >-
+            No active organisation holds this handle. Only that: a lookup that
+            failed answers 500, so a client may take this as absence.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "500":
+          description: The lookup failed; the handle may or may not exist. Retry.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         default:
           $ref: "#/components/responses/Problem"
     patch:
@@ -973,7 +1187,7 @@ paths:
                   maxLength: 120
                 ssoRequired:
                   type: boolean
-                  description: Enforce SSO for org resources (§12.4). Owner only.
+                  description: Enforce SSO for org resources (§12.4). Admin only.
       responses:
         "200":
           description: Updated organization.
@@ -981,6 +1195,186 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Org"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/decommission:
+    post:
+      operationId: decommissionOrg
+      tags: [orgs]
+      summary: >
+        Decommission the organization (admin; session only). It enters a
+        read-only hold — members keep read and export — and at the end of
+        the hold its agents, repositories, blobs and invitations are
+        erased, its handle and domain released. The body must repeat the
+        organization's handle. The last admin goes with it: this is the
+        one way an organization loses its last admin (409 last-admin
+        everywhere else).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm]
+              properties:
+                confirm:
+                  type: string
+                  description: The organization's handle, typed again.
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        "200":
+          description: The organization, now decommissioning, with when the hold ends.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        "409":
+          description: The organization is not active, or `confirm` is not its handle (422).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/suspend:
+    post:
+      operationId: suspendOrg
+      tags: [orgs]
+      summary: >
+        Suspend the organization (platform staff). It and everything under
+        it answer 404 to everyone, over the API and over git, until it is
+        reinstated. Nothing is deleted.
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+      responses:
+        "200":
+          description: The organization, now suspended.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/reinstate:
+    post:
+      operationId: reinstateOrg
+      tags: [orgs]
+      summary: >
+        Reinstate a suspended organization, or cancel a decommission hold
+        before its erasure runs (platform staff). An organization already
+        erased cannot come back (409).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "200":
+          description: The organization, active again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/logo:
+    get:
+      operationId: getOrgLogo
+      tags: [orgs]
+      summary: The organization's logo, as this registry re-encoded it.
+      description: >
+        A raster the core decoded and encoded again from the pixels: the
+        bytes an admin uploaded are never what is served (§10.3). The type
+        is pinned and not sniffed. The URL an organization's resource
+        carries (`logoUrl`) names the content by its `v`, and that URL is
+        served as immutable for a year; the bare path, or one whose `v` is
+        no longer the logo served, answers the current logo with
+        `no-cache`. Clients render `logoUrl` as given and never build the
+        path. 404 when the organization has none, or is not one the
+        caller may see.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "200":
+          description: The logo.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Problem"
+    put:
+      operationId: putOrgLogo
+      tags: [orgs]
+      summary: Set the organization's logo (admin; the subscription must include branding).
+      description: >
+        Multipart, one part named `file`: PNG or JPEG, at most 256 KB.
+        Anything else is 415 `unsupported-image` — SVG in particular, for
+        which this registry has no sanitiser. Over the cap, over 16
+        million pixels, or larger re-encoded than a logo may be, is 413
+        `upload-too-large`. The core decodes it and encodes it again; the
+        pixels are kept, the bytes are not. Replaces any logo the
+        organization had. 403 `feature-not-included` while the
+        subscription does not include branding.
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: The logo is set.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [logoUrl]
+                properties:
+                  logoUrl:
+                    type: string
+                    description: Where the logo is served, versioned by its content.
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteOrgLogo
+      tags: [orgs]
+      summary: Remove the organization's logo (admin).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "204":
+          description: Removed, or there was none.
         default:
           $ref: "#/components/responses/Problem"
 
@@ -1007,7 +1401,11 @@ paths:
     put:
       operationId: setOrgMember
       tags: [orgs]
-      summary: Add a member or change a role (admin+; owner grants owner/admin).
+      summary: >
+        Change a member's role (admin). Adding is retired: an organization
+        is joined by accepting an invitation, or by an admin approving
+        someone the IdP provisioned, and a PUT for a handle that holds no
+        membership answers 422 naming those doors.
       parameters:
         - $ref: "#/components/parameters/OrgHandle"
         - $ref: "#/components/parameters/Handle"
@@ -1020,7 +1418,7 @@ paths:
               required: [role]
               properties:
                 role:
-                  $ref: "#/components/schemas/OrgRole"
+                  $ref: "#/components/schemas/OrgRoleAssignment"
       responses:
         "200":
           description: Membership set.
@@ -1033,13 +1431,179 @@ paths:
     delete:
       operationId: removeOrgMember
       tags: [orgs]
-      summary: Remove a member (admin+; owners removable only by owners).
+      summary: >
+        Remove a member (admin), or leave: any active member may remove
+        themselves, since a person belongs to one organization at a time
+        and must be able to leave it. Removing a pending member is how an
+        admin declines them; the last admin cannot be removed or leave
+        (409 last-admin) — only a decommission removes them.
       parameters:
         - $ref: "#/components/parameters/OrgHandle"
         - $ref: "#/components/parameters/Handle"
       responses:
         "204":
           description: Removed.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/members/{handle}/approve:
+    post:
+      operationId: approveOrgMember
+      tags: [orgs]
+      summary: >
+        Approve a pending member (admin). The seat check fires here: a
+        person provisioned by SCIM, or folded in from the organization's
+        domain, holds no seat until an admin approves them.
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/Handle"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  $ref: "#/components/schemas/OrgRoleAssignment"
+      responses:
+        "200":
+          description: Approved; the membership is active.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Membership"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/members/{handle}/decline:
+    post:
+      operationId: declineOrgMember
+      tags: [orgs]
+      summary: >
+        Decline a pending member (admin): the pending membership is
+        removed and no seat is consumed. An active member is removed with
+        DELETE instead.
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - $ref: "#/components/parameters/Handle"
+      responses:
+        "204":
+          description: Declined.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/invitations:
+    get:
+      operationId: listInvitations
+      tags: [orgs]
+      summary: List the organization's open invitations (admin).
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      responses:
+        "200":
+          description: Open invitations.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Invitation"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createInvitation
+      tags: [orgs]
+      summary: >
+        Invite someone by email (admin). The invitation reserves a seat
+        when it is sent and expires in seven days. Its token is a
+        credential shown once in this response and stored only as a hash.
+        It is also mailed to the address when the registry may write
+        there: an address at the organization's own verified domain
+        always, and any other address only when it belongs to an account
+        whose address the registry has confirmed. Accepting an invitation
+        sent to the organization's verified domain also confirms the
+        accepting account's address, because the organization proved it
+        controls that domain.
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvitationRequest"
+      responses:
+        "201":
+          description: Invitation created; acceptUrl and token are shown once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedInvitation"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /orgs/{org}/invitations/{id}:
+    delete:
+      operationId: revokeInvitation
+      tags: [orgs]
+      summary: Revoke an open invitation (admin); its seat is released.
+      parameters:
+        - $ref: "#/components/parameters/OrgHandle"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Revoked.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /invitations/{token}:
+    get:
+      operationId: getInvitation
+      tags: [orgs]
+      summary: >
+        Read an invitation by its token (session only). Says which
+        organization and role it offers and whether the signed-in account
+        may accept it.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The offer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationOffer"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: acceptInvitation
+      tags: [orgs]
+      summary: >
+        Accept an invitation (session only). Refused unless the session's
+        verified email is the invited address; single use.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Accepted; the membership is active.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Membership"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -1186,6 +1750,13 @@ paths:
       operationId: createAgent
       tags: [agents]
       summary: Create an agent and its hosted git repository (§9.2).
+      description: >
+        A private agent counts against the namespace's private-agent cap
+        when the deployment's entitlements set one (the hosted product's
+        subscription tiers): at the cap the answer is `422` with the problem
+        type `private-agent-cap`, and the same on `PATCH` when an agent is
+        turned private. A core registry caps nothing. A cap never deletes
+        or hides an agent that is already private.
       requestBody:
         required: true
         content:
@@ -1199,6 +1770,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Agent"
+        "422":
+          description: >-
+            Validation, or `private-agent-cap` when the namespace holds as
+            many private agents as its tier allows (a core registry caps
+            nothing).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         default:
           $ref: "#/components/responses/Problem"
     get:
@@ -1229,6 +1809,13 @@ paths:
       operationId: getAgent
       tags: [agents]
       summary: Agent metadata (public agents readable by anyone).
+      description: >-
+        A public agent is readable by anyone. A private agent is readable by
+        its owner, the owning org's admins, and anyone holding a
+        grant on it; every other caller, anonymous included, gets the 404 a
+        missing name gets — never a 401 or 403 that would confirm the name
+        exists. The same rule holds on every route under `/agents/{ns}/{name}`
+        (agentry#313).
       security: []
       parameters:
         - $ref: "#/components/parameters/Namespace"
@@ -1268,6 +1855,22 @@ paths:
                   description: >
                     Allow non-fast-forward pushes to the default branch
                     (§6.3). Off by default; maintain only.
+                  type: boolean
+                pipelineSkip:
+                  description: >-
+                    Admit submissions to this agent without a scan (plan
+                    organization-subscriptions §4, D16). Settable by the
+                    namespace's administrators on a private agent of an
+                    organization's whose subscription includes unscanned
+                    agents; refused on a public agent
+                    (`pipeline-skip-public`) and in a personal namespace
+                    (`pipeline-skip-personal`), and with
+                    `feature-not-included` where the tier lacks it. While
+                    it is set, and while a version published unscanned
+                    stands, the agent cannot be made public
+                    (`agent-unscanned`). Clearing it changes nothing
+                    already published; the next submission goes through
+                    the whole pipeline.
                   type: boolean
                 modes:
                   description: >
@@ -1458,6 +2061,20 @@ paths:
         (tar.zst) submits a client-built package (cli-upload source; the
         server re-validates, re-packs deterministically, and compares
         digests: client packing is never trusted).
+
+        A deployment with an admission extension (the hosted product's
+        subscription tiers) may refuse a submission after every core check
+        has passed and before anything is stored: `402` with the problem
+        type `credits-exhausted` carries `balance`, `resetsAt` and
+        `account` — the handle whose balance is short, which is the
+        submitter's own or, for a member of a paid organization, the
+        organization's — at the top level of the problem body.
+        `402 subscription-inactive` refuses one whose payer is an
+        organization that is awaiting payment or has lapsed, and carries
+        `account` the same way. `503 admission-unavailable` means the check
+        could not be reached and nothing was recorded. A core registry
+        never answers any of them. The gate's verdict never depends on
+        admission.
       parameters:
         - $ref: "#/components/parameters/Namespace"
         - $ref: "#/components/parameters/AgentName"
@@ -1490,6 +2107,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentVersion"
+        "402":
+          description: >-
+            Refused by the deployment's admission extension (problem type
+            `credits-exhausted` with `balance`, `resetsAt` and `account`,
+            or `subscription-inactive` with `account`); nothing was
+            stored. Never answered by a core registry.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: >-
+            `scan-not-scheduled` (the version was recorded and a watchdog
+            routes it to review) or `admission-unavailable` (nothing was
+            recorded; retry).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         default:
           $ref: "#/components/responses/Problem"
     get:
@@ -1697,6 +2333,7 @@ paths:
       operationId: streamVersionEvents
       tags: [versions]
       summary: Server-sent events for a version's pipeline progress (§11 "SSE/poll"; agentry#65).
+      security: []
       description: >
         Streams `event: status` messages (JSON: status, statusReason, the
         scan stages completed so far, done) whenever something changes,
@@ -1994,7 +2631,7 @@ paths:
     put:
       operationId: setOrgPolicy
       tags: [policies]
-      summary: Set the org policy overlay (owner; tighten-only, §8.6).
+      summary: Set the org policy overlay (admin; tighten-only, §8.6).
       parameters:
         - $ref: "#/components/parameters/OrgHandle"
       requestBody:
@@ -2019,7 +2656,7 @@ paths:
     get:
       operationId: listSsoConnections
       tags: [sso]
-      summary: List the org's SSO connections (owner, §12.4).
+      summary: List the org's SSO connections (admin, §12.4).
       parameters:
         - $ref: "#/components/parameters/OrgHandle"
       responses:
@@ -2037,8 +2674,13 @@ paths:
   /orgs/{org}/sso/connections/{kind}:
     put:
       operationId: putSsoConnection
+      description: >
+        403 `feature-not-included` while the organization's subscription
+        does not include single sign-on. An existing connection is left
+        alone by a subscription change and works again the moment the
+        subscription includes SSO.
       tags: [sso]
-      summary: Create or update a SAML/OIDC connection (owner, §12.4).
+      summary: Create or update a SAML/OIDC connection (admin, §12.4).
       parameters:
         - $ref: "#/components/parameters/OrgHandle"
         - $ref: "#/components/parameters/SsoKind"
@@ -2060,7 +2702,7 @@ paths:
     delete:
       operationId: deleteSsoConnection
       tags: [sso]
-      summary: Delete a connection (owner, §12.4).
+      summary: Delete a connection (admin, §12.4).
       parameters:
         - $ref: "#/components/parameters/OrgHandle"
         - $ref: "#/components/parameters/SsoKind"
@@ -2074,7 +2716,7 @@ paths:
     post:
       operationId: testSsoConnection
       tags: [sso]
-      summary: Probe a stored connection without signing in (owner, §12.4; agentry#50).
+      summary: Probe a stored connection without signing in (admin, §12.4; agentry#50).
       description: >
         OIDC: runs discovery against the stored issuer and reports the
         endpoints it advertises. SAML: parses the stored IdP metadata and
@@ -2117,6 +2759,14 @@ paths:
       operationId: samlAcs
       tags: [sso]
       summary: "SAML Assertion Consumer Service: consume a signed assertion (§12.4)."
+      description: >
+        A `RelayState` form field holding a same-origin path puts this in
+        browser mode: the session and CSRF cookies are set and the answer
+        is a 303 to that path, and a failure is a 303 to the sign-in page
+        carrying the reason, because a browser cannot read a problem
+        document. Anything else in `RelayState` is ignored. Without one the
+        answer is the JSON below. 404 while the organization's subscription
+        does not include SSO.
       security: []
       parameters:
         - $ref: "#/components/parameters/OrgHandle"
@@ -2127,6 +2777,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LoginResult"
+        "303":
+          description: Browser mode — the session is set and the browser returns to the path RelayState named, or to the sign-in page on a failure.
         default:
           $ref: "#/components/responses/Problem"
 
@@ -2170,9 +2822,22 @@ paths:
       operationId: oidcStart
       tags: [sso]
       summary: Begin the OIDC auth-code + PKCE flow (redirect to IdP, §12.4).
+      description: >
+        404 while the organization's subscription does not include SSO: the
+        door is not there to be started. `next` puts the callback in
+        browser mode.
       security: []
       parameters:
         - $ref: "#/components/parameters/OrgHandle"
+        - name: next
+          in: query
+          description: >
+            Where the browser returns after a successful sign-in. A
+            same-origin path only (leading `/`, not `//`); anything else is
+            ignored. It is sealed into the state the callback reads, so the
+            identity provider's round trip cannot change it.
+          schema:
+            type: string
       responses:
         "302":
           description: Redirect to the IdP authorization endpoint.
@@ -2184,6 +2849,12 @@ paths:
       operationId: oidcCallback
       tags: [sso]
       summary: "OIDC redirect URI: exchange the code and establish a session (§12.4)."
+      description: >
+        When the start carried a `next`, this is browser mode: the session
+        and CSRF cookies are set and the answer is a 303 to that path, and
+        a failure is a 303 to the sign-in page carrying the reason.
+        Otherwise the answer is the JSON below. 404 while the
+        organization's subscription does not include SSO.
       security: []
       parameters:
         - $ref: "#/components/parameters/OrgHandle"
@@ -2202,6 +2873,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LoginResult"
+        "303":
+          description: Browser mode — the session is set and the browser returns to the path `next` named, or to the sign-in page on a failure.
         default:
           $ref: "#/components/responses/Problem"
 
@@ -2209,7 +2882,7 @@ paths:
     get:
       operationId: listScimTokens
       tags: [scim]
-      summary: List active SCIM provisioning tokens (owner, §12.5).
+      summary: List active SCIM provisioning tokens (admin, §12.5).
       parameters:
         - $ref: "#/components/parameters/OrgHandle"
       responses:
@@ -2225,8 +2898,13 @@ paths:
           $ref: "#/components/responses/Problem"
     post:
       operationId: createScimToken
+      description: >
+        403 `feature-not-included` while the organization's subscription
+        does not include directory provisioning. Tokens already issued are
+        left alone by a subscription change and provision again the moment
+        it includes SCIM.
       tags: [scim]
-      summary: Mint a SCIM bearer token (owner, §12.5).
+      summary: Mint a SCIM bearer token (admin, §12.5).
       parameters:
         - $ref: "#/components/parameters/OrgHandle"
       requestBody:
@@ -2254,7 +2932,7 @@ paths:
     delete:
       operationId: revokeScimToken
       tags: [scim]
-      summary: Revoke a SCIM token (owner, §12.5).
+      summary: Revoke a SCIM token (admin, §12.5).
       parameters:
         - $ref: "#/components/parameters/OrgHandle"
         - name: tokenId
@@ -2752,6 +3430,7 @@ paths:
       operationId: getMcpServerScan
       tags: [mcp-servers]
       summary: The registry's last vulnerability check of one MCP server package version (agentry#177).
+      security: []
       description: >-
         What S7 recorded for the exact package version: `safe` means no
         known advisories at `lastCheckedAt`, `vulnerable` lists them,
@@ -2790,7 +3469,12 @@ paths:
       tags: [platform]
       summary: Published advisories — for one agent, or the global feed (§8.7).
       description: >
-        With `affecting`, the advisories against that agent (newest first).
+        With `affecting`, the advisories against that agent (newest first),
+        under the agent's own read rule: a private agent's advisories are
+        its readers' (the owning user, the owning org's admins,
+        and anyone holding a grant on the agent), and anyone else —
+        anonymous or signed in — gets the 404 a missing name gets, so the
+        agent's existence is not discoverable here (agentry#313).
         Without it, the global feed: every published advisory against a
         public agent, newest first, keyset-paged with `cursor`/`limit` and a
         `Link: rel="next"` header (§9.1). Each item carries `agent`
@@ -3084,10 +3768,16 @@ components:
         features:
           type: object
           description: >
-            Self-host feature flags: `judge`, `signing`, `redis`, `s3`, and
+            Self-host feature flags: `judge`, `signing`, `redis`, `s3`,
             `externalOnly` (accounts live in an external directory service;
             the native register/password/TOTP surface answers 410 — clients
-            should not offer those forms).
+            should not offer those forms) and `publicPublish2FA` (the server
+            refuses a public publish from an account it holds no second-factor
+            evidence for — an enrolled TOTP, or under `auth.requireIdpMFA` an
+            IdP sign-in whose `amr` named a factor;
+            false in dev mode and under `externalOnly` without
+            `auth.requireIdpMFA` — a client states that requirement only
+            when this is true).
           additionalProperties:
             type: boolean
         minCLIVersion:
@@ -3168,6 +3858,24 @@ components:
         totpCode:
           type: string
           description: Required when the account has TOTP enabled.
+        rememberDevice:
+          type: boolean
+          description: >
+            Remember this browser as a trusted device, so a later password
+            sign-in from it skips the TOTP code. Defaults to false.
+
+
+            What it does: on a sign-in that answered the code, issues an
+            opaque httpOnly cookie recorded against the account, and later
+            password sign-ins presenting it are not asked for the code. What
+            it does not do: it is not a session, does not lengthen one, and
+            carries no scope — the password is still required on every
+            sign-in. It cannot be earned by a sign-in that skipped the code,
+            so its lifetime is absolute rather than sliding, and it expires
+            after auth.trustedDeviceTTL (30 days by default and by maximum).
+            It has no effect on an account with no TOTP factor, where no code
+            was answered, and on a deployment whose credentials are delegated
+            to an external directory, where this endpoint answers 410.
 
     LoginResult:
       type: object
@@ -3284,9 +3992,33 @@ components:
                 type: string
               role:
                 type: string
+              state:
+                $ref: "#/components/schemas/MembershipState"
+        pendingOrg:
+          $ref: "#/components/schemas/PendingOrg"
         createdAt:
           type: string
           format: date-time
+
+    PendingOrg:
+      type: object
+      description: >
+        The organization the caller is waiting to be approved by (present on
+        GET /user only, and only while a pending membership exists): the
+        domain folded them in at a sign-in, or the organization's IdP
+        provisioned them. Every page and client can say it until an admin
+        approves or declines them; until then they keep working on their
+        own tier.
+      required: [handle, displayName, via]
+      properties:
+        handle:
+          type: string
+        displayName:
+          type: string
+        via:
+          type: string
+          description: The door — `domain` (their verified address is at the organization's domain) or `scim`.
+          enum: [domain, scim]
 
     PublicUser:
       type: object
@@ -3312,7 +4044,7 @@ components:
         scopes:
           type: array
           items:
-            $ref: "#/components/schemas/Scope"
+            $ref: "#/components/schemas/ScopeGranted"
         orgHandle:
           type: string
           description: Set when org-bound (enforced SSO, §12.4).
@@ -3351,13 +4083,16 @@ components:
         expiresAt:
           type: string
           format: date-time
-          description: Defaults to (and is capped at) the max PAT lifetime (§12.3).
+          description: >-
+            Defaults to the max PAT lifetime (§12.3); a later value is refused
+            with 422, not clamped.
         orgHandle:
           type: string
           description: >
             Bind the token to this org (§12.4). Requires the current session to
-            be SSO-fresh for the org; org-bound tokens are capped at 90 days and
-            are the only tokens accepted against an enforced-SSO org's resources.
+            be SSO-fresh for the org; org-bound tokens live at most 90 days (a
+            later expiresAt is refused with 422) and are the only tokens accepted
+            against an enforced-SSO org's resources.
 
     DesktopGrantRequest:
       type: object
@@ -3391,7 +4126,13 @@ components:
 
     Scope:
       type: string
-      description: PAT scopes (§12.3).
+      description: |
+        PAT scopes (§12.3). A token can do only what its scopes allow; a
+        session acts with the account's full authority. `run:write` lets a
+        token start, feed and cancel a hosted run of a BriefAgent and
+        `run:read` lets it read a run, its log and its artefacts — both are
+        consumed only by a registry that mounts the runs extension, and
+        unlock nothing on one that does not.
       enum:
         - repo:read
         - repo:write
@@ -3401,11 +4142,49 @@ components:
         - review:act
         - audit:read
         - user:profile
+        - run:read
+        - run:write
+
+    ScopeGranted:
+      type: string
+      description: |
+        A scope as it appears on a token the registry reports back (the
+        token list, a newly minted token, the desktop exchange). The set is
+        the one `Scope` accepts and grows by addition, so it is declared
+        extensible: a client keeps a value it does not know as the string
+        it is rather than failing on it.
+      x-extensible-enum:
+        - repo:read
+        - repo:write
+        - agent:publish
+        - agent:read
+        - org:admin
+        - review:act
+        - audit:read
+        - user:profile
+        - run:read
+        - run:write
 
     OrgRole:
       type: string
-      description: Org roles, ordered owner > admin > security_reviewer | member (§12.2).
-      enum: [owner, admin, security_reviewer, member]
+      description: >
+        An organization role, ordered admin > security_reviewer | member
+        (§12.2 as amended by agentry#360). Admins manage the organization,
+        its members, settings, SSO and SCIM, and hold the security
+        reviewer's powers; security_reviewer is a platform-internal role
+        that exists only inside a first-party organization; the owner role
+        is retired and every owner became an admin. An organization always
+        keeps one admin: demoting or removing the last one is 409 last-admin.
+      enum: [admin, member, security_reviewer]
+
+    OrgRoleAssignment:
+      type: string
+      description: >
+        The role a PUT assigns. security_reviewer is refused outside a
+        first-party organization, and owner — retired by agentry#360, kept
+        here so an older client's request still parses — is refused with a
+        422 that names the roles that exist.
+      enum: [admin, member, security_reviewer, owner]
 
     CreateOrgRequest:
       type: object
@@ -3417,6 +4196,18 @@ components:
         displayName:
           type: string
           maxLength: 120
+        domain:
+          type: string
+          maxLength: 253
+          description: >
+            The domain the organization is keyed on. Omitted, it is the
+            domain of the creator's verified email address; `none` records
+            no domain; the creator's own domain, spelled out, is accepted.
+            Any other value is 422 — a further domain is claimed over DNS
+            (`POST /orgs/{org}/domain-claims`). A domain no single
+            organization owns (a public mail provider, a reserved name) is
+            recorded as none whatever is sent. A domain that already
+            belongs to an organization is `409 domain-claimed`.
 
     Org:
       type: object
@@ -3431,12 +4222,102 @@ components:
           type: string
         verifiedDomain:
           type: string
+          description: >
+            The first domain the organization verified over DNS. Kept for
+            older clients; `verifiedDomains` carries them all.
+        verifiedDomains:
+          type: array
+          description: Every domain the organization proved control of over DNS, oldest first.
+          items:
+            type: string
+        domain:
+          type: string
+          description: >
+            The domain the organization was created at (its creator's
+            verified email domain), which routes people at that domain to
+            its administrators. Absent when none was recorded.
+        state:
+          $ref: "#/components/schemas/OrgState"
+        decommissionAt:
+          type: string
+          format: date-time
+          description: >
+            While `state` is `decommissioning`: when the hold ends and the
+            organization's agents, repositories, blobs and invitations are
+            erased, its handle and domain released.
         ssoRequired:
           type: boolean
           description: Present for org admins only.
+        seats:
+          allOf:
+            - $ref: "#/components/schemas/Seats"
+          description: Present for the organization's members only.
+        logoUrl:
+          type: string
+          description: >
+            Where the organization's logo is served, when it has one: a
+            path on this registry, versioned by the logo's content so a
+            replaced logo has a new URL. Absent when there is none.
         createdAt:
           type: string
           format: date-time
+
+    OrgState:
+      type: string
+      description: >
+        Where the organization is in its life. `active` is the ordinary
+        state. `suspended` (platform staff) makes the organization and
+        everything under it answer as absent — 404 to every caller, git
+        included — until it is reinstated. `decommissioning` is the
+        read-only hold an admin, platform staff or the hosted product's
+        pending-payment sweep started: members still read every agent and
+        export the audit log, nothing under the organization can be
+        changed, pushed or submitted (409 org-decommissioning), and at
+        `decommissionAt` the erasure runs; staff may reinstate it before
+        then. `decommissioned` is the row after the erasure; its handle is
+        released, so no path names it.
+      enum: [active, suspended, decommissioning, decommissioned]
+
+    DomainOrg:
+      type: object
+      description: >
+        Which organization, if any, the caller's verified email domain
+        belongs to — recorded at the organization's creation or verified
+        over DNS by it. A domain no single organization owns (a public
+        mail provider) belongs to nobody.
+      required: [domain]
+      properties:
+        domain:
+          type: string
+          description: The caller's verified email domain; empty for an address at a shared domain.
+        org:
+          type: object
+          description: Absent when no organization holds the domain.
+          required: [handle, displayName]
+          properties:
+            handle:
+              type: string
+            displayName:
+              type: string
+        member:
+          type: boolean
+          description: Whether the caller already holds a membership there, pending or active.
+        requestedToday:
+          type: boolean
+          description: Whether the caller already asked its administrators for access in the last day.
+
+    AccessRequestResult:
+      type: object
+      required: [org, mailedAdmins]
+      properties:
+        org:
+          type: string
+        mailedAdmins:
+          type: integer
+          description: >
+            How many of the organization's admins were mailed. Zero when
+            none has a verified address that accepts organization mail;
+            the request is still audited.
 
     Membership:
       type: object
@@ -3448,6 +4329,129 @@ components:
           $ref: "#/components/schemas/OrgRole"
         viaScim:
           type: boolean
+        viaDomain:
+          type: boolean
+          description: >
+            The domain folded this person in: their verified address is at
+            a domain the organization holds, and they became pending at a
+            sign-in or by the sweep that runs when the organization gains
+            the domain. An admin's approval keeps the flag; the console
+            says how each member arrived.
+        state:
+          $ref: "#/components/schemas/MembershipState"
+
+    MembershipState:
+      type: string
+      description: >
+        Whether the membership is in force. `pending` is someone the
+        organization's IdP provisioned, or its domain folded in, who holds
+        no seat and nothing of the organization until an admin approves
+        them; `active` is a member. Declining a pending member removes
+        them, and a decline is remembered: the domain does not fold that
+        person in again unless an admin invites them.
+      enum: [pending, active]
+
+    Seats:
+      type: object
+      description: >
+        What the organization holds against its seat allowance. A seat is
+        every active membership plus every open invitation; pending people
+        hold none. `max` is the allowance, 0 meaning unbounded — what a
+        registry with no billing extension answers.
+      required: [used, invited, pending, max]
+      properties:
+        used:
+          type: integer
+          format: int64
+        invited:
+          type: integer
+          format: int64
+        pending:
+          type: integer
+          format: int64
+        max:
+          type: integer
+          format: int64
+
+    Invitation:
+      type: object
+      required: [id, email, role, expiresAt, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          $ref: "#/components/schemas/OrgRole"
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        invitedBy:
+          type: string
+          description: The handle of the admin who sent it.
+        expired:
+          type: boolean
+          description: An expired invitation holds no seat and cannot be accepted.
+
+    CreateInvitationRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+        role:
+          $ref: "#/components/schemas/OrgRoleAssignment"
+
+    CreatedInvitation:
+      allOf:
+        - $ref: "#/components/schemas/Invitation"
+        - type: object
+          required: [token, acceptUrl, mailed]
+          properties:
+            token:
+              type: string
+              description: >
+                The credential, shown once and never again: the registry
+                keeps only its SHA-256. Give it to the person you invited
+                if it was not mailed to them.
+            acceptUrl:
+              type: string
+              description: Where the invited person accepts it.
+            mailed:
+              type: boolean
+              description: >
+                Whether the invitation was mailed. It is not when the
+                address belongs to no account, to an account whose address
+                the registry has not verified, or to someone who has turned
+                organization-invitation mail off — the registry mails no
+                address it has not confirmed (DEV-099).
+
+    InvitationOffer:
+      type: object
+      required: [org, orgDisplayName, email, role, expiresAt, acceptable]
+      properties:
+        org:
+          type: string
+        orgDisplayName:
+          type: string
+        email:
+          type: string
+          description: The address the invitation is bound to.
+        role:
+          $ref: "#/components/schemas/OrgRole"
+        expiresAt:
+          type: string
+          format: date-time
+        acceptable:
+          type: boolean
+          description: Whether the signed-in account may accept it now.
+        reason:
+          type: string
+          description: Why it cannot be accepted, when it cannot.
 
     Team:
       type: object
@@ -3750,13 +4754,22 @@ components:
           description: A published version was quarantined by a rescan.
         reviewDecisions:
           type: boolean
-          description: A reviewer decided one of the person's submissions.
+          description: A reviewer decided one of the person's submissions, or the gate held one for review.
         advisories:
           type: boolean
           description: An advisory naming one of the person's BriefAgents was published.
         orgInvites:
           type: boolean
           description: The person was added to an organization.
+        billing:
+          type: boolean
+          description: >
+            The subscription that pays for the person's work: a checkout
+            confirmed, a payment failed, an organization restricted, seats
+            reached, "your organization covers you" (the hosted product's
+            billing mail; a registry with no billing sends none). Not
+            required on a write: a client that predates the switch leaves
+            it as it was rather than turning it off by omission.
     WebNotificationSettings:
       type: object
       description: In-app alerts.
@@ -3905,6 +4918,14 @@ components:
         allowForcePush:
           type: boolean
           description: Present for callers with maintain; whether force-push to the default branch is allowed (§6.3).
+        pipelineSkip:
+          type: boolean
+          description: >-
+            Present for callers with maintain; whether submissions are
+            admitted without a scan (an organization's private agent only,
+            plan organization-subscriptions §4). A version so admitted is
+            served with `scanStatus: skipped` and the report's verdict
+            `unscanned`.
         createdAt:
           type: string
           format: date-time
@@ -3950,6 +4971,15 @@ components:
         source:
           type: string
           enum: [git-tag, cli-upload]
+        scanStatus:
+          type: string
+          enum: [pipeline, skipped]
+          description: >-
+            How the version was admitted: through the pipeline, or skipped
+            — no scan run, no findings, no attestation, the report's
+            verdict `unscanned` (plan organization-subscriptions §4). A
+            skipped version is a private organization agent's; a client
+            that installs or runs one asks for consent first.
         manifestSchemaVersion:
           type: integer
           description: >
@@ -4010,6 +5040,15 @@ components:
         yanked:
           type: boolean
           description: True only for exact pins of yanked versions (§5.5).
+        scanStatus:
+          type: string
+          enum: [pipeline, skipped]
+          description: >-
+            How the resolved version was admitted (plan
+            organization-subscriptions §4): `skipped` is a version published
+            without a scan — no attestation exists for it, which is not the
+            same as an unsigned registry — and a client installs or runs it
+            only with the person's consent.
 
     ScanFinding:
       type: object
@@ -4065,8 +5104,21 @@ components:
           type: string
         judgeModel:
           type: string
+          description: >-
+            The judge that adjudicated this run — the AI Review model — as the
+            attestation records it: the model id when the provider has one
+            (typesafe, openai, anthropic, bedrock), else the provider's name
+            (static, none, classifier). Recorded per run for reproducibility
+            beside the rubric hash.
+        judgeUsage:
+          $ref: "#/components/schemas/JudgeUsage"
         scanStatus:
           type: string
+          description: >-
+            The scan run's status; `skipped` for a version admitted without
+            a scan (M21), which has no run.
+        verdict:
+          $ref: "#/components/schemas/ReportVerdict"
         finishedAt:
           type: string
           format: date-time
@@ -4079,6 +5131,49 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ScanFinding"
+        rescanInFlight:
+          $ref: "#/components/schemas/RescanInFlight"
+
+    RescanInFlight:
+      type: object
+      required: [scanRunId, startedAt]
+      description: >-
+        A later scan of this version still running (a ruleset or MCP rescan
+        sweep, a manual rescan) while the report describes the latest run that
+        finished. Present only when such a run exists: the verdict a release was
+        published on stands until the rescan finishes, and the report says one
+        is under way rather than going blank (agentry#542).
+      properties:
+        scanRunId:
+          type: string
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+
+    ReportVerdict:
+      type: string
+      enum: [scanned, unscanned]
+      description: >-
+        What a report is: `scanned` when a scan run stands behind it (the
+        findings say the rest), `unscanned` when the version was admitted
+        without one — never conflated with "scanned with a known gap".
+        Absent while a scan is still pending.
+
+    JudgeUsage:
+      type: object
+      description: >-
+        The token use the AI Review model's provider reported for this scan
+        run — what the review cost, as measured. Present for platform staff only,
+        and absent when the provider reported none (the static and
+        classifier judges, an endpoint without a usage block); absent means
+        unknown, not zero. Not part of the signed report.
+      required: [promptTokens, completionTokens]
+      properties:
+        promptTokens:
+          type: integer
+        completionTokens:
+          type: integer
 
     ReviewItem:
       type: object
@@ -4095,6 +5190,13 @@ components:
           enum: [pending, approved, rejected]
         version:
           type: string
+        # The version's own status when the item was read (§7), so a client
+        # can say what a decision will do: a needs_review version rejected
+        # goes to rejected, a quarantined one — public, under re-review —
+        # is yanked instead, the rejected edge not existing for it
+        # (agentry#273).
+        versionStatus:
+          $ref: "#/components/schemas/VersionStatus"
         agent:
           type: string
         namespace:
@@ -4226,6 +5328,80 @@ components:
               type: integer
         total:
           type: integer
+          description: >
+            The number of hits for this request's predicate (query, mode,
+            capability, license, verified) before limit and offset — what
+            "2 of 8 results" counts. Blocked and never-published agents are
+            outside it, as they are outside the results.
+
+    AccountInstallRequest:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: string
+          description: The published version to record, exactly (no range).
+        acceptCapabilities:
+          type: boolean
+          description: >-
+            The caller accepts the declared capabilities of this version.
+            Required true on a first install and on an update whose
+            capabilities widened; not read otherwise.
+        acceptUnsigned:
+          type: boolean
+          description: Required true when the release carries no attestation.
+        acceptUnscanned:
+          type: boolean
+          description: Required true when the release was admitted without a scan.
+
+    AccountInstall:
+      type: object
+      description: >-
+        One account install, composed for a list. Only `ref` and `readable`
+        are always present: a record whose BriefAgent the caller can no
+        longer read carries nothing else.
+      required: [ref, readable]
+      properties:
+        ref:
+          type: string
+          description: "`ns/name`."
+        readable:
+          type: boolean
+          description: Whether the caller can read the BriefAgent today.
+        installedVersion:
+          type: string
+        capabilities:
+          type: object
+          additionalProperties: true
+          description: The declared capability block the caller accepted, as the version declared it.
+        acceptedUnsigned:
+          type: boolean
+          description: The release carried no attestation and the caller accepted that.
+        acceptedUnscanned:
+          type: boolean
+          description: The release was admitted without a scan and the caller accepted that.
+        latestVersion:
+          type: string
+          description: The newest published version; absent when none is.
+        verdict:
+          $ref: "#/components/schemas/ReportVerdict"
+        findingCounts:
+          type: object
+          additionalProperties:
+            type: integer
+          description: The installed version's finding counts by severity; present with a `scanned` verdict.
+        signed:
+          type: boolean
+          description: Whether the installed version carries an attestation.
+        quarantineState:
+          type: string
+          enum: [none, quarantined, blocked]
+        installedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
     SearchHit:
       type: object
@@ -4244,6 +5420,13 @@ components:
         quarantineState:
           type: string
           enum: [none, quarantined, blocked]
+        logoUrl:
+          type: string
+          description: >
+            The publishing organization's logo, when the namespace is an
+            organization with one — beside the publisher's name, never in
+            place of the verdict. Absent for a person's namespace and for
+            an organization without one.
 
     Problem:
       type: object
@@ -4322,7 +5505,7 @@ components:
         config:
           type: object
           additionalProperties: true
-          description: SAML (idpMetadataXml or idpEntityId+idpCertificatePem+idpSsoUrl) or OIDC (issuer, clientId, clientSecret) settings.
+          description: SAML (idpMetadataXml or idpEntityId+idpCertificatePem+idpSsoUrl) or OIDC (issuer, clientId, clientSecret) settings. An OIDC save that omits clientSecret keeps the stored one; to drop the secret, delete the connection.
 
     ScimToken:
       type: object
