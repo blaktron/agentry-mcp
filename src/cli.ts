@@ -11,17 +11,17 @@ import { access, constants } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 
 /**
- * The oldest CLI this server drives. The writing tools need the plan-mode
- * output of agentry-cli#123 (`install --plan --json`, `uninstall --plan`,
- * `list --json`) and agentry-cli#124 (`run --plan --json`); the CLI
- * repository carries no release tag for them yet, so the floor stays
- * nominal and checkCli probes `install --help` and `run --help` for
- * `--plan` instead. A dev build reports a git describe (`9d89740-dirty`, `0.0.0-dev`)
- * rather than a version; that is accepted and noted, since the floor cannot
- * be read from it. Raise this to the first tagged release that ships the
- * plan mode.
+ * The oldest CLI this server drives: v0.6.0, the CLI's first tagged release
+ * (agentry-cli#327, DEV-148), which ships the plan-mode output the writing
+ * tools need, agentry-cli#123 (`install --plan --json`, `uninstall --plan`,
+ * `list --json`) and agentry-cli#124 (`run --plan --json`). A release reports
+ * `0.6.0`, a dev prerelease `0.6.1-dev.2` (its X.Y.Z is compared); a build
+ * from an untagged tree reports a git describe (`9d89740-dirty`, `0.0.0-dev`)
+ * rather than a version, which is accepted and noted, since the floor cannot
+ * be read from it. checkCli also probes `install --help` and `run --help` for
+ * `--plan`, which catches such a build without the plan mode.
  */
-export const MIN_CLI_VERSION = "0.0.0";
+export const MIN_CLI_VERSION = "0.6.0";
 
 /** What `agentry --version` said, parsed. */
 export interface CliVersion {
@@ -213,8 +213,8 @@ export async function checkCli(
         `(https://secureagentry.net/download); the server never updates it for you.`,
     );
   }
-  // The CLI has no release tags yet, so a dev build carries no version to
-  // compare; the output the writing tools need is probed directly instead:
+  // A build from an untagged tree carries no version to compare, so the
+  // output the writing tools need is probed directly as well:
   // `install --plan` (agentry-cli#123) and `run --plan` (agentry-cli#124)
   // are what the consent previews run.
   for (const [command, issue] of [

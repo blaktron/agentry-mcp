@@ -180,7 +180,7 @@ https://secureagentry.net/download, or built from
 the session tools.
 
 **From the download page.** From the first tagged release on
-(agentry-web#250), https://secureagentry.net/download carries
+(v0.6.0; agentry-web#250 and #444 import it), https://secureagentry.net/download carries
 `agentry-mcp-<version>.tar.gz`: the built server with its dependencies, one
 file for every platform. Check its SHA-256 against the one on the card, then
 unpack it anywhere; nothing is installed and nothing is fetched afterwards:
@@ -223,11 +223,12 @@ that login and never sees the token.
 The server finds the CLI through `AGENTRY_BIN`, else `agentry` on `PATH`,
 runs `agentry --version` once at start, and refuses to start without a CLI
 at or above `MIN_CLI_VERSION` (`src/cli.ts`) that has `install --plan` and
-`run --plan` (agentry-cli#123 and #124 or newer; the CLI has no release tag
-for them yet, so the floor is nominal and the plan modes are probed
-directly). A dev build of the CLI reports a git describe rather than a
-version; it is accepted and the start-up line says the floor was not
-checked.
+`run --plan` (agentry-cli#123 and #124; the floor is v0.6.0, the CLI's first
+tagged release, which ships both, and the plan modes are probed directly as
+well). A CLI release reports `0.6.0` and a dev prerelease `0.6.1-dev.2`, whose
+`X.Y.Z` is compared; a build of the CLI from an untagged tree reports a git
+describe rather than a version, which is accepted, and the start-up line says
+the floor was not checked.
 
 ## What the server holds
 
@@ -253,26 +254,68 @@ node scripts/package-smoke.mjs /tmp/out/agentry-mcp-0.0.0-dev.tar.gz   # unpack 
 
 ## Releases
 
-A tag `v<major>.<minor>.<patch>` on `main` runs `.github/workflows/release.yaml`
-in two jobs. **`package`** refuses a tag that `package.json` and
-`SERVER_VERSION` (`src/server.ts`) do not both carry, runs `npm run check`,
-builds the tarball with `scripts/package.sh` (CI builds it twice on every
-pull request and requires the same digest), starts it unpacked, and writes
-`BUILD-INFO` and `SHA256SUMS`; it holds no secret. **`sign`** checks out no
-code and runs no npm: it takes that bundle, checks the sums, signs them with
-the estate's update-signing key through the desktop's
-`signrelease -product agentry-mcp`, and uploads the workflow artifact
-`agentry-mcp-<version>`, which the site's downloads importer takes once
-agentry-web#250 teaches it to. `sign` runs in the `release` environment,
-which admits only `main` and `v*` tags, and needs two secrets there:
-`AGENTRY_UPDATE_SIGNING_KEY` (the estate key, the desktop's) and
-`AGENTRY_BUILD_TOKEN` (read access to the private desktop module the signer
-is installed from). Without either, a release fails; it is never uploaded
-unsigned. `scripts/operator/release-setup.sh` sets up the environment and
-both secrets — the key decrypted from the operator's backup straight into
-the secret — and runs a dry run; re-run it after a key rotation. To release:
-bump both version strings in one pull request into `dev`, promote it, then
-tag `main`.
+Every build that ships is released under a version (DEV-148, agentry-mcp#48
+and #36). A tag is one of two forms, and the branch line its commit is on
+must agree:
+
+- `vX.Y.Z` on a commit on `main`'s first-parent line (a promotion's merge
+  commit) is a **production release**;
+- `vX.Y.Z-dev.N` (N from 1) on a commit on `dev`'s first-parent line is a
+  **dev prerelease** of the version `main` releases next.
+
+`scripts/release-tag.sh` (the CLI's, copied unchanged, with
+`scripts/release-registry.sh` and `build/release.env`) refuses any other
+form, a form on the wrong line, a release that does not move forward, and any
+1.x unless the operator has set the repository variable `AGENTRY_ALLOW_V1=true`
+(agentry#522), before anything is built. `package.json`'s version and
+`SERVER_VERSION` (`src/server.ts`) stay `X.Y.Z`, and a tag names them; the
+tarball is named for the whole tag. The server bakes no registry (it drives
+the person's CLI, which chooses one); `BUILD-INFO` names the channel.
+
+**Cutting one** (agents may; only the operator moves the minor version or cuts
+1.0.0). Both version strings on `dev` are the version `main` releases next:
+after `main` releases `vX.Y.Z`, a pull request into `dev` bumps both to
+`X.Y.(Z+1)`, and the promotion carries them. At each release, re-sync the
+parked server's vendored API contract against the core's newest release
+(`secureagentry-mcp/scripts/sync-spec.sh <core checkout at the tag>`, then its
+`npm run generate`; decision M1, agentry-mcp#14): CI cannot, since this
+repository holds no token that reads the core. Then:
+
+```bash
+git fetch --tags origin
+tag=$(scripts/release-tag.sh next dev) && git tag "$tag" origin/dev && git push origin "$tag"    # a dev prerelease of dev's head
+tag=$(scripts/release-tag.sh next main) && git tag "$tag" origin/main && git push origin "$tag"  # a production release of main's head
+```
+
+`next` must name the `X.Y.Z` both version strings carry;
+`RELEASE_VERSION=X.Y.0` is the operator's, for the first tag of a minor they
+have chosen (the first cut of all, v0.6.0, is one: `next` alone would name
+0.6.0 anyway, since this repository had no tag). Tag a head only after its
+merge is verified, and watch the `release` run to green.
+
+**The workflow** runs in three jobs. **`package`** checks the tag, runs
+`npm run check`, builds the tarball with `scripts/package.sh` (CI builds it
+twice on every pull request and requires the same digest), starts it
+unpacked, and writes `BUILD-INFO` and `SHA256SUMS`; it holds no secret.
+**`sign`** checks out no code and runs no npm: it takes that bundle, checks
+the sums, and signs them with the estate's update-signing key through the
+desktop's `signrelease -product agentry-mcp` when the `release` environment
+holds its two secrets, `AGENTRY_UPDATE_SIGNING_KEY` (the estate key, the
+desktop's) and `AGENTRY_BUILD_TOKEN` (read access to the private desktop
+module the signer is installed from). Signed where signing exists, unsigned
+where it does not (DEV-148): with neither secret the bundle is passed on
+without `SHA256SUMS.minisig` and the Release says so; with only one the
+release fails; and once the repository variable `AGENTRY_REQUIRE_SIGNING=true`
+is set, a missing one fails it too. `scripts/operator/release-setup.sh` sets up
+the environment and both secrets (agentry-mcp#33) — the key decrypted from
+the operator's backup straight into the secret — and runs a dry run; re-run it
+after a key rotation. **`publish`** makes the GitHub Release with the bundle
+for every tag: a `-dev.N` tag's is a prerelease, a `vX.Y.Z` tag's a full
+release and the latest, notes generated from the commits under a header
+naming the signature; a minor or major release (`vX.Y.0`) is left a draft for
+the operator to approve its notes. The site's downloads importer takes the
+bundle (agentry-web#250, agentry-web#444). A `workflow_dispatch` is a dry run
+that publishes no Release.
 
 `secureagentry-mcp/` is the registry-API server this repository shipped
 before 2026-09-12, parked as it was: its own `package.json`, its own
