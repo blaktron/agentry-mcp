@@ -314,8 +314,9 @@ the operator's backup straight into the secret — and runs a dry run; re-run it
 after a key rotation. **`publish`** makes the GitHub Release with the bundle
 for every tag: a `-dev.N` tag's is a prerelease, a `vX.Y.Z` tag's a full
 release and the latest, notes generated from the commits under a header
-naming the signature; a minor or major release (`vX.Y.0`) is left a draft for
-the operator to approve its notes. The site's downloads importer takes the
+naming the signature; from 1.0.0 on a minor or major release (`vX.Y.0`) is
+left a draft for the operator to approve its notes, and before 1.0.0 nothing
+is held. The site's downloads importer takes the
 bundle (agentry-web#250, agentry-web#444). A `workflow_dispatch` is a dry run
 that publishes no Release.
 

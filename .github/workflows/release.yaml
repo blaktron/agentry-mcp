@@ -23,8 +23,9 @@
 # Once the secrets exist, the repository variable AGENTRY_REQUIRE_SIGNING=true
 # makes a missing one fail the release. Every tag then publishes a GitHub
 # Release with the bundle (the publish job): a -dev.N tag's is a prerelease, a
-# vX.Y.Z tag's a full release, a minor or major (X.Y.0) a draft for the
-# operator to approve its notes. No npm publish.
+# vX.Y.Z tag's a full release, a minor or major (X.Y.0) from 1.0.0 on a draft
+# for the operator to approve its notes (before 1.0.0 nothing is held,
+# agentry-mcp#55). No npm publish.
 #
 # Two jobs hold what they must and nothing else, because the key is the
 # desktop's own update key (D-026): `package` runs npm and the repository's
@@ -297,7 +298,8 @@ jobs:
   # The GitHub Release (agentry-mcp#36, DEV-148): every tag, never a dry run.
   # The bundle exactly as built and summed, signed when the sign job could;
   # notes generated from the commits under a header that says which. A minor
-  # or major release (X.Y.0) is a draft until the operator approves its notes.
+  # or major release (X.Y.0) from 1.0.0 on is a draft until the operator
+  # approves its notes; before 1.0.0 nothing is held.
   publish:
     needs: [package, sign]
     if: github.event_name == 'push' && github.ref_type == 'tag'
