@@ -112,7 +112,9 @@ jobs:
           echo "${GITHUB_SHA} is a $c release"
       # The version is the tag's (describe names one of several tags on a
       # commit). package.json and SERVER_VERSION must both say its X.Y.Z, or a
-      # person's host would show one number and the file another.
+      # person's host would show one number and the tarball another. A dev
+      # prerelease's server therefore reports its X.Y.Z (0.6.1 for
+      # v0.6.1-dev.3); the tarball's name and BUILD-INFO carry the whole tag.
       - name: The version this release is named for
         id: version
         env:
@@ -193,20 +195,26 @@ jobs:
     needs: package
     runs-on: [self-hosted, linux, x64]
     timeout-minutes: 15
-    # The `release` environment admits only main and v* tags, and both secrets
-    # below are its own, so no other ref's job can read them.
+    # scripts/operator/release-setup.sh (agentry-mcp#33) creates the `release`
+    # environment admitting only main and v* tags and loads both secrets
+    # below into it, so no other ref's job can read them. Until it runs, the
+    # first tag's run creates the environment with no policy and no secrets,
+    # and the release ships unsigned (the signing step says so).
     environment: release
     env:
       VERSION: ${{ needs.package.outputs.version }}
     steps:
+      # Into this job's own temporary directory: the self-hosted runner keeps
+      # its workspace between jobs, and a bundle/ left there by an earlier
+      # release would fail the file check below for no reason of this one.
       - uses: actions/download-artifact@v4
         with:
           name: unsigned-agentry-mcp-${{ needs.package.outputs.version }}
-          path: bundle
+          path: ${{ runner.temp }}/bundle
       - name: The bundle is what package wrote
         run: |
           set -euo pipefail
-          cd bundle
+          cd "$RUNNER_TEMP/bundle"
           sha256sum -c SHA256SUMS
           [ "$(ls | sort | tr '\n' ' ')" = "BUILD-INFO SHA256SUMS agentry-mcp-$VERSION.tar.gz " ] \
             || { echo "::error::the bundle holds $(ls | tr '\n' ' ')"; exit 1; }
@@ -270,18 +278,18 @@ jobs:
           printf '%s' "${AGENTRY_UPDATE_SIGNING_KEY}" \
             | env -u AGENTRY_UPDATE_SIGNING_KEY "$RUNNER_TEMP/signrelease" \
                 -key - \
-                -in bundle/SHA256SUMS \
+                -in "$RUNNER_TEMP/bundle/SHA256SUMS" \
                 -product agentry-mcp \
                 -version "$VERSION" \
                 -commit "${GITHUB_SHA}"
-          cat bundle/SHA256SUMS.minisig
+          cat "$RUNNER_TEMP/bundle/SHA256SUMS.minisig"
       - name: Remove the signing binary and the job-scoped git credential
         if: always()
         run: rm -f "$RUNNER_TEMP/signrelease" "$RUNNER_TEMP/gitconfig"
       - uses: actions/upload-artifact@v4
         with:
           name: agentry-mcp-${{ needs.package.outputs.version }}
-          path: bundle/
+          path: ${{ runner.temp }}/bundle/
           if-no-files-found: error
           retention-days: 90
 
@@ -331,7 +339,7 @@ jobs:
             *) what="A dev prerelease of the Agentry MCP server, for testing on dev." ;;
           esac
           {
-            echo "$what It drives the person's own \`agentry\` CLI (0.6.0 or newer), which chooses the registry."
+            echo "$what It drives the person's own \`agentry\` CLI (at least \`MIN_CLI_VERSION\` in \`src/cli.ts\`), which chooses the registry."
             echo
             echo "**Signatures** (DEV-148: signed where signing exists, unsigned where it does not):"
             echo "- \`SHA256SUMS\`: $sumsl."

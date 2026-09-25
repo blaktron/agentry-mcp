@@ -179,8 +179,8 @@ https://secureagentry.net/download, or built from
 [agentry-cli](https://github.com/blaktron/agentry-cli)), and `python3` for
 the session tools.
 
-**From the download page.** From the first tagged release on
-(v0.6.0; agentry-web#250 and #444 import it), https://secureagentry.net/download carries
+**From the download page.** Once the site imports the release
+(agentry-web#250, agentry-web#444; the first release is v0.6.0), https://secureagentry.net/download carries
 `agentry-mcp-<version>.tar.gz`: the built server with its dependencies, one
 file for every platform. Check its SHA-256 against the one on the card, then
 unpack it anywhere; nothing is installed and nothing is fetched afterwards:
@@ -269,8 +269,10 @@ form, a form on the wrong line, a release that does not move forward, and any
 1.x unless the operator has set the repository variable `AGENTRY_ALLOW_V1=true`
 (agentry#522), before anything is built. `package.json`'s version and
 `SERVER_VERSION` (`src/server.ts`) stay `X.Y.Z`, and a tag names them; the
-tarball is named for the whole tag. The server bakes no registry (it drives
-the person's CLI, which chooses one); `BUILD-INFO` names the channel.
+tarball is named for the whole tag: a dev prerelease's server reports its
+`X.Y.Z` (0.6.1 for v0.6.1-dev.3), and the tarball's name and `BUILD-INFO` say
+which prerelease it is. The server bakes no registry (it drives the person's
+CLI, which chooses one); `BUILD-INFO` names the channel.
 
 **Cutting one** (agents may; only the operator moves the minor version or cuts
 1.0.0). Both version strings on `dev` are the version `main` releases next:
