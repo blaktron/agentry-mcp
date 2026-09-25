@@ -67,7 +67,7 @@ export function registerRunTools(d: Driver): void {
         "Run a BriefAgent autonomously with the installed agentry CLI, in two calls. Without `confirm`: a " +
         "preview (`agentry run --plan --json`) — the compiled run plan: the release that resolved, its digest, " +
         "the capabilities and enforcement a run would apply, the tools it would be served, the gateway and proxy " +
-        "shape, the budgets, the attestation verdict and the refusal a run would meet — plus `digest`; nothing " +
+        "shape, the budgets, the attestation verdict and every refusal a run would meet (`refusals`) — plus `digest`; nothing " +
         "runs, nothing is recorded. Show the person what the run may reach and do, and only when they agree " +
         "call again with `confirm` set to that digest: the server re-plans, refuses if anything changed, then " +
         "runs `agentry run --mode autonomous --output-format json` and returns the CLI's result envelope " +

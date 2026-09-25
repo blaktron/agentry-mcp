@@ -121,9 +121,10 @@ function installPlanArgv(a: InstallArgs): string[] {
   return argv;
 }
 
-/** The facts the install digest covers. */
-function installFacts(p: InstallPlan) {
+/** The facts the install digest covers, the refusals the confirm decides on among them. */
+function installFacts(p: InstallPlan, refusals: PlanRefusal[]) {
   return {
+    refusals,
     ref: p.ref,
     version: p.version,
     archiveDigest: p.digest,
@@ -181,6 +182,64 @@ export interface Consent {
   readonly allowUnscanned: boolean;
 }
 
+/**
+ * One refusal a plan reports (agentry-cli#126): the gate it comes from,
+ * what it says, and the flag that lifts it — absent when none does.
+ */
+export interface PlanRefusal {
+  kind: string;
+  message: string;
+  lift?: string;
+}
+
+/** The verdicts a person can accept, each by its own flag and nothing else. */
+const OWN_LIFT = { unsigned: "--allow-unsigned", unscanned: "--allow-unscanned" } as const;
+type Acceptable = keyof typeof OWN_LIFT;
+
+/** A verdict as the preview judged it. */
+export interface Verdict {
+  unsigned: boolean;
+  unscanned?: boolean;
+}
+
+function acceptable(v: Verdict): Acceptable | undefined {
+  return v.unsigned ? "unsigned" : v.unscanned ? "unscanned" : undefined;
+}
+
+function isRefusal(r: unknown): r is PlanRefusal {
+  const o = r as Partial<PlanRefusal> | null;
+  return (
+    typeof o === "object" &&
+    o !== null &&
+    typeof o.kind === "string" &&
+    typeof o.message === "string" &&
+    (o.lift === undefined || typeof o.lift === "string")
+  );
+}
+
+/**
+ * Every refusal a plan reports, in the order a run meets them: the CLI's
+ * `refusals` when it prints them, else its one deprecated `refusal`, whose
+ * lift is what it always was here — the verdict's own flag for an unsigned
+ * or unscanned release, none for anything else. A `refusals` this server
+ * cannot read, or an empty one beside a `refusal`, is never read as "no
+ * refusal": the first is an error (a string), the second falls back.
+ */
+export function planRefusals(
+  p: { refusals?: unknown; refusal?: string },
+  verdict: Verdict,
+): PlanRefusal[] | string {
+  if (p.refusals !== undefined && p.refusals !== null) {
+    if (!Array.isArray(p.refusals) || !p.refusals.every(isRefusal)) {
+      return "the CLI's plan carries a refusals list this server cannot read; nothing was done";
+    }
+    if (p.refusals.length > 0 || !p.refusal) return p.refusals;
+  }
+  if (!p.refusal) return [];
+  const own = acceptable(verdict);
+  return [{ kind: "attestation", message: p.refusal, ...(own ? { lift: OWN_LIFT[own] } : {}) }];
+}
+
 export interface ConfirmOptions {
   unsigned: boolean;
   acceptUnsigned?: boolean;
@@ -188,10 +247,13 @@ export interface ConfirmOptions {
   unscanned?: boolean;
   acceptUnscanned?: boolean;
   /**
-   * The refusal the CLI's plan reported, if any. Unsigned's and unscanned's
-   * own are liftable, each by its own acceptance; any other is not.
+   * Every refusal the CLI's plan reported (planRefusals). One lifted by
+   * --allow-unsigned on an unsigned release, or by --allow-unscanned on an
+   * unscanned one, waits for that acceptance; any other stops the confirm,
+   * since this server passes no other lift (--allow-vulnerable-mcp among
+   * them) and the run would meet it.
    */
-  refusal?: string;
+  refusals?: PlanRefusal[];
   /** What the person is asked through elicitation. */
   ask: string;
 }
@@ -220,19 +282,29 @@ export async function confirmed(
       true,
     );
   }
-  if (o.refusal && !o.unsigned && !o.unscanned) {
-    return text(`${tool}: the CLI would refuse this: ${o.refusal}`, true);
+  // A refusal waits for the person only when its lift is the verdict's
+  // own flag; every other one stops here, with its message.
+  const own = acceptable(o);
+  const refusals = o.refusals ?? [];
+  const liftable = refusals.filter((r) => own !== undefined && r.lift === OWN_LIFT[own]);
+  const standing = refusals.filter((r) => !liftable.includes(r));
+  if (standing.length > 0) {
+    return text(
+      `${tool}: the CLI would refuse this: ${standing.map((r) => r.message).join("; ")}`,
+      true,
+    );
   }
+  const liftableMessages = liftable.map((r) => r.message).join("; ");
   if (o.unsigned && !o.acceptUnsigned) {
     return text(
-      `${tool}: the release is unsigned${o.refusal ? ` (${o.refusal})` : ""}. Going ahead needs the person's explicit ` +
+      `${tool}: the release is unsigned${liftableMessages ? ` (${liftableMessages})` : ""}. Going ahead needs the person's explicit ` +
         "acceptance: confirm again with acceptUnsigned: true only if they said so.",
       true,
     );
   }
   if (o.unscanned && !o.acceptUnscanned) {
     return text(
-      `${tool}: the release is unscanned: ${o.refusal ?? "the registry admitted it without a scan"}. ` +
+      `${tool}: the release is unscanned: ${liftableMessages || "the registry admitted it without a scan"}. ` +
         "Going ahead needs the person's explicit acceptance that nothing about its contents was checked: " +
         "confirm again with acceptUnscanned: true only if they said so. acceptUnsigned does not cover it.",
       true,
@@ -264,19 +336,24 @@ export async function install(d: Driver, a: InstallArgs): Promise<ToolText> {
   const planned = await runPlan<InstallPlan>(d, "agentry_install (plan)", installPlanArgv(a));
   if (!planned.ok) return planned.result;
   const { plan, log } = planned;
-  const facts = installFacts(plan);
   const unsigned = plan.attestation === "unsigned";
   const unscanned = plan.attestation === "unscanned";
+  const refusals = planRefusals(plan, { unsigned, unscanned });
+  if (typeof refusals === "string") return text(`agentry_install: ${refusals}`, true);
+  const facts = installFacts(plan, refusals);
 
   if (a.confirm === undefined) {
-    return previewText({ plan, log: tail(log), unsigned, unscanned, writes: false }, facts);
+    return previewText(
+      { plan, log: tail(log), unsigned, unscanned, refusals, writes: false },
+      facts,
+    );
   }
   const ok = await confirmed(d.server, "agentry_install", a.confirm, facts, {
     unsigned,
     acceptUnsigned: a.acceptUnsigned,
     unscanned,
     acceptUnscanned: a.acceptUnscanned,
-    refusal: plan.refusal,
+    refusals,
     ask:
       `Install ${plan.ref} to ${plan.dir} (${plan.target})? Contract: ${canonical(plan.contract)}. ` +
       `Attestation: ${plan.attestation}.${plan.reason ? ` The CLI would ask because: ${plan.reason}.` : ""}`,
