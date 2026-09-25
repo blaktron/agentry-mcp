@@ -11,9 +11,10 @@
  * `run --plan --json` (agentry-cli#124): the compiled plan — exactly what a
  * run would enforce (the contract, the tools, the gateway, the proxy, the
  * budgets) — with the attestation verdict and every refusal a run would
- * meet (agentry-cli#126), printed without asking or recording anything. The digest is over that
- * whole plan. The consented flags are spelled in consent.ts only; this file
- * hands it the argv to append to, and the preview carries neither.
+ * meet (agentry-cli#126), printed without asking or recording anything.
+ * The digest is over that whole plan. The consented flags are spelled in
+ * consent.ts only; this file hands it the argv to append to, and the
+ * preview carries neither.
  */
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -40,7 +41,7 @@ import {
   type PlanRefusal,
 } from "./consent.js";
 import type { Driver } from "./driver.js";
-import { tail } from "./envelope.js";
+import { tail, toolText as text } from "./envelope.js";
 
 /**
  * The budget the server assumes when neither the call nor the compiled plan
@@ -260,6 +261,7 @@ export async function runConsent(
   // Every refusal the run would meet, shown before the person consents,
   // not only the first (agentry-mcp#45).
   const refusals = planRefusals(plan, { unsigned, unscanned });
+  if (typeof refusals === "string") return text(`${tool}: ${refusals}`, true);
   const facts = runFacts(plan, a, timeoutSeconds, refusals);
 
   if (a.confirm === undefined) {

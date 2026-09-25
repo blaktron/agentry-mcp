@@ -96,9 +96,10 @@ it, agentry-cli#126). Only an unsigned release's refusal (`acceptUnsigned`)
 and an unscanned one's (`acceptUnscanned`) can be lifted on the confirm; any
 other, such as a declared MCP server with a known high or critical advisory,
 stops the confirm with its message, since the server never passes
-`--allow-vulnerable-mcp`. The CLI asks nothing and records nothing for it, and the
-server lifts nothing: the preview carries no consent flag. The digest is
-over the whole plan plus what the call itself brings to the run — the intake
+`--allow-vulnerable-mcp`. For the preview the CLI asks nothing and records
+nothing, and the server lifts nothing: the preview carries no consent flag.
+The digest is over the whole plan, its refusals included, plus what the call
+itself brings to the run — the intake
 answers, the files and the input file, where the output lands, the budget —
 so a policy, an image, a budget or an answer that changed between the two
 calls changes the digest; the task input as text is not in it, since it
