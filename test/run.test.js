@@ -5,7 +5,7 @@
 // wrote; the consented flags only via the consent digest; no secret value in
 // any result; an unanswered required intake question named by the run.
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -171,6 +171,8 @@ test("a preview never lifts the gate; a wrong digest is refused; unsigned needs 
   assert.equal(p.unsigned, true);
   assert.equal(p.plan.attestation, "unsigned");
   assert.match(p.plan.refusal, /a run needs/);
+  assert.deepEqual(p.refusals, p.plan.refusals);
+  assert.equal(p.refusals[0].lift, "--allow-unsigned");
   const wrong = await client.callTool({
     name: "agentry_run",
     arguments: { ref: "acme/widget", confirm: "sha256:nope" },
@@ -267,6 +269,169 @@ test("a refusal the person cannot lift (attestation mismatch) stops the confirm"
   assert.equal(r.isError, true);
   assert.match(r.content[0].text, /would refuse this: attestation mismatch/);
   assert.equal(existsSync(writes), false);
+});
+
+test("every refusal is in the preview; with a vulnerable server beside the unsigned one, acceptUnsigned lifts nothing and the confirm stops (agentry-mcp#45)", async () => {
+  const writes = writesFile();
+  const vuln =
+    "declared MCP server npm:@acme/mcp-x@1.0.0 has a known critical advisory (GHSA-xxxx); re-run with --allow-vulnerable-mcp";
+  const { client, argvFile } = await connect({
+    FAKE_WRITES: writes,
+    FAKE_RUN_ATTEST: "unsigned",
+    FAKE_RUN_VULN: vuln,
+  });
+  const p = await previewRun(client, { ref: "acme/widget" });
+  assert.equal(p.unsigned, true);
+  assert.deepEqual(
+    p.refusals.map((r) => [r.kind, r.lift]),
+    [
+      ["attestation", "--allow-unsigned"],
+      ["vulnerable_server", "--allow-vulnerable-mcp"],
+    ],
+  );
+  assert.equal(p.refusals[1].message, vuln);
+  for (const extra of [
+    {},
+    { acceptUnsigned: true },
+    { acceptUnsigned: true, acceptUnscanned: true },
+  ]) {
+    const r = await client.callTool({
+      name: "agentry_run",
+      arguments: { ref: "acme/widget", confirm: p.digest, ...extra },
+    });
+    assert.equal(r.isError, true);
+    assert.match(
+      r.content[0].text,
+      /would refuse this: declared MCP server npm:@acme\/mcp-x@1\.0\.0/,
+    );
+    assert.doesNotMatch(
+      r.content[0].text,
+      /a run needs --allow-unsigned/,
+      "the liftable one is not a reason to stop",
+    );
+  }
+  assert.equal(existsSync(writes), false);
+  for (const a of receivedArgv(argvFile))
+    assert.ok(a.includes("--plan"), `only plans ran, never the run: ${a}`);
+});
+
+test("a CLI before agentry-cli#126 prints one refusal: the unsigned one still lifts with acceptUnsigned, a mismatch still stops", async () => {
+  const { client, argvFile } = await connect({ FAKE_RUN_ATTEST: "unsigned", FAKE_RUN_LEGACY: "1" });
+  const p = await previewRun(client, { ref: "acme/widget" });
+  assert.equal(p.plan.refusals, undefined);
+  assert.deepEqual(p.refusals, [
+    { kind: "attestation", message: p.plan.refusal, lift: "--allow-unsigned" },
+  ]);
+  const ok = await client.callTool({
+    name: "agentry_run",
+    arguments: { ref: "acme/widget", confirm: p.digest, acceptUnsigned: true },
+  });
+  assert.equal(ok.isError, undefined, ok.content[0].text);
+  assert.ok(receivedArgv(argvFile).at(-1).includes("--allow-unsigned"));
+
+  const old = await connect({ FAKE_RUN_ATTEST: "mismatch", FAKE_RUN_LEGACY: "1" });
+  const mp = await previewRun(old.client, { ref: "acme/widget" });
+  assert.deepEqual(mp.refusals, [{ kind: "attestation", message: mp.plan.refusal }]);
+  const r = await old.client.callTool({
+    name: "agentry_run",
+    arguments: { ref: "acme/widget", confirm: mp.digest, acceptUnsigned: true },
+  });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /would refuse this: attestation mismatch/);
+});
+
+test("a lift that is not the verdict's own is not lifted: --allow-unsigned on an unscanned release stops even with both acceptances", async () => {
+  const writes = writesFile();
+  const { client } = await connect({
+    FAKE_WRITES: writes,
+    FAKE_RUN_ATTEST: "unscanned",
+    FAKE_RUN_REFUSAL: "odd refusal naming the wrong flag",
+    FAKE_RUN_LIFT: "--allow-unsigned",
+  });
+  const p = await previewRun(client, { ref: "acme/widget" });
+  assert.equal(p.refusals[0].lift, "--allow-unsigned");
+  const r = await client.callTool({
+    name: "agentry_run",
+    arguments: {
+      ref: "acme/widget",
+      confirm: p.digest,
+      acceptUnsigned: true,
+      acceptUnscanned: true,
+    },
+  });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /would refuse this: odd refusal naming the wrong flag/);
+  assert.equal(existsSync(writes), false);
+});
+
+test("an unscanned release beside a vulnerable server: acceptUnscanned lifts nothing", async () => {
+  const writes = writesFile();
+  const { client } = await connect({
+    FAKE_WRITES: writes,
+    FAKE_RUN_ATTEST: "unscanned",
+    FAKE_RUN_VULN: "declared MCP server npm:@acme/mcp-x@1.0.0 has a known high advisory",
+  });
+  const p = await previewRun(client, { ref: "acme/widget" });
+  assert.equal(p.refusals.length, 2);
+  const r = await client.callTool({
+    name: "agentry_run",
+    arguments: { ref: "acme/widget", confirm: p.digest, acceptUnscanned: true },
+  });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /would refuse this: declared MCP server/);
+  assert.equal(existsSync(writes), false);
+});
+
+test("a refusal that appears between the preview and the confirm changes the digest", async () => {
+  const writes = writesFile();
+  const vulnFile = join(tmpdir(), `agentry-mcp-vuln-${process.pid}-${Date.now()}`);
+  const { client } = await connect({
+    FAKE_WRITES: writes,
+    FAKE_RUN_ATTEST: "unsigned",
+    FAKE_RUN_VULN_FILE: vulnFile,
+  });
+  const p = await previewRun(client, { ref: "acme/widget" });
+  assert.equal(p.refusals.length, 1);
+  writeFileSync(
+    vulnFile,
+    "declared MCP server npm:@acme/mcp-x@1.0.0 has a known critical advisory",
+  );
+  const r = await client.callTool({
+    name: "agentry_run",
+    arguments: { ref: "acme/widget", confirm: p.digest, acceptUnsigned: true },
+  });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /confirm digest does not match/);
+  assert.equal(existsSync(writes), false);
+});
+
+test("a refusals list the server cannot read, or an empty one beside a refusal, never reads as no refusal", async () => {
+  for (const [raw, want] of [
+    ['{"kind":"attestation"}', /cannot read/],
+    ['[{"kind":"attestation"}]', /cannot read/],
+    ["[]", /would refuse this: attestation mismatch/],
+    ["null", /would refuse this: attestation mismatch/],
+  ]) {
+    const writes = writesFile();
+    const { client } = await connect({
+      FAKE_WRITES: writes,
+      FAKE_RUN_ATTEST: "mismatch",
+      FAKE_RUN_REFUSALS_RAW: raw,
+    });
+    const first = await client.callTool({ name: "agentry_run", arguments: { ref: "acme/widget" } });
+    if (first.isError) {
+      assert.match(first.content[0].text, want, `refusals ${raw}`);
+    } else {
+      const p = JSON.parse(first.content[0].text);
+      const r = await client.callTool({
+        name: "agentry_run",
+        arguments: { ref: "acme/widget", confirm: p.digest, acceptUnsigned: true },
+      });
+      assert.equal(r.isError, true, `refusals ${raw}`);
+      assert.match(r.content[0].text, want, `refusals ${raw}`);
+    }
+    assert.equal(existsSync(writes), false, `refusals ${raw}: something was written`);
+  }
 });
 
 test("an unanswered required intake question is a tool error naming it, from the run, not a hang", async () => {

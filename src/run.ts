@@ -10,10 +10,11 @@
  * Consent is the same two calls as install (src/consent.ts). The preview is
  * `run --plan --json` (agentry-cli#124): the compiled plan — exactly what a
  * run would enforce (the contract, the tools, the gateway, the proxy, the
- * budgets) — with the attestation verdict and the refusal a run would meet,
- * printed without asking or recording anything. The digest is over that
- * whole plan. The consented flags are spelled in consent.ts only; this file
- * hands it the argv to append to, and the preview carries neither.
+ * budgets) — with the attestation verdict and every refusal a run would
+ * meet (agentry-cli#126), printed without asking or recording anything.
+ * The digest is over that whole plan. The consented flags are spelled in
+ * consent.ts only; this file hands it the argv to append to, and the
+ * preview carries neither.
  */
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -33,12 +34,14 @@ import {
   confirmed,
   consentedArgv,
   isConsent,
+  planRefusals,
   previewText,
   runPlan,
   type Consent,
+  type PlanRefusal,
 } from "./consent.js";
 import type { Driver } from "./driver.js";
-import { tail } from "./envelope.js";
+import { tail, toolText as text } from "./envelope.js";
 
 /**
  * The budget the server assumes when neither the call nor the compiled plan
@@ -143,6 +146,9 @@ export interface RunPlan {
   diff?: { widened?: string[]; narrowed?: string[] };
   needsConfirmation: boolean;
   reason?: string;
+  /** Every refusal a run would meet (agentry-cli#126); read through planRefusals. */
+  refusals?: PlanRefusal[];
+  /** Deprecated by the CLI: refusals[0].message, read when refusals is absent. */
   refusal?: string;
 }
 
@@ -187,13 +193,13 @@ function commonFlags(argv: string[], a: RunArgs, mode: RunMode): void {
 /**
  * The facts the run digest covers: the whole compiled plan (so a policy,
  * an image, a tool or a budget that changed between the calls changes the
- * digest), the release it came from and its attestation, the refusal, and
+ * digest), the release it came from and its attestation, the refusals, and
  * the call's own contribution to the run — the intake answers, the files
  * and the input file it hands the run, where the output lands, the budget.
  * The task input as text is not among them: it is the model's to compose,
  * and it changes nothing about what the run may reach.
  */
-function runFacts(p: RunPlan, a: RunArgs, timeoutSeconds: number) {
+function runFacts(p: RunPlan, a: RunArgs, timeoutSeconds: number, refusals: PlanRefusal[]) {
   return {
     ref: p.ref,
     version: p.version,
@@ -204,7 +210,7 @@ function runFacts(p: RunPlan, a: RunArgs, timeoutSeconds: number) {
     contract: p.contract,
     contractDigest: p.contractDigest,
     attestation: p.attestation,
-    refusal: p.refusal ?? "",
+    refusals,
     intake: a.intake ?? {},
     files: a.files ?? [],
     inputFile: a.inputFile ?? "",
@@ -228,10 +234,12 @@ export interface RunConsent {
  * plan, digest over it; confirm = a Consent for the caller to run with.
  * The preview never lifts the unsigned gate: the CLI reports `attestation:
  * unsigned` (a release with no attestation) or `local` (a workspace) with
- * the refusal, and only a confirm carrying acceptUnsigned — the person's
+ * its refusal, and only a confirm carrying acceptUnsigned — the person's
  * word — lifts it. `unscanned` (admitted without a scan) is the same shape
- * with its own word, acceptUnscanned. Returns the preview or the tool error to hand back, or
- * the consent.
+ * with its own word, acceptUnscanned. Any other refusal the plan lists (a
+ * declared server with a known vulnerability, a signature no key verifies)
+ * stops the confirm. Returns the preview or the tool error to hand back,
+ * or the consent.
  */
 export async function runConsent(
   d: Driver,
@@ -250,11 +258,15 @@ export async function runConsent(
   // policy's), else the server's assumption.
   const timeoutSeconds =
     a.timeoutSeconds ?? plan.plan.budgets?.timeoutSeconds ?? DEFAULT_RUN_TIMEOUT_SECONDS;
-  const facts = runFacts(plan, a, timeoutSeconds);
+  // Every refusal the run would meet, shown before the person consents,
+  // not only the first (agentry-mcp#45).
+  const refusals = planRefusals(plan, { unsigned, unscanned });
+  if (typeof refusals === "string") return text(`${tool}: ${refusals}`, true);
+  const facts = runFacts(plan, a, timeoutSeconds, refusals);
 
   if (a.confirm === undefined) {
     return previewText(
-      { plan, unsigned, unscanned, timeoutSeconds, log: tail(log), writes: false },
+      { plan, unsigned, unscanned, refusals, timeoutSeconds, log: tail(log), writes: false },
       facts,
     );
   }
@@ -263,7 +275,7 @@ export async function runConsent(
     acceptUnsigned: a.acceptUnsigned,
     unscanned,
     acceptUnscanned: a.acceptUnscanned,
-    refusal: plan.refusal,
+    refusals,
     ask:
       `${mode === "interactive" ? "Start a session with" : "Run"} ${plan.ref} (${plan.mode}` +
       `${mode === "interactive" ? "" : `, up to ${timeoutSeconds}s`})? Contract: ${canonical(plan.contract)}. ` +

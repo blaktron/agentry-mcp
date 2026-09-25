@@ -90,10 +90,16 @@ A run is the same two calls as an install. The preview is the CLI's run
 plan (`run --plan --json`, agentry-cli#124): the compiled plan — the release
 that resolved, the capabilities and enforcement a run would apply, the tools
 it would be served, the gateway and proxy shape, the budgets — which is
-exactly what the run enforces, with the attestation verdict and the refusal
-a run would meet. The CLI asks nothing and records nothing for it, and the
-server lifts nothing: the preview carries no consent flag. The digest is
-over the whole plan plus what the call itself brings to the run — the intake
+exactly what the run enforces, with the attestation verdict and every refusal
+a run would meet (`refusals`, each with its message and the flag that lifts
+it, agentry-cli#126). Only an unsigned release's refusal (`acceptUnsigned`)
+and an unscanned one's (`acceptUnscanned`) can be lifted on the confirm; any
+other, such as a declared MCP server with a known high or critical advisory,
+stops the confirm with its message, since the server never passes
+`--allow-vulnerable-mcp`. For the preview the CLI asks nothing and records
+nothing, and the server lifts nothing: the preview carries no consent flag.
+The digest is over the whole plan, its refusals included, plus what the call
+itself brings to the run — the intake
 answers, the files and the input file, where the output lands, the budget —
 so a policy, an image, a budget or an answer that changed between the two
 calls changes the digest; the task input as text is not in it, since it
