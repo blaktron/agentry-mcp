@@ -4,7 +4,7 @@
  * The hand-written tools cover the account and repository work this server
  * exists for. The catalog is the rest of the API — review queues, org policy,
  * SSO and SCIM, webhooks, domain claims, advisories, platform trust-and-safety
- * — reachable without spending 114 tool schemas of context on endpoints most
+ * — reachable without spending well over a hundred tool schemas of context on endpoints most
  * sessions never touch. The model searches, reads one action's schema, and
  * executes it.
  */
