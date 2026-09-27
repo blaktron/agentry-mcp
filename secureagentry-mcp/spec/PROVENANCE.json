@@ -1,8 +1,8 @@
 {
   "source": "https://github.com/blaktron/agentry/blob/main/schemas/openapi.yaml",
-  "commit": "0c8e9b1ffefb336e7d4b04ee7f0d996a610bd99a",
-  "committedAt": "2026-09-25T12:20:18-04:00",
-  "vendoredAt": "2026-09-25T19:34:57Z",
-  "sha256": "1e013d77d2d210d49ccf9f19ccb120ff47f9647cc46c678081bd44b6a2fcb923",
+  "commit": "fc5f55bde8df9f190017b57dd3163821898afaa9",
+  "committedAt": "2026-09-26T21:17:55-04:00",
+  "vendoredAt": "2026-09-27T01:21:44Z",
+  "sha256": "dcec33e2ab2b3925bdf442533bb9f4abd002e9738041b3d4fec6ca5117b7ebf8",
   "note": "Vendored copy of the Agentry API contract. Refresh with scripts/sync-spec.sh, then npm run generate. CI fails if src/catalog.generated.ts does not match this file."
 }

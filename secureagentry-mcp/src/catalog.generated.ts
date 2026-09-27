@@ -52,7 +52,7 @@ export const API_VERSION = "0.3.0";
 export const API_BASE_PATH = "/api/v1";
 
 /** sha256 of spec/openapi.yaml, so a drifted catalog is detectable. */
-export const SPEC_SHA256 = "1e013d77d2d210d49ccf9f19ccb120ff47f9647cc46c678081bd44b6a2fcb923";
+export const SPEC_SHA256 = "dcec33e2ab2b3925bdf442533bb9f4abd002e9738041b3d4fec6ca5117b7ebf8";
 
 export const ACTIONS: readonly Action[] = [
   {
@@ -506,6 +506,67 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "createKnowledgePack",
+    "method": "POST",
+    "path": "/knowledge/packs",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "Create a knowledge pack, empty, with its data key as the caller's wrapper wrapped it.",
+    "description": "The client makes the pack's data key, has it wrapped (`POST /knowledge/keys/wrap`), and names it here; the registry checks that the wrapped key opens for the caller and keeps it beside the pack. The tree follows with `PUT /knowledge/packs/{packId}/tree`. A name is the pack's directory name: 1-64 lowercase letters, digits, `.`, `-` or `_`, starting with a letter or a digit, one per owner (409 `knowledge-name-taken`).",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "CreateKnowledgePackRequest",
+        "type": "object",
+        "required": [
+          "name",
+          "wrappedKey"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "wrappedKey": {
+            "title": "KnowledgeWrappedKey",
+            "type": "object",
+            "description": "A pack's data key as a wrapper sealed it: the wrapper's `kind` (`deployment` on a core registry), the `recipient` it is wrapped to (a key's id, never a key), and the sealed bytes.",
+            "required": [
+              "kind",
+              "recipient",
+              "key"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "recipient": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string",
+                "format": "byte"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "201",
+        "description": "The pack, in state `empty`."
+      }
+    ]
+  },
+  {
     "id": "createOrg",
     "method": "POST",
     "path": "/orgs",
@@ -718,7 +779,7 @@ export const ACTIONS: readonly Action[] = [
             "items": {
               "title": "Scope",
               "type": "string",
-              "description": "PAT scopes (§12.3). A token can do only what its scopes allow; a\nsession acts with the account's full authority. `run:write` lets a\ntoken start, feed and cancel a hosted run of a BriefAgent and\n`run:read` lets it read a run, its log and its artefacts — both are\nconsumed only by a registry that mounts the runs extension, and\nunlock nothing on one that does not.\n",
+              "description": "PAT scopes (§12.3). A token can do only what its scopes allow; a\nsession acts with the account's full authority. `run:write` lets a\ntoken start, feed and cancel a hosted run of a BriefAgent and\n`run:read` lets it read a run, its log and its artefacts — both are\nconsumed only by a registry that mounts the runs extension, and\nunlock nothing on one that does not. `knowledge:read` and\n`knowledge:write` read and write the account's knowledge packs.\n",
               "enum": [
                 "repo:read",
                 "repo:write",
@@ -729,7 +790,9 @@ export const ACTIONS: readonly Action[] = [
                 "audit:read",
                 "user:profile",
                 "run:read",
-                "run:write"
+                "run:write",
+                "knowledge:read",
+                "knowledge:write"
               ]
             }
           },
@@ -1076,6 +1139,35 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "deleteKnowledgePack",
+    "method": "DELETE",
+    "path": "/knowledge/packs/{packId}",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "Delete one of the caller's packs, its stored trees and its wrapped key.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "packId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "204",
+        "description": "Deleted."
+      }
+    ]
+  },
+  {
     "id": "deleteOrgLogo",
     "method": "DELETE",
     "path": "/orgs/{org}/logo",
@@ -1267,6 +1359,35 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "downloadKnowledgeTree",
+    "method": "GET",
+    "path": "/knowledge/packs/{packId}/tree",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "The pack's sealed tree, as stored; the client opens it with the unwrapped data key (409 `knowledge-scanning` while it is scanned).",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "packId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The sealed tree."
+      }
+    ]
+  },
+  {
     "id": "downloadVersion",
     "method": "GET",
     "path": "/agents/{ns}/{name}/versions/{version}/download",
@@ -1359,6 +1480,36 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "201",
         "description": "Token minted; `token` appears only in this response."
+      }
+    ]
+  },
+  {
+    "id": "exportKnowledgePack",
+    "method": "GET",
+    "path": "/knowledge/packs/{packId}/export",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "The pack's tree, decrypted as it streams, to its owner alone.",
+    "description": "The canonical tar of the pack's `wiki/` and `sources/`, whose SHA-256 is the pack's digest; `Cache-Control: no-store`; 404 to anyone but the owner; 409 `knowledge-scanning` while the pack is scanned.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "packId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The tree."
       }
     ]
   },
@@ -1617,6 +1768,54 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "The offer."
+      }
+    ]
+  },
+  {
+    "id": "getKnowledgePack",
+    "method": "GET",
+    "path": "/knowledge/packs/{packId}",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "One of the caller's packs with its scan report; 404 to anyone else.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "packId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The pack."
+      }
+    ]
+  },
+  {
+    "id": "getKnowledgeUsage",
+    "method": "GET",
+    "path": "/knowledge/usage",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "What the caller keeps in the registry against their allocation.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The meter."
       }
     ]
   },
@@ -2655,6 +2854,59 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Open invitations."
+      }
+    ]
+  },
+  {
+    "id": "listKnowledgePacks",
+    "method": "GET",
+    "path": "/knowledge/packs",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "The caller's knowledge packs, by name (agentry#593).",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "200",
+        "description": "Packs, each with its scan state and report."
+      },
+      {
+        "code": "503",
+        "description": "The store is off (`knowledge-unconfigured`) — no knowledge sealing key and no extension wrapper."
+      }
+    ]
+  },
+  {
+    "id": "listKnowledgePackSizes",
+    "method": "GET",
+    "path": "/platform/knowledge",
+    "tags": [
+      "platform"
+    ],
+    "summary": "An account's packs by name and size, for support (platform staff).",
+    "description": "Names, states and sizes only: never a byte of content, a digest, a scan report or a key.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "owner",
+        "in": "query",
+        "required": true,
+        "description": "The account's handle.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "Packs."
       }
     ]
   },
@@ -4463,6 +4715,57 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "scanModelInput",
+    "method": "POST",
+    "path": "/model-input/scan",
+    "tags": [
+      "model-input"
+    ],
+    "summary": "AI Review of text a model is about to read (agentry#608).",
+    "description": "Scans pushed text as model input: the deployment's judge is asked the model-input question set (injection, exfiltration, user deception, obfuscation), in 8 KiB chunks asked in parallel, and answers per chunk with scores. The text's score is the highest over its chunks and questions; 2 or more (the gate's medium) is `withheld`, and a chunk the judge could not answer (an error, a timeout, an answer out of shape) makes the text `not_scanned`, which a caller treats as withheld. Nothing of the text is kept or logged. `usage` counts the judge's requests and tokens for the record; it is never a price (AI Review is charged per operation, not per scan). Open to platform staff by session, and to a hosted job's credential in `X-Agentry-Job-Token` where an extension admits it; a token is refused whatever its scopes. 503 `model-input-unavailable` when the deployment's judge is not TypeSafe's Jev.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "ModelInputScanRequest",
+        "type": "object",
+        "required": [
+          "source",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "title": "ModelInputSource",
+            "type": "string",
+            "description": "What the text is: a person's description, one web search result, a web page's text, an answer from the registry's public API, or a hosted run's input file as decoded text. It rides beside the text in the judge's state; nothing of the text reaches a question.",
+            "enum": [
+              "description",
+              "search_result",
+              "page",
+              "registry",
+              "input_file"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "The text as the model would read it, at most 65,536 bytes of UTF-8 (eight chunks); a longer text is sent in parts."
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The verdict, per chunk and for the whole text."
+      }
+    ]
+  },
+  {
     "id": "searchAgents",
     "method": "GET",
     "path": "/search",
@@ -4565,6 +4868,52 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Search results with facet counts."
+      }
+    ]
+  },
+  {
+    "id": "searchModelInput",
+    "method": "POST",
+    "path": "/model-input/search",
+    "tags": [
+      "model-input"
+    ],
+    "summary": "Web search through the deployment's provider, every result scanned (agentry#608).",
+    "description": "Searches the web through the deployment's search provider with the registry's own key, then scans each result (its title, address and snippet) as model input, as `POST /model-input/scan` does. Only scanned results come back: a `withheld` or `not_scanned` result carries its origin (scheme and host), verdict and scores, never its title, its snippet or the rest of its address. The query goes to the search provider and is neither kept nor logged. Callers as for `POST /model-input/scan`. 503 `web-search-unavailable` when no provider is configured, 503 `model-input-unavailable` when there is no judge to scan the results, 502 `web-search-failed` when the provider did not answer.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "WebSearchRequest",
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10,
+            "default": 5,
+            "description": "How many results to ask the provider for; clamped to 1–10."
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The scanned results."
       }
     ]
   },
@@ -5393,6 +5742,52 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "unwrapKnowledgeKey",
+    "method": "POST",
+    "path": "/knowledge/keys/unwrap",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "Unwrap a data key wrapped for the caller; refused for anyone else's.",
+    "description": "Answers the data key over TLS, never what wraps it. A wrapped key that does not open for the caller — wrapped for someone else, under a key since destroyed, or altered — is 404 `knowledge-key-not-found`.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "KnowledgeWrappedKey",
+        "type": "object",
+        "description": "A pack's data key as a wrapper sealed it: the wrapper's `kind` (`deployment` on a core registry), the `recipient` it is wrapped to (a key's id, never a key), and the sealed bytes.",
+        "required": [
+          "kind",
+          "recipient",
+          "key"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "format": "byte"
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The data key."
+      }
+    ]
+  },
+  {
     "id": "updateAgent",
     "method": "PATCH",
     "path": "/agents/{ns}/{name}",
@@ -5705,6 +6100,40 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "uploadKnowledgeTree",
+    "method": "PUT",
+    "path": "/knowledge/packs/{packId}/tree",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "Upload a pack's sealed tree, which replaces the one before and is scanned.",
+    "description": "One PUT of the sealed tree (`pkg/packseal`: the pack's canonical tar sealed under its data key), at most a 10 MB pack; past that 413 `upload-too-large`, a tree past the pack's caps 413 `knowledge-too-large`, a tree that is not the digest its header names 422 `knowledge-digest-mismatch`, and a tree past the owner's allocation 413 `knowledge-allocation` with `bytes` and `max`. The registry opens it to check it before it keeps it, stores it sealed, and queues its scan: the pack is `scanning` until the scan ends and `ready` after, findings or not.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "packId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    ],
+    "body": {
+      "required": true,
+      "contentType": "application/octet-stream"
+    },
+    "responses": [
+      {
+        "code": "202",
+        "description": "Stored; the pack is `scanning`."
+      }
+    ]
+  },
+  {
     "id": "verifyDomainClaim",
     "method": "POST",
     "path": "/orgs/{org}/domain-claims/verify",
@@ -5780,6 +6209,44 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "204",
         "description": "Email verified."
+      }
+    ]
+  },
+  {
+    "id": "wrapKnowledgeKey",
+    "method": "POST",
+    "path": "/knowledge/keys/wrap",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "Wrap a pack's data key for the caller.",
+    "description": "The caller's wrapper seals the 32-byte data key; the answer is what a client keeps beside a sealed pack. On a core registry the wrapper is the deployment's knowledge sealing key; an extension may wrap to the account's own key instead.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "KnowledgeDataKey",
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "format": "byte",
+            "description": "A pack's 32-byte data key."
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The wrapped key."
       }
     ]
   },

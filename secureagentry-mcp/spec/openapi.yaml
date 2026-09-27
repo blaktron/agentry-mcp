@@ -100,6 +100,21 @@ tags:
       BriefAgent release they accepted for their account and the contract
       they consented to. Not a star, not the desktop's or the CLI's
       per-machine record; no download counter moves.
+  - name: knowledge
+    description: >-
+      Knowledge packs (agentry#593): an account's packs kept in the
+      registry, sealed under data keys of their own, scanned on arrival,
+      and the wrap and unwrap of their data keys.
+  - name: model-input
+    description: >-
+      AI Review of text a model is about to read, and web search brokered
+      by the registry (agentry#608; plan builder-rework.md D20–D24). The
+      caller pushes the text; the registry asks the deployment's judge
+      with the model-input question set and keeps the keys. Open to
+      platform staff by session and, where an extension admits them, to
+      hosted jobs by their job credential; never to an ordinary account's
+      token, since the routes spend the deployment's own judge and search
+      keys.
 
 paths:
   /meta:
@@ -2568,6 +2583,254 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /knowledge/packs:
+    get:
+      operationId: listKnowledgePacks
+      tags: [knowledge]
+      summary: The caller's knowledge packs, by name (agentry#593).
+      responses:
+        "200":
+          description: Packs, each with its scan state and report.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KnowledgePack"
+        "503":
+          description: The store is off (`knowledge-unconfigured`) — no knowledge sealing key and no extension wrapper.
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createKnowledgePack
+      tags: [knowledge]
+      summary: Create a knowledge pack, empty, with its data key as the caller's wrapper wrapped it.
+      description: >-
+        The client makes the pack's data key, has it wrapped
+        (`POST /knowledge/keys/wrap`), and names it here; the registry
+        checks that the wrapped key opens for the caller and keeps it
+        beside the pack. The tree follows with
+        `PUT /knowledge/packs/{packId}/tree`. A name is the pack's
+        directory name: 1-64 lowercase letters, digits, `.`, `-` or `_`,
+        starting with a letter or a digit, one per owner (409
+        `knowledge-name-taken`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateKnowledgePackRequest"
+      responses:
+        "201":
+          description: The pack, in state `empty`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgePack"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /knowledge/packs/{packId}:
+    parameters:
+      - $ref: "#/components/parameters/KnowledgePackId"
+    get:
+      operationId: getKnowledgePack
+      tags: [knowledge]
+      summary: One of the caller's packs with its scan report; 404 to anyone else.
+      responses:
+        "200":
+          description: The pack.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgePack"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteKnowledgePack
+      tags: [knowledge]
+      summary: Delete one of the caller's packs, its stored trees and its wrapped key.
+      responses:
+        "204":
+          description: Deleted.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /knowledge/packs/{packId}/tree:
+    parameters:
+      - $ref: "#/components/parameters/KnowledgePackId"
+    put:
+      operationId: uploadKnowledgeTree
+      tags: [knowledge]
+      summary: Upload a pack's sealed tree, which replaces the one before and is scanned.
+      description: >-
+        One PUT of the sealed tree (`pkg/packseal`: the pack's canonical
+        tar sealed under its data key), at most a 10 MB pack; past that
+        413 `upload-too-large`, a tree past the pack's caps 413
+        `knowledge-too-large`, a tree that is not the digest its header
+        names 422 `knowledge-digest-mismatch`, and a tree past the owner's
+        allocation 413 `knowledge-allocation` with `bytes` and `max`. The
+        registry opens it to check it before it keeps it, stores it
+        sealed, and queues its scan: the pack is `scanning` until the scan
+        ends and `ready` after, findings or not.
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "202":
+          description: Stored; the pack is `scanning`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgePack"
+        default:
+          $ref: "#/components/responses/Problem"
+    get:
+      operationId: downloadKnowledgeTree
+      tags: [knowledge]
+      summary: The pack's sealed tree, as stored; the client opens it with the unwrapped data key (409 `knowledge-scanning` while it is scanned).
+      responses:
+        "200":
+          description: The sealed tree.
+          headers:
+            X-Agentry-Knowledge-Digest:
+              schema:
+                type: string
+              description: "sha256:<hex>, the digest of the tree inside."
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /knowledge/packs/{packId}/export:
+    parameters:
+      - $ref: "#/components/parameters/KnowledgePackId"
+    get:
+      operationId: exportKnowledgePack
+      tags: [knowledge]
+      summary: The pack's tree, decrypted as it streams, to its owner alone.
+      description: >-
+        The canonical tar of the pack's `wiki/` and `sources/`, whose
+        SHA-256 is the pack's digest; `Cache-Control: no-store`; 404 to
+        anyone but the owner; 409 `knowledge-scanning` while the pack is
+        scanned.
+      responses:
+        "200":
+          description: The tree.
+          content:
+            application/x-tar:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /knowledge/keys/wrap:
+    post:
+      operationId: wrapKnowledgeKey
+      tags: [knowledge]
+      summary: Wrap a pack's data key for the caller.
+      description: >-
+        The caller's wrapper seals the 32-byte data key; the answer is
+        what a client keeps beside a sealed pack. On a core registry the
+        wrapper is the deployment's knowledge sealing key; an extension
+        may wrap to the account's own key instead.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnowledgeDataKey"
+      responses:
+        "200":
+          description: The wrapped key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeWrappedKey"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /knowledge/keys/unwrap:
+    post:
+      operationId: unwrapKnowledgeKey
+      tags: [knowledge]
+      summary: Unwrap a data key wrapped for the caller; refused for anyone else's.
+      description: >-
+        Answers the data key over TLS, never what wraps it. A wrapped key
+        that does not open for the caller — wrapped for someone else,
+        under a key since destroyed, or altered — is 404
+        `knowledge-key-not-found`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KnowledgeWrappedKey"
+      responses:
+        "200":
+          description: The data key.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeDataKey"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /knowledge/usage:
+    get:
+      operationId: getKnowledgeUsage
+      tags: [knowledge]
+      summary: What the caller keeps in the registry against their allocation.
+      responses:
+        "200":
+          description: The meter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeUsage"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /platform/knowledge:
+    get:
+      operationId: listKnowledgePackSizes
+      tags: [platform]
+      summary: An account's packs by name and size, for support (platform staff).
+      description: >-
+        Names, states and sizes only: never a byte of content, a digest,
+        a scan report or a key.
+      parameters:
+        - name: owner
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The account's handle.
+      responses:
+        "200":
+          description: Packs.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KnowledgePackSize"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /platform/policy:
     get:
       operationId: getPlatformPolicy
@@ -3425,6 +3688,79 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /model-input/scan:
+    post:
+      operationId: scanModelInput
+      tags: [model-input]
+      summary: AI Review of text a model is about to read (agentry#608).
+      description: >-
+        Scans pushed text as model input: the deployment's judge is asked
+        the model-input question set (injection, exfiltration, user
+        deception, obfuscation), in 8 KiB chunks asked in parallel, and
+        answers per chunk with scores. The text's score is the highest over
+        its chunks and questions; 2 or more (the gate's medium) is
+        `withheld`, and a chunk the judge could not answer (an error, a
+        timeout, an answer out of shape) makes the text `not_scanned`,
+        which a caller treats as withheld. Nothing of the text is kept or
+        logged. `usage` counts the judge's requests and tokens for the
+        record; it is never a price (AI Review is charged per operation,
+        not per scan). Open to platform staff by session, and to a hosted
+        job's credential in `X-Agentry-Job-Token` where an extension admits
+        it; a token is refused whatever its scopes. 503
+        `model-input-unavailable` when the deployment's judge is not
+        TypeSafe's Jev.
+      security:
+        - session: []
+        - jobToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelInputScanRequest"
+      responses:
+        "200":
+          description: The verdict, per chunk and for the whole text.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelInputScan"
+        default:
+          $ref: "#/components/responses/Problem"
+  /model-input/search:
+    post:
+      operationId: searchModelInput
+      tags: [model-input]
+      summary: Web search through the deployment's provider, every result scanned (agentry#608).
+      description: >-
+        Searches the web through the deployment's search provider with the
+        registry's own key, then scans each result (its title, address and
+        snippet) as model input, as `POST /model-input/scan` does. Only
+        scanned results come back: a `withheld` or `not_scanned` result
+        carries its origin (scheme and host), verdict and scores, never its
+        title, its snippet or the rest of its address. The query goes to the search provider and is neither kept
+        nor logged. Callers as for `POST /model-input/scan`. 503
+        `web-search-unavailable` when no provider is configured, 503
+        `model-input-unavailable` when there is no judge to scan the
+        results, 502 `web-search-failed` when the provider did not answer.
+      security:
+        - session: []
+        - jobToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebSearchRequest"
+      responses:
+        "200":
+          description: The scanned results.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSearchResults"
+        default:
+          $ref: "#/components/responses/Problem"
   /mcp-servers/scan:
     get:
       operationId: getMcpServerScan
@@ -3674,6 +4010,13 @@ components:
       schema:
         type: string
         pattern: "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+    KnowledgePackId:
+      name: packId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     AgentName:
       name: name
       in: path
@@ -3777,7 +4120,10 @@ components:
             IdP sign-in whose `amr` named a factor;
             false in dev mode and under `externalOnly` without
             `auth.requireIdpMFA` — a client states that requirement only
-            when this is true).
+            when this is true), and `knowledge` (the store of knowledge
+            packs is on: the registry has a knowledge sealing key or an
+            extension that wraps keys, so `/knowledge/…` answers rather
+            than 503).
           additionalProperties:
             type: boolean
         minCLIVersion:
@@ -4132,7 +4478,8 @@ components:
         token start, feed and cancel a hosted run of a BriefAgent and
         `run:read` lets it read a run, its log and its artefacts — both are
         consumed only by a registry that mounts the runs extension, and
-        unlock nothing on one that does not.
+        unlock nothing on one that does not. `knowledge:read` and
+        `knowledge:write` read and write the account's knowledge packs.
       enum:
         - repo:read
         - repo:write
@@ -4144,6 +4491,237 @@ components:
         - user:profile
         - run:read
         - run:write
+        - knowledge:read
+        - knowledge:write
+
+    KnowledgePack:
+      type: object
+      description: >-
+        A knowledge pack the caller keeps in the registry (plan
+        knowledge.md §4.4): what may be read of it without its data key,
+        and the key as the caller's wrapper wrapped it.
+      required: [id, name, state, bytes, files, pages, digest, wrappedKey, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        state:
+          $ref: "#/components/schemas/KnowledgePackState"
+        bytes:
+          type: integer
+          format: int64
+          description: The tree's files, in bytes, as the CLI counts them.
+        files:
+          type: integer
+        pages:
+          type: integer
+          description: The wiki's pages, the index and the log aside.
+        digest:
+          type: string
+          description: "sha256:<hex> of the tree; empty before an upload."
+        wrappedKey:
+          $ref: "#/components/schemas/KnowledgeWrappedKey"
+        scan:
+          $ref: "#/components/schemas/KnowledgeScanReport"
+        scannedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    KnowledgePackState:
+      type: string
+      enum: [empty, scanning, ready, failed]
+      description: >-
+        `empty` until a tree is uploaded; `scanning` from each upload until
+        its scan ends, when the pack cannot be downloaded or exported (409
+        `knowledge-scanning`); `ready` after it, findings or not; `failed`
+        when the stored tree could not be read to scan.
+
+    KnowledgePackSize:
+      type: object
+      required: [id, name, state, bytes, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        state:
+          $ref: "#/components/schemas/KnowledgePackState"
+        bytes:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateKnowledgePackRequest:
+      type: object
+      required: [name, wrappedKey]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        wrappedKey:
+          $ref: "#/components/schemas/KnowledgeWrappedKey"
+
+    KnowledgeWrappedKey:
+      type: object
+      description: >-
+        A pack's data key as a wrapper sealed it: the wrapper's `kind`
+        (`deployment` on a core registry), the `recipient` it is wrapped
+        to (a key's id, never a key), and the sealed bytes.
+      required: [kind, recipient, key]
+      properties:
+        kind:
+          type: string
+        recipient:
+          type: string
+        key:
+          type: string
+          format: byte
+
+    KnowledgeDataKey:
+      type: object
+      required: [key]
+      properties:
+        key:
+          type: string
+          format: byte
+          description: A pack's 32-byte data key.
+
+    KnowledgeUsage:
+      type: object
+      required: [bytes, max, packs, used, pooled]
+      properties:
+        bytes:
+          type: integer
+          format: int64
+          description: The bytes of every pack the caller keeps here.
+        packs:
+          type: integer
+          description: The packs the caller keeps here.
+        used:
+          type: integer
+          format: int64
+          description: >-
+            What counts against the allocation: `bytes`, or, when `pooled`,
+            the pool's total — every pack of every owner who shares it (a
+            paid organization's, and its members').
+        max:
+          type: integer
+          format: int64
+          description: The allocation; 0 is no cap.
+        pooled:
+          type: boolean
+          description: The allocation is shared with other owners (agentry#612).
+
+    KnowledgeScanReport:
+      type: object
+      description: >-
+        What a pack's scan read and found (plan knowledge.md §4.4, D19): a
+        record, never a gate (D27). The stages that read prose over every
+        text file, then AI Review over `sources/` and then `wiki/` in
+        chunks no larger than the judge declares it reads.
+      required: [schema, stages, read, review, findings]
+      properties:
+        schema:
+          type: string
+        stages:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              failed:
+                type: boolean
+                description: The stage did not finish (a timeout, a panic); its findings are not all there are.
+        read:
+          type: object
+          required: [sources, wiki, bytes, notRead]
+          properties:
+            sources:
+              type: integer
+            wiki:
+              type: integer
+            bytes:
+              type: integer
+              format: int64
+            notRead:
+              type: array
+              items:
+                type: string
+              description: Files not read as text — a source's original, whose extracted text beside it is read.
+        review:
+          type: object
+          required: [configured, provider, sourceChunks, wikiChunks]
+          properties:
+            configured:
+              type: boolean
+            note:
+              type: string
+              description: '"AI Review not configured" on a registry whose judge provider is none.'
+            provider:
+              type: string
+            model:
+              type: string
+            rubricHash:
+              type: string
+            chunkBytes:
+              type: integer
+            sourceChunks:
+              type: integer
+            wikiChunks:
+              type: integer
+            failed:
+              type: integer
+              description: Chunks the judge failed on; the review is incomplete when it is not 0.
+            error:
+              type: string
+            usage:
+              $ref: "#/components/schemas/JudgeUsage"
+        findings:
+          type: array
+          items:
+            type: object
+            required: [scanner, severity, confidence, title, part]
+            properties:
+              scanner:
+                type: string
+              severity:
+                type: string
+                enum: [info, low, medium, high, critical]
+              confidence:
+                type: string
+              title:
+                type: string
+              part:
+                type: string
+                enum: [sources, wiki]
+              file:
+                type: string
+              line:
+                type: integer
+              chunk:
+                type: integer
+            description: >-
+              A finding, by where it is: never the words there, since the
+              report is kept in the clear beside a sealed tree.
 
     ScopeGranted:
       type: string
@@ -4164,6 +4742,8 @@ components:
         - user:profile
         - run:read
         - run:write
+        - knowledge:read
+        - knowledge:write
 
     OrgRole:
       type: string
@@ -4847,6 +5427,179 @@ components:
           type: array
           items:
             type: string
+    ModelInputSource:
+      type: string
+      description: >-
+        What the text is: a person's description, one web search result, a
+        web page's text, an answer from the registry's public API, or a
+        hosted run's input file as decoded text. It rides beside the text
+        in the judge's state; nothing of the text reaches a question.
+      enum: [description, search_result, page, registry, input_file]
+    ModelInputVerdict:
+      type: string
+      description: >-
+        `pass`: no question scored 2 or more. `withheld`: one did; the model
+        gets the source's address and the reason, never the text.
+        `not_scanned`: the judge could not answer for part of the text; a
+        caller treats it as withheld.
+      enum: [pass, withheld, not_scanned]
+    ModelInputScores:
+      type: object
+      description: Per question, 0 to 3 (0.5, 0.7 and 0.9 are 1, 2 and 3).
+      required: [injection, exfiltration, deception, obfuscation]
+      properties:
+        injection:
+          type: integer
+          minimum: 0
+          maximum: 3
+        exfiltration:
+          type: integer
+          minimum: 0
+          maximum: 3
+        deception:
+          type: integer
+          minimum: 0
+          maximum: 3
+        obfuscation:
+          type: integer
+          minimum: 0
+          maximum: 3
+    ModelInputUsage:
+      type: object
+      description: >-
+        The judge's requests and input tokens, for the record. Never a
+        price: AI Review is charged per operation (DEV-150).
+      required: [requests, inputTokens]
+      properties:
+        requests:
+          type: integer
+        inputTokens:
+          type: integer
+    ModelInputScanRequest:
+      type: object
+      required: [source, text]
+      additionalProperties: false
+      properties:
+        source:
+          $ref: "#/components/schemas/ModelInputSource"
+        text:
+          type: string
+          description: >-
+            The text as the model would read it, at most 65,536 bytes of
+            UTF-8 (eight chunks); a longer text is sent in parts.
+    ModelInputChunk:
+      type: object
+      required: [index, bytes, verdict]
+      properties:
+        index:
+          type: integer
+        bytes:
+          type: integer
+        verdict:
+          $ref: "#/components/schemas/ModelInputVerdict"
+        scores:
+          $ref: "#/components/schemas/ModelInputScores"
+        failure:
+          type: string
+          description: Why a chunk was not scanned.
+          enum: [timeout, judge-error]
+    ModelInputScan:
+      type: object
+      required: [verdict, score, scores, flagged, chunks, model, questionSet, usage]
+      properties:
+        verdict:
+          $ref: "#/components/schemas/ModelInputVerdict"
+        score:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: The highest score over every chunk and question.
+        scores:
+          $ref: "#/components/schemas/ModelInputScores"
+        flagged:
+          type: array
+          description: The questions that scored 2 or more.
+          items:
+            type: string
+            enum: [injection, exfiltration, deception, obfuscation]
+        chunks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelInputChunk"
+        model:
+          type: string
+          description: The pinned judge model, such as `jev-1.13.0`.
+        questionSet:
+          type: string
+          description: >-
+            The hash of the question set and everything else that changes a
+            verdict (model, wording, chunk size, thresholds).
+        usage:
+          $ref: "#/components/schemas/ModelInputUsage"
+    WebSearchRequest:
+      type: object
+      required: [query]
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 400
+        count:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 5
+          description: How many results to ask the provider for; clamped to 1–10.
+    WebSearchResult:
+      type: object
+      required: [url, verdict, score]
+      properties:
+        url:
+          type: string
+          description: >-
+            The result's address when it passed; only its origin (scheme
+            and host) when it was withheld or not scanned, since a path or
+            a query can carry an instruction too.
+        title:
+          type: string
+          description: Present only when the result passed.
+        snippet:
+          type: string
+          description: Present only when the result passed.
+        verdict:
+          $ref: "#/components/schemas/ModelInputVerdict"
+        score:
+          type: integer
+          minimum: 0
+          maximum: 3
+        scores:
+          $ref: "#/components/schemas/ModelInputScores"
+        flagged:
+          type: array
+          items:
+            type: string
+            enum: [injection, exfiltration, deception, obfuscation]
+    WebSearchResults:
+      type: object
+      required: [provider, results, withheld, model, questionSet, usage]
+      properties:
+        provider:
+          type: string
+          description: The search provider the deployment brokers.
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebSearchResult"
+        withheld:
+          type: integer
+          description: How many results were withheld or not scanned.
+        model:
+          type: string
+        questionSet:
+          type: string
+        usage:
+          $ref: "#/components/schemas/ModelInputUsage"
     McpServerScan:
       type: object
       required: [ecosystem, package, version, status, advisories, firstSeenAt, lastCheckedAt]
@@ -5656,6 +6409,14 @@ components:
       type: apiKey
       in: cookie
       name: agentry_session
+    jobToken:
+      type: apiKey
+      in: header
+      name: X-Agentry-Job-Token
+      description: >-
+        A hosted job's credential for the model-input routes, minted by an
+        extension for one job and valid while it runs (agentry#608). Never
+        a personal access token.
 
 security:
   - pat: []

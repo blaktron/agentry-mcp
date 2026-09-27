@@ -33,8 +33,8 @@ tools** for everything else.
 | Access          | `agentry_list_grants`, `agentry_set_grant`                                                                                                  |
 | Everything else | `agentry_search_actions`, `agentry_execute_action`                                                                                          |
 
-The catalog behind the last two carries all **120 operations** in the Agentry
-API — review queues, org policy, SSO and SCIM, webhooks, domain claims,
+The catalog behind the last two carries every operation in the Agentry API
+(152 at core v0.6.10) — review queues, org policy, SSO and SCIM, webhooks, domain claims,
 advisories, audit exports, platform trust-and-safety — so the long tail is
 reachable without spending 120 tool schemas of context on it. The model
 searches by intent, reads one operation's schema, and executes it.
