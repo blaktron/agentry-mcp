@@ -1,6 +1,6 @@
 {
   "name": "@blaktron/agentry-mcp",
-  "version": "0.6.1",
+  "version": "0.6.10",
   "private": true,
   "description": "MCP server that drives the installed agentry CLI: search, read contracts, verify, check the machine, install, run and manage BriefAgents from Claude Code, Codex or any MCP host",
   "license": "MIT",
