@@ -24,7 +24,7 @@ export function registerReadTools(d: Driver): void {
     "agentry_search",
     {
       description:
-        "Search a registry's public BriefAgents with the installed agentry CLI (`agentry search --json`). " +
+        "Search a registry's public QuickAgents with the installed agentry CLI (`agentry search --json`). " +
         "Returns the CLI's JSON: results (namespace, name, modes, summary, installs30d, quarantineState), " +
         "facets and total. Every result is a published, scanned release; the report card is on agentry_info.",
       inputSchema: {
@@ -36,11 +36,11 @@ export function registerReadTools(d: Driver): void {
         mode: z
           .enum(["autonomous", "interactive"])
           .optional()
-          .describe("Only BriefAgents supporting this run mode."),
+          .describe("Only QuickAgents supporting this run mode."),
         capability: z
           .enum(["network", "filesystem", "exec", "secrets", "dataAccess"])
           .optional()
-          .describe("Only BriefAgents whose latest version asks for this capability."),
+          .describe("Only QuickAgents whose latest version asks for this capability."),
         license: z
           .string()
           .optional()
@@ -70,7 +70,7 @@ export function registerReadTools(d: Driver): void {
     "agentry_info",
     {
       description:
-        "Read one BriefAgent with the installed agentry CLI (`agentry info --json`): the agent, its latest " +
+        "Read one QuickAgent with the installed agentry CLI (`agentry info --json`): the agent, its latest " +
         "published version and that version's capability contract — what it declares it needs (network hosts, " +
         "filesystem, exec, secrets, declared MCP servers) — and whether that version carries an attestation " +
         "(signed or unsigned). The finding count is on the registry's report card, not here. Read this before " +
@@ -126,9 +126,9 @@ export function registerReadTools(d: Driver): void {
     "agentry_doctor",
     {
       description:
-        "Check this machine for BriefAgent runs with the installed agentry CLI (`agentry doctor --json`): the " +
+        "Check this machine for QuickAgent runs with the installed agentry CLI (`agentry doctor --json`): the " +
         "runner policy, the model provider and whether its key NAME is set (values are never printed), the " +
-        "docker engine, the gateway and runner images, the exec catalog, and optionally one BriefAgent's " +
+        "docker engine, the gateway and runner images, the exec catalog, and optionally one QuickAgent's " +
         "requirements or one harness adapter's installation. Call this first; it says what a run would fail on. " +
         'When a check fails the report still comes back, with exitClass "cli" beside it.',
       inputSchema: {
@@ -136,12 +136,12 @@ export function registerReadTools(d: Driver): void {
           .string()
           .optional()
           .describe(
-            "Also check one BriefAgent's requirements against this machine (namespace/name[@version]).",
+            "Also check one QuickAgent's requirements against this machine (namespace/name[@version]).",
           ),
         local: z
           .string()
           .optional()
-          .describe("Check a local BriefAgent directory instead of a registry ref."),
+          .describe("Check a local QuickAgent directory instead of a registry ref."),
         adapter: z
           .string()
           .optional()

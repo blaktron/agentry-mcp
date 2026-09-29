@@ -2,7 +2,7 @@
  * Assembles the server: the found CLI, the driver, the tools. The
  * instructions block is what the host's model reads before its first call,
  * so it says what this server is (a driver of the person's CLI), what the
- * registry says about BriefAgents (scanned, N findings, signed — never
+ * registry says about QuickAgents (scanned, N findings, signed — never
  * safe), and what is deliberately not here (login, publish).
  */
 
@@ -21,11 +21,11 @@ export const SERVER_VERSION = "0.6.10";
 export function instructions(bin: string, cliVersion: string): string {
   return [
     `This server drives the agentry CLI installed on this machine (${bin}, agentry ${cliVersion}) ` +
-      "so you can search a registry, read a BriefAgent's capability contract, verify a release and " +
+      "so you can search a registry, read a QuickAgent's capability contract, verify a release and " +
       "check the machine. Every tool is one CLI command; every result is the CLI's own JSON in an " +
       "envelope with the exit class and the CLI's log.",
     "",
-    "A BriefAgent is a reviewable package of instructions published as an immutable, " +
+    "A QuickAgent is a reviewable package of instructions published as an immutable, " +
       "content-addressed release. The registry reports each release as scanned, with a finding " +
       "count, and signed or unsigned — never as safe. Say what the registry says. The capability " +
       "contract on agentry_info is what a run enforces; read it before you propose an install or a run.",
@@ -41,7 +41,7 @@ export function instructions(bin: string, cliVersion: string): string {
       "the record of what was enforced. A run that needs the machine prepared fails at agentry_doctor's " +
       "checks first; agentry_setup writes the provider (key NAME only) and pulls the images.",
     "",
-    "An interactive session is the same consent, then agentry_session_start opens the BriefAgent's " +
+    "An interactive session is the same consent, then agentry_session_start opens the QuickAgent's " +
       "chat on a terminal this server owns; agentry_session_send is one turn in and the reply out, as the " +
       "run's own events receipt recorded it; agentry_session_close ends it and names the transcript and " +
       "receipts. One session at a time.",

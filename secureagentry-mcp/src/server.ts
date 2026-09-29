@@ -22,7 +22,7 @@ function instructions(config: Config): string {
   return [
     `Automation for an Agentry registry at ${config.registry}.`,
     "",
-    "Agentry is a registry and git host for BriefAgents: reviewable packages of instructions " +
+    "Agentry is a registry and git host for QuickAgents: reviewable packages of instructions " +
       "published as immutable, content-addressed, scanned and signed releases. An agent IS its " +
       "repository — creating one creates its hosted git repo, and its versions are the releases " +
       "cut from that repo. A release declares the run modes it supports: autonomous (runs from " +

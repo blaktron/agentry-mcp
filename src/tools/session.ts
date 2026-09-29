@@ -18,7 +18,7 @@ export function registerSessionTools(d: Driver): void {
     "agentry_session_start",
     {
       description:
-        "Start an interactive session with a BriefAgent (`agentry run --mode interactive`), in the same two " +
+        "Start an interactive session with a QuickAgent (`agentry run --mode interactive`), in the same two " +
         "calls as agentry_run: without `confirm`, a preview of the compiled plan for the interactive mode " +
         "with a `digest`; with `confirm` set to that digest (and `acceptUnsigned: true` only if the person " +
         "accepted an unsigned or local release, `acceptUnscanned: true` only if they accepted an unscanned one), the CLI's chat is started on a terminal this server owns " +
@@ -30,7 +30,7 @@ export function registerSessionTools(d: Driver): void {
         ref: z
           .string()
           .optional()
-          .describe("A registry BriefAgent: namespace/name, optionally @version or @range."),
+          .describe("A registry QuickAgent: namespace/name, optionally @version or @range."),
         local: z
           .string()
           .optional()
@@ -51,7 +51,7 @@ export function registerSessionTools(d: Driver): void {
         intake: z
           .record(z.string(), z.string())
           .optional()
-          .describe("Answers to the BriefAgent's intake questions, by id."),
+          .describe("Answers to the QuickAgent's intake questions, by id."),
         adapter: z.string().optional().describe("The harness adapter (default docker-agent)."),
         out: z
           .string()
