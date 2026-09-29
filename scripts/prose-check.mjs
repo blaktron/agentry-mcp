@@ -84,7 +84,7 @@ function run(root) {
 
 if (process.argv.includes("--self-test")) {
   const scanSource = (src) => literalsOf(src).flatMap((lit) => scan("fixture", lit));
-  const bad = scanSource('const d = "This BriefAgent is safe to run";');
+  const bad = scanSource('const d = "This QuickAgent is safe to run";');
   const ok = scanSource('const d = "scanned, 0 findings, signed — never as safe";');
   if (bad.length !== 1 || ok.length !== 0) {
     console.error("self-test failed", { bad, ok });
