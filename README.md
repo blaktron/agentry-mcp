@@ -1,9 +1,9 @@
 # agentry-mcp
 
 An MCP server that drives the **`agentry` CLI you already have**, so Claude
-Code, Codex or any MCP host can search a registry, read a BriefAgent's
+Code, Codex or any MCP host can search a registry, read a QuickAgent's
 capability contract, verify a release, check and prepare the machine,
-install and remove BriefAgents, run them, and hold an interactive session
+install and remove QuickAgents, run them, and hold an interactive session
 with one — through tools whose results are the CLI's own JSON, behind the
 same consent the CLI asks for on a terminal.
 
@@ -115,7 +115,7 @@ instead of asking.
 
 `input` text is written to a temp file the server removes after the run;
 `inputFile` passes a path you already have; `intake` answers the
-BriefAgent's questions by id, and a required one left unanswered is an
+QuickAgent's questions by id, and a required one left unanswered is an
 error from the run naming it. A run stops at `timeoutSeconds`, or at the
 runner policy's own budget when the call names none (the preview shows
 which): the CLI ends it, and if the process is still there 30 s later the

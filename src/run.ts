@@ -160,7 +160,7 @@ export interface RunPlan {
 function target(a: RunArgs, resolvedRef?: string): string[] {
   if ((a.ref === undefined) === (a.local === undefined)) {
     throw new ArgumentError(
-      "give exactly one of ref (a registry BriefAgent) or local (a workspace directory)",
+      "give exactly one of ref (a registry QuickAgent) or local (a workspace directory)",
     );
   }
   if (a.input !== undefined && a.inputFile !== undefined) {

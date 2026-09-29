@@ -21,7 +21,7 @@ export function registerWriteTools(d: Driver): void {
     "agentry_install",
     {
       description:
-        "Install a BriefAgent for an agent application with the installed agentry CLI, in two calls. " +
+        "Install a QuickAgent for an agent application with the installed agentry CLI, in two calls. " +
         "Without `confirm`: a preview (`agentry install --plan --json`) — the resolved version, the capability " +
         "contract, the diff against what this machine accepted before, the attestation verdict, the " +
         "refusal an install would meet, the target and directory — plus `digest`; nothing is written. Show the " +
@@ -79,7 +79,7 @@ export function registerWriteTools(d: Driver): void {
     "agentry_uninstall",
     {
       description:
-        "Remove a BriefAgent's runner install from this machine with the installed agentry CLI, in two calls: " +
+        "Remove a QuickAgent's runner install from this machine with the installed agentry CLI, in two calls: " +
         "without `confirm`, a preview (`agentry uninstall --plan --json`) of the install cache directories, the MCP " +
         "profiles (stored keys and installed servers) and the consent record that would go, plus `digest`; with " +
         "`confirm` set to that digest, the removal. Show the person what would be removed before confirming. " +

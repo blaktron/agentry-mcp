@@ -52,7 +52,7 @@ export const API_VERSION = "0.3.0";
 export const API_BASE_PATH = "/api/v1";
 
 /** sha256 of spec/openapi.yaml, so a drifted catalog is detectable. */
-export const SPEC_SHA256 = "dcec33e2ab2b3925bdf442533bb9f4abd002e9738041b3d4fec6ca5117b7ebf8";
+export const SPEC_SHA256 = "43ca9274b16db4576af29b1103c8d0f60a9d509b0456bc7426bc32728b151b3f";
 
 export const ACTIONS: readonly Action[] = [
   {
@@ -237,7 +237,7 @@ export const ACTIONS: readonly Action[] = [
       "users"
     ],
     "summary": "Clear the caller's credentials, installs and settings, and keep the account (session only).",
-    "description": "Revokes every personal access token and SSH key, deletes every remembered browser (the ones that skip the second factor), consumes every pending desktop sign-in code, ends every session but the caller's, removes every account install, and resets the display name and the notification settings to their defaults (every switch on; mail still goes only to a verified address). The account itself stays: the handle, the email, the sign-in account at the directory, organization memberships, BriefAgents with their versions and repositories, stars, the subscription and credits are untouched. Audited as `user.data_clear` with the count of each class; after the commit an extension event `user.data_cleared` carries the user id, so an extension clears what it holds for the account (hosted run history). Session only: a token is refused, and so is a request without the session's CSRF token.",
+    "description": "Revokes every personal access token and SSH key, deletes every remembered browser (the ones that skip the second factor), consumes every pending desktop sign-in code, ends every session but the caller's, removes every account install, and resets the display name and the notification settings to their defaults (every switch on; mail still goes only to a verified address). The account itself stays: the handle, the email, the sign-in account at the directory, organization memberships, QuickAgents with their versions and repositories, stars, the subscription and credits are untouched. Audited as `user.data_clear` with the count of each class; after the commit an extension event `user.data_cleared` carries the user id, so an extension clears what it holds for the account (hosted run history). Session only: a token is refused, and so is a request without the session's CSRF token.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -779,7 +779,7 @@ export const ACTIONS: readonly Action[] = [
             "items": {
               "title": "Scope",
               "type": "string",
-              "description": "PAT scopes (§12.3). A token can do only what its scopes allow; a\nsession acts with the account's full authority. `run:write` lets a\ntoken start, feed and cancel a hosted run of a BriefAgent and\n`run:read` lets it read a run, its log and its artefacts — both are\nconsumed only by a registry that mounts the runs extension, and\nunlock nothing on one that does not. `knowledge:read` and\n`knowledge:write` read and write the account's knowledge packs.\n",
+              "description": "PAT scopes (§12.3). A token can do only what its scopes allow; a\nsession acts with the account's full authority. `run:write` lets a\ntoken start, feed and cancel a hosted run of a QuickAgent and\n`run:read` lets it read a run, its log and its artefacts — both are\nconsumed only by a registry that mounts the runs extension, and\nunlock nothing on one that does not. `knowledge:read` and\n`knowledge:write` read and write the account's knowledge packs.\n",
               "enum": [
                 "repo:read",
                 "repo:write",
@@ -1019,8 +1019,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "installs"
     ],
-    "summary": "Remove the caller's record for a BriefAgent (idempotent).",
-    "description": "204 whether or not a record existed, and whether or not the name resolves: the row is the caller's own, so no BriefAgent is read and nothing is learned about one — a record whose BriefAgent the caller can no longer read is removed by the ref the list shows for it. Audited as `agent.uninstall` when a record went. A PAT needs `user:profile`.",
+    "summary": "Remove the caller's record for a QuickAgent (idempotent).",
+    "description": "204 whether or not a record existed, and whether or not the name resolves: the row is the caller's own, so no QuickAgent is read and nothing is learned about one — a record whose QuickAgent the caller can no longer read is removed by the ref the list shows for it. Audited as `agent.uninstall` when a record went. A PAT needs `user:profile`.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -2559,7 +2559,7 @@ export const ACTIONS: readonly Action[] = [
       "installs"
     ],
     "summary": "The caller's account installs, composed for a list.",
-    "description": "Every record the caller holds, newest change first. A record whose BriefAgent the caller can no longer read — made private to them, its organization suspended — is listed as the bare `ref` with `readable: false` and nothing else, so the list tells a former reader nothing they did not already know. A PAT needs `user:profile`.",
+    "description": "Every record the caller holds, newest change first. A record whose QuickAgent the caller can no longer read — made private to them, its organization suspended — is listed as the bare `ref` with `readable: false` and nothing else, so the list tells a former reader nothing they did not already know. A PAT needs `user:profile`.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -2579,7 +2579,7 @@ export const ACTIONS: readonly Action[] = [
       "platform"
     ],
     "summary": "Published advisories — for one agent, or the global feed (§8.7).",
-    "description": "With `affecting`, the advisories against that agent (newest first), under the agent's own read rule: a private agent's advisories are its readers' (the owning user, the owning org's admins, and anyone holding a grant on the agent), and anyone else — anonymous or signed in — gets the 404 a missing name gets, so the agent's existence is not discoverable here (agentry#313). Without it, the global feed: every published advisory against a public agent, newest first, keyset-paged with `cursor`/`limit` and a `Link: rel=\"next\"` header (§9.1). Each item carries `agent` (`ns/name`) so a feed reader can find the affected BriefAgent.",
+    "description": "With `affecting`, the advisories against that agent (newest first), under the agent's own read rule: a private agent's advisories are its readers' (the owning user, the owning org's admins, and anyone holding a grant on the agent), and anyone else — anonymous or signed in — gets the 404 a missing name gets, so the agent's existence is not discoverable here (agentry#313). Without it, the global feed: every published advisory against a public agent, newest first, keyset-paged with `cursor`/`limit` and a `Link: rel=\"next\"` header (§9.1). Each item carries `agent` (`ns/name`) so a feed reader can find the affected QuickAgent.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -3879,8 +3879,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "installs"
     ],
-    "summary": "Record a BriefAgent release as installed to the account, or move the record to another version.",
-    "description": "The version must be a published release the caller can read: a non-reader gets the missing name's 404, an unpublished version `409 version-not-published`, a blocked BriefAgent `410 blocked`. The request carries the acceptances the release needs and is refused with `409 install-consent-required`, naming the missing ones in `missing`, when it lacks any: `capabilities` on a first install and, on an update, when the new version's declared capabilities widened against the accepted snapshot (`widened` lists what did); `unsigned` whenever the release carries no attestation; `unscanned` whenever it was admitted without a scan. A PUT on an existing record is the update, to any published version, an older one included: the version moves and the snapshot follows it. The action is audited as `agent.install`; no download counter moves. A PAT needs `user:profile`, and `agent:read` for a private BriefAgent.",
+    "summary": "Record a QuickAgent release as installed to the account, or move the record to another version.",
+    "description": "The version must be a published release the caller can read: a non-reader gets the missing name's 404, an unpublished version `409 version-not-published`, a blocked QuickAgent `410 blocked`. The request carries the acceptances the release needs and is refused with `409 install-consent-required`, naming the missing ones in `missing`, when it lacks any: `capabilities` on a first install and, on an update, when the new version's declared capabilities widened against the accepted snapshot (`widened` lists what did); `unsigned` whenever the release carries no attestation; `unscanned` whenever it was admitted without a scan. A PUT on an existing record is the update, to any published version, an older one included: the version moves and the snapshot follows it. The action is audited as `agent.install`; no download counter moves. A PAT needs `user:profile`, and `agent:read` for a private QuickAgent.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -6004,7 +6004,7 @@ export const ACTIONS: readonly Action[] = [
               },
               "advisories": {
                 "type": "boolean",
-                "description": "An advisory naming one of the person's BriefAgents was published."
+                "description": "An advisory naming one of the person's QuickAgents was published."
               },
               "orgInvites": {
                 "type": "boolean",

@@ -14,7 +14,7 @@ export function registerRunTools(d: Driver): void {
     "agentry_setup",
     {
       description:
-        "Prepare this machine for BriefAgent runs with the installed agentry CLI (`agentry setup --json`): " +
+        "Prepare this machine for QuickAgent runs with the installed agentry CLI (`agentry setup --json`): " +
         "write the model provider into the runner policy (~/.agentry/runner/policy.yaml) — provider, model, the " +
         "NAME of the environment variable holding the key, never the key — and, unless skipImages, pull and build " +
         "the gateway, harness and runner images (minutes; progress is streamed when the host asks for it). " +
@@ -64,7 +64,7 @@ export function registerRunTools(d: Driver): void {
     "agentry_run",
     {
       description:
-        "Run a BriefAgent autonomously with the installed agentry CLI, in two calls. Without `confirm`: a " +
+        "Run a QuickAgent autonomously with the installed agentry CLI, in two calls. Without `confirm`: a " +
         "preview (`agentry run --plan --json`) — the compiled run plan: the release that resolved, its digest, " +
         "the capabilities and enforcement a run would apply, the tools it would be served, the gateway and proxy " +
         "shape, the budgets, the attestation verdict and every refusal a run would meet (`refusals`) — plus `digest`; nothing " +
@@ -81,7 +81,7 @@ export function registerRunTools(d: Driver): void {
         ref: z
           .string()
           .optional()
-          .describe("A registry BriefAgent: namespace/name, optionally @version or @range."),
+          .describe("A registry QuickAgent: namespace/name, optionally @version or @range."),
         local: z
           .string()
           .optional()
@@ -106,7 +106,7 @@ export function registerRunTools(d: Driver): void {
           .record(z.string(), z.string())
           .optional()
           .describe(
-            "Answers to the BriefAgent's intake questions, by id. A required question left unanswered is an error naming it.",
+            "Answers to the QuickAgent's intake questions, by id. A required question left unanswered is an error naming it.",
           ),
         timeoutSeconds: z
           .number()
@@ -163,7 +163,7 @@ export function registerRunTools(d: Driver): void {
     "agentry_validate",
     {
       description:
-        "Validate a BriefAgent workspace offline with the installed agentry CLI (`agentry validate --json`): the " +
+        "Validate a QuickAgent workspace offline with the installed agentry CLI (`agentry validate --json`): the " +
         "registry's manifest rules (V1–V9) and its S1/S3/S4 scanners, as data — issues, inventory and scan " +
         "findings with file and line, the bundle version, and whether publish would pass. The report comes back " +
         'whatever the verdict; exitClass "cli" beside it means it failed. For authoring: fix what it names, ' +
