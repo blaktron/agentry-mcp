@@ -20,6 +20,51 @@ const registry = z
 const readOnly = { readOnlyHint: true, openWorldHint: true };
 
 export function registerReadTools(d: Driver): void {
+  for (const [name, command, description] of [
+    [
+      "agentry_whoami",
+      ["whoami"],
+      "Read the signed-in account and tier with agentry whoami --json; signing in stays in a terminal.",
+    ],
+    [
+      "agentry_builtins",
+      ["builtins"],
+      "List the CLI's embedded packages and archive digests with agentry builtins --json.",
+    ],
+    [
+      "agentry_voice_status",
+      ["voice", "status"],
+      "Read the local and account Writing Voice metadata and review with agentry voice status --json.",
+    ],
+  ] as const) {
+    d.server.registerTool(
+      name,
+      { description, inputSchema: { registry }, annotations: readOnly },
+      (a) =>
+        guard(name, async () => {
+          const argv = [...command, "--json"];
+          flag(argv, "registry", a.registry);
+          return d.run(name, argv);
+        }),
+    );
+  }
+  d.server.registerTool(
+    "agentry_knowledge_list",
+    {
+      description:
+        "List local knowledge packs, or an organization's shared packs, with agentry knowledge list --json. Returns metadata, not decrypted pages.",
+      inputSchema: { org: z.string().optional(), registry },
+      annotations: readOnly,
+    },
+    (a) =>
+      guard("agentry_knowledge_list", async () => {
+        const argv = ["knowledge", "list", "--json"];
+        flag(argv, "org", a.org);
+        flag(argv, "registry", a.registry);
+        return d.run("agentry_knowledge_list", argv);
+      }),
+  );
+
   d.server.registerTool(
     "agentry_search",
     {

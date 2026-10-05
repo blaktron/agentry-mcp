@@ -12,6 +12,10 @@ import { test } from "node:test";
 
 import { connect, receivedArgv, scratchArgv } from "./helpers.js";
 
+const INPUT = scratchArgv() + "-input";
+writeFileSync(INPUT, "sample");
+const receivedRunArgv = (path) => receivedArgv(path).filter((a) => a[0] === "run");
+
 function writesFile() {
   return join(scratchArgv() + "-writes");
 }
@@ -57,7 +61,7 @@ test("run preview: `run --plan --json`, the compiled plan and a digest, no run, 
   const p = await previewRun(client, {
     ref: "acme/widget",
     intake: { audience: "ops" },
-    files: ["/tmp/in"],
+    files: [INPUT],
   });
   assert.equal(p.writes, false);
   assert.equal(p.unsigned, false);
@@ -68,7 +72,7 @@ test("run preview: `run --plan --json`, the compiled plan and a digest, no run, 
   assert.deepEqual(p.plan.plan.capabilities, { egressMode: "none", fsReadMode: "workspace" });
   assert.equal(p.plan.plan.budgets.timeoutSeconds, 900);
   assert.match(p.digest, /^sha256:/);
-  assert.deepEqual(receivedArgv(argvFile)[0], [
+  assert.deepEqual(receivedRunArgv(argvFile)[0], [
     "run",
     "acme/widget",
     "--plan",
@@ -76,7 +80,7 @@ test("run preview: `run --plan --json`, the compiled plan and a digest, no run, 
     "--mode",
     "autonomous",
     "--file",
-    "/tmp/in",
+    INPUT,
     "--intake",
     "audience=ops",
   ]);
@@ -91,7 +95,7 @@ test("the digest covers the whole plan and the call's own contribution: a change
   for (const args of [
     { ref: "acme/widget", timeoutSeconds: 120 },
     { ref: "acme/widget", intake: { audience: "ops" } },
-    { ref: "acme/widget", files: ["/tmp/in"] },
+    { ref: "acme/widget", files: [INPUT] },
     { ref: "acme/widget", inputFile: "/tmp/task.txt" },
     { ref: "acme/widget", out: "/tmp/elsewhere" },
   ]) {
@@ -127,7 +131,7 @@ test("run confirm: re-plans, then runs the resolved release with the consented f
   assert.equal(out.receiptsDir, "/tmp/out/receipts");
   assert.equal(out.resultFile, "/tmp/out/result.json");
   assert.equal(out.result.status, "ok");
-  const argv = receivedArgv(argvFile);
+  const argv = receivedRunArgv(argvFile);
   assert.ok(argv.at(-2).includes("--plan"), "the confirm re-plans first");
   const runArgv = argv.at(-1);
   // The run names the release the preview resolved, never the floating ref.
@@ -158,7 +162,7 @@ test("the temp input file is created 0600", async () => {
     name: "agentry_run",
     arguments: { ref: "acme/widget", input: "x", confirm: p.digest },
   });
-  const line = receivedArgv(argvFile)
+  const line = receivedRunArgv(argvFile)
     .at(-1)
     .find((a) => a.startsWith("mode="));
   assert.equal(line, "mode=600");
@@ -190,14 +194,14 @@ test("a preview never lifts the gate; a wrong digest is refused; unsigned needs 
     arguments: { ref: "acme/widget", confirm: p.digest, acceptUnsigned: true },
   });
   assert.equal(ok.isError, undefined, ok.content[0].text);
-  const last = receivedArgv(argvFile).at(-1);
+  const last = receivedRunArgv(argvFile).at(-1);
   assert.ok(last.includes("--yes") && last.includes("--allow-unsigned"));
 
   const local = await connect({ FAKE_WRITES: writesFile() });
   const lp = await previewRun(local.client, { local: "/home/me/work/agent" });
   assert.equal(lp.unsigned, true);
   assert.equal(lp.plan.attestation, "local");
-  assert.deepEqual(receivedArgv(local.argvFile)[0], [
+  assert.deepEqual(receivedRunArgv(local.argvFile)[0], [
     "run",
     "--local",
     "/home/me/work/agent",
@@ -211,13 +215,13 @@ test("a preview never lifts the gate; a wrong digest is refused; unsigned needs 
     arguments: { local: "/home/me/work/agent", confirm: lp.digest, acceptUnsigned: true },
   });
   assert.equal(lrun.isError, undefined, lrun.content[0].text);
-  assert.deepEqual(receivedArgv(local.argvFile).at(-1).slice(0, 3), [
+  assert.deepEqual(receivedRunArgv(local.argvFile).at(-1).slice(0, 3), [
     "run",
     "--local",
     "/home/me/work/agent",
   ]);
   // Every plan the fake saw carried neither consented flag (the fake exits 99 on a lifted plan).
-  for (const a of receivedArgv(argvFile).concat(receivedArgv(local.argvFile))) {
+  for (const a of receivedRunArgv(argvFile).concat(receivedRunArgv(local.argvFile))) {
     if (a.includes("--plan"))
       assert.ok(
         !a.includes("--yes") && !a.includes("--allow-unsigned"),
@@ -248,10 +252,10 @@ test("an unscanned release: the preview reports it, acceptUnsigned does not lift
     arguments: { ref: "acme/widget", confirm: p.digest, acceptUnscanned: true },
   });
   assert.equal(ok.isError, undefined, ok.content[0].text);
-  const last = receivedArgv(argvFile).at(-1);
+  const last = receivedRunArgv(argvFile).at(-1);
   assert.ok(last.includes("--yes") && last.includes("--allow-unscanned"), `argv: ${last}`);
   assert.ok(!last.includes("--allow-unsigned"), `argv: ${last}`);
-  for (const a of receivedArgv(argvFile))
+  for (const a of receivedRunArgv(argvFile))
     if (a.includes("--plan"))
       assert.ok(!a.includes("--allow-unscanned"), `a plan was lifted: ${a}`);
 });
@@ -311,7 +315,7 @@ test("every refusal is in the preview; with a vulnerable server beside the unsig
     );
   }
   assert.equal(existsSync(writes), false);
-  for (const a of receivedArgv(argvFile))
+  for (const a of receivedRunArgv(argvFile))
     assert.ok(a.includes("--plan"), `only plans ran, never the run: ${a}`);
 });
 
@@ -327,7 +331,7 @@ test("a CLI before agentry-cli#126 prints one refusal: the unsigned one still li
     arguments: { ref: "acme/widget", confirm: p.digest, acceptUnsigned: true },
   });
   assert.equal(ok.isError, undefined, ok.content[0].text);
-  assert.ok(receivedArgv(argvFile).at(-1).includes("--allow-unsigned"));
+  assert.ok(receivedRunArgv(argvFile).at(-1).includes("--allow-unsigned"));
 
   const old = await connect({ FAKE_RUN_ATTEST: "mismatch", FAKE_RUN_LEGACY: "1" });
   const mp = await previewRun(old.client, { ref: "acme/widget" });
@@ -462,7 +466,7 @@ test("ref and local together, or neither, or input with inputFile, is a tool err
     assert.equal(r.isError, true);
     assert.match(r.content[0].text, want);
   }
-  assert.deepEqual(receivedArgv(argvFile), [], "the CLI was never run");
+  assert.deepEqual(receivedRunArgv(argvFile), [], "the CLI was never run");
 });
 
 test("progress: stderr lines become notifications only when the host sent a progress token", async () => {

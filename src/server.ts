@@ -10,13 +10,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import type { CliOptions } from "./cli.js";
 import { Driver } from "./driver.js";
+import { registerAuthorTools } from "./tools/author.js";
 import { registerReadTools } from "./tools/read.js";
 import { registerRunTools } from "./tools/run.js";
 import { registerSessionTools } from "./tools/session.js";
 import { registerWriteTools } from "./tools/write.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.6.11";
+export const SERVER_VERSION = "0.6.12";
 
 export function instructions(bin: string, cliVersion: string): string {
   return [
@@ -42,9 +43,14 @@ export function instructions(bin: string, cliVersion: string): string {
       "checks first; agentry_setup writes the provider (key NAME only) and pulls the images.",
     "",
     "An interactive session is the same consent, then agentry_session_start opens the QuickAgent's " +
-      "chat on a terminal this server owns; agentry_session_send is one turn in and the reply out, as the " +
+      "session through the CLI's JSON-line protocol; agentry_session_send is one turn in and the reply out, as the " +
       "run's own events receipt recorded it; agentry_session_close ends it and names the transcript and " +
       "receipts. One session at a time.",
+    "",
+    "Authoring: agentry_draft, agentry_review, agentry_knowledge_build and agentry_voice_build use " +
+      "two-call operation previews (not compiled plans). They fingerprint inputs, policy and built-in identities " +
+      "before confirmation, then run the CLI built-ins with model/review/search charges as described. " +
+      "Use agentry_builtins, agentry_knowledge_list and agentry_voice_status to inspect their state.",
     "",
     "Not here: signing in (the person runs `agentry login` in a terminal once; this server uses " +
       "that login) and publishing (`agentry publish` in a terminal, where the person sees the " +
@@ -71,6 +77,7 @@ export function createServer(opts: ServerOptions): { server: McpServer; driver: 
     { instructions: instructions(opts.bin, opts.cliVersion) },
   );
   const driver = new Driver(server, opts.bin, opts.cli ?? {}, opts.runTimeoutSlackMs);
+  registerAuthorTools(driver);
   registerReadTools(driver);
   registerWriteTools(driver);
   registerRunTools(driver);

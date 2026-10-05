@@ -30,13 +30,14 @@ if [ -n "${FAKE_ARGV:-}" ]; then
   if [ -n "${FAKE_STAT_INPUT:-}" ]; then prev=""; for a in "$@"; do if [ "$prev" = "--input" ]; then printf 'mode=%s\n' "$(stat -c %a "$a")" >> "$FAKE_ARGV"; fi; prev="$a"; done; fi
   printf -- '--\n' >> "$FAKE_ARGV"
 fi
-if [ "${1:-}" = "--version" ]; then echo "agentry version ${FAKE_VERSION:-0.6.0}"; exit 0; fi
+if [ "${1:-}" = "--version" ]; then echo "agentry version ${FAKE_VERSION:-0.6.63}"; exit 0; fi
 if [ "${1:-}" = "install" ] && [ "${2:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_PLAN:-}" ]; then echo "Flags: --yes --allow-unsigned --target"; else echo "Flags: --plan --yes --allow-unsigned --target"; fi; exit 0
 fi
 if [ "${1:-}" = "run" ] && [ "${2:-}" = "--help" ]; then
-  if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode"; fi; exit 0
+  if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode ${FAKE_NO_PROTOCOL:+removed} ${FAKE_NO_PROTOCOL:---session-protocol}"; fi; exit 0
 fi
+if [ "${2:-}" = "--help" ]; then echo "Usage: agentry $1"; exit 0; fi
 echo "narration: running $1" >&2
 if [ -n "${FAKE_SLEEP:-}" ]; then sleep "$FAKE_SLEEP"; fi
 if [ -n "${FAKE_STDOUT+x}" ]; then printf '%s' "$FAKE_STDOUT"; exit "${FAKE_EXIT:-0}"; fi
@@ -50,6 +51,21 @@ refusal="${FAKE_REFUSAL:-}"
 [ "$attest" = unsigned ] && [ -z "$refusal" ] && refusal="unsigned — registry offers no attestation; re-run with --allow-unsigned to install it anyway"
 [ "$attest" = unscanned ] && [ -z "$refusal" ] && refusal="unscanned — the registry admitted acme/widget@1.0.0 without a scan: no findings, no report and no attestation stand behind it; re-run with --allow-unscanned to install it anyway, accepting that nothing about its contents was checked"
 case "$1" in
+  whoami) echo '{"username":"example","tier":"pro"}' ;;
+  builtins) echo '[{"ref":"agentry/drafter@1.6.0","digest":"sha256:builtin"}]' ;;
+  knowledge)
+    if [ "${2:-}" = list ]; then echo '{"packs":[]}'; else
+      [ -n "${FAKE_WRITES:-}" ] && echo built >> "$FAKE_WRITES"
+      echo '{"status":"ok","knowledge":{"written":["index.md"]}}'
+    fi ;;
+  voice)
+    if [ "${2:-}" = status ]; then echo '{"registry":"https://r.example","local":null,"signedIn":false}'; else
+      [ -n "${FAKE_WRITES:-}" ] && echo built >> "$FAKE_WRITES"
+      echo '{"status":"ok","voice":{"written":true}}'
+    fi ;;
+  draft|review)
+    [ -n "${FAKE_WRITES:-}" ] && echo built >> "$FAKE_WRITES"
+    echo '{"status":"ok","report":"report.json","reason":"example"}' ;;
   search) echo '{"results":[{"namespace":"acme","name":"widget","modes":["autonomous"],"summary":"x","installs30d":2,"quarantineState":"none"}],"facets":{},"total":1}' ;;
   info) echo '{"agent":{"namespace":"acme","name":"widget"},"latest":{"version":"1.0.0","capabilities":{"network":{"egress":"none"}}}}' ;;
   verify) echo '{"ref":"acme/widget@1.0.0","digestMatch":true,"attestation":{"state":"verified"}}' ;;
@@ -120,43 +136,8 @@ print(out, end="")')
       echo "narration: compiled plan" >&2
       printf '{"ref":"%s","version":"1.0.0","digest":"sha256:aaaa","mode":"%s","modes":["autonomous","interactive"],"summary":"x","plan":{"planVersion":2,"ref":"%s","digest":"sha256:aaaa","mode":"%s","policySha256":"sha256:pppp","capabilities":{"egressMode":"none","fsReadMode":"workspace"},"enforcement":{"network":"gateway --block-network"},"tools":["write_report"],"gateway":{"image":"docker/mcp-gateway:v0.43.3"},"proxy":{},"budgets":{"timeoutSeconds":%s}},"planSha256":"abc","contract":%s,"contractDigest":"sha256:cccc","attestation":"%s","signed":%s,"diff":{},"needsConfirmation":true,"reason":"a first run"%s}\n' "$rref" "$mode" "$rref" "$mode" "$timeout" "$contract" "$ratt" "$rsigned" "$rjson"
     elif has --mode && [ "$(prev=""; for a in "$@"; do if [ "$prev" = "--mode" ]; then echo "$a"; fi; prev=$a; done)" = interactive ]; then
-      # The chat on a terminal: colour and cursor codes on the screen, the
-      # record in the events receipt, /finish and /quit end it, idle ends it.
-      if [ ! -t 0 ]; then echo "agentry: an interactive run needs a terminal on stdin (the chat is the input)" >&2; exit 2; fi
-      if has --output-format; then echo "agentry: --output-format json is not available for an interactive run" >&2; exit 2; fi
-      if [ -n "${FAKE_SESSION_FAIL_START:-}" ]; then printf '\033[1;31magentry: gateway image \033[0mnot present\033[2K\r\n'; exit 13; fi
-      out=""; prev=""; for a in "$@"; do if [ "$prev" = "--out" ]; then out=$a; fi; prev=$a; done
-      [ -n "${FAKE_WRITES:-}" ] && echo session >> "$FAKE_WRITES"
-      mkdir -p "$out/receipts"; ev="$out/receipts/events.ndjson"; : > "$ev"
-      j() { printf '%s' "$1" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))'; }
-      event() { printf '{"kind":"%s","time":"2026-09-12T00:00:00Z"%s}\n' "$1" "$2" >> "$ev"; }
-      end() { event session_end ",\"reason\":\"$1\""; printf '{"status":"ok","exitCode":0,"exitClass":"ok","result":"final: %s","outDir":"%s","receipts":{"dir":"%s/receipts"},"harness":{"mode":"interactive"}}' "$1" "$out" "$out" > "$out/result.json"; printf '# transcript\n\n%s\n' "$(cat "$ev")" > "$out/receipts/transcript.md"; printf '\033[?1049lsession ended: %s\r\n' "$1"; exit 0; }
-      # The handshake: the receipt exists before the chat is up, as in the CLI.
-      sleep 0.3
-      printf '\033[?1049h\033[2J\033[H\033[7m acme/widget@1.0.0 · interactive · turns 0/200 · tools 0/60 \033[0m\r\n> '
-      turns=0
-      while true; do
-        if [ "${FAKE_SESSION_IDLE:-0}" -gt 0 ]; then
-          read -r -t "$FAKE_SESSION_IDLE" line || end idle_timeout
-        else
-          read -r line || end harness_exit
-        fi
-        case "$line" in
-          /finish) end finished ;;
-          /quit) end quit ;;
-          *)
-            turns=$((turns+1))
-            event user_turn ",\"text\":$(j "$line")"
-            sleep "${FAKE_TURN_DELAY:-0}"
-            event permission_granted ',"text":"fs_read"'
-            event tool_call ',"text":"fs_read"'
-            event assistant_text ',"text":"echo: "'
-            event assistant_turn ",\"text\":$(j "echo: $line"),\"stopReason\":\"end_turn\""
-            event usage ',"inputTokens":10,"outputTokens":4'
-            printf '\033[2J\033[H\033[1;34myou\033[0m %s\r\n\033[3magent\033[0m echo: %s\r\n\033[7m acme/widget@1.0.0 · interactive · turns %s/200 · tools 1/60 \033[0m\r\n> ' "$line" "$line" "$turns"
-            ;;
-        esac
-      done
+      if ! has --session-protocol; then echo "fake: sessions require the protocol" >&2; exit 2; fi
+      exec python3 "$(dirname "$0")/fake-session.py" "$@"
     else
       if [ -n "${FAKE_INTAKE_REQUIRED:-}" ] && ! has "--intake"; then echo 'agentry: intake question "audience" is required (answer it on a terminal or pass --intake audience=...)' >&2; exit 2; fi
       [ -n "${FAKE_WRITES:-}" ] && echo ran >> "$FAKE_WRITES"

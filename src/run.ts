@@ -28,6 +28,7 @@ import type {
   ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 
+import { fingerprint, localPackPaths } from "./snapshot.js";
 import { ArgumentError, bool, flag, value } from "./argv.js";
 import {
   canonical,
@@ -50,7 +51,7 @@ import { tail, toolText as text } from "./envelope.js";
  */
 export const DEFAULT_RUN_TIMEOUT_SECONDS = 900;
 /** After the timeout's SIGINT, how long the CLI's teardown gets before SIGKILL. */
-const TEARDOWN_GRACE_MS = 60_000;
+export const TEARDOWN_GRACE_MS = 60_000;
 /** setup pulls and builds images; minutes, bounded. */
 const SETUP_TIMEOUT_MS = 30 * 60 * 1000;
 
@@ -61,7 +62,7 @@ type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
  * them. A notification that cannot be delivered (the host went away
  * mid-run) is dropped: the run's own result still comes back.
  */
-function progressSink(extra: Extra): ((line: string) => void) | undefined {
+export function progressSink(extra: Extra): ((line: string) => void) | undefined {
   const token = extra._meta?.progressToken;
   if (token === undefined) return undefined;
   let n = 0;
@@ -114,6 +115,12 @@ export interface RunArgs {
   input?: string;
   inputFile?: string;
   files?: string[];
+  knowledge?: string[];
+  voice?: boolean;
+  noVoice?: boolean;
+  voiceFile?: string;
+  maxTurns?: number;
+  maxCost?: number;
   intake?: Record<string, string>;
   timeoutSeconds?: number;
   adapter?: string;
@@ -179,6 +186,14 @@ function target(a: RunArgs, resolvedRef?: string): string[] {
 function commonFlags(argv: string[], a: RunArgs, mode: RunMode): void {
   argv.push("--mode", mode);
   flag(argv, "timeout", a.timeoutSeconds);
+  flag(argv, "max-turns", a.maxTurns);
+  flag(argv, "max-cost", a.maxCost);
+  for (const pack of a.knowledge ?? []) flag(argv, "knowledge", pack);
+  if ([a.voice, a.noVoice, a.voiceFile !== undefined].filter(Boolean).length > 1)
+    throw new ArgumentError("choose only one of voice, noVoice or voiceFile");
+  bool(argv, "voice", a.voice);
+  bool(argv, "no-voice", a.noVoice);
+  flag(argv, "voice-file", a.voiceFile);
   flag(argv, "adapter", a.adapter);
   flag(argv, "policy", a.policy);
   flag(argv, "registry", a.registry);
@@ -213,6 +228,13 @@ function runFacts(p: RunPlan, a: RunArgs, timeoutSeconds: number, refusals: Plan
     refusals,
     intake: a.intake ?? {},
     files: a.files ?? [],
+    knowledge: a.knowledge ?? [],
+    voice: a.voice ?? false,
+    noVoice: a.noVoice ?? false,
+    voiceFile: a.voiceFile ?? "",
+    maxTurns: a.maxTurns ?? null,
+    maxCost: a.maxCost ?? null,
+    registry: a.registry ?? "",
     inputFile: a.inputFile ?? "",
     out: a.out ?? "",
     timeoutSeconds,
@@ -262,7 +284,31 @@ export async function runConsent(
   // not only the first (agentry-mcp#45).
   const refusals = planRefusals(plan, { unsigned, unscanned });
   if (typeof refusals === "string") return text(`${tool}: ${refusals}`, true);
-  const facts = runFacts(plan, a, timeoutSeconds, refusals);
+  const attachmentInputs = [];
+  for (const path of [
+    ...(a.files ?? []),
+    ...(a.voiceFile ? [a.voiceFile] : []),
+    ...(await localPackPaths(a.knowledge ?? [], d.cwd)),
+  ])
+    attachmentInputs.push({ path, digest: await fingerprint(path, d.cwd) });
+  let knowledgeState: unknown = null;
+  if (a.knowledge?.length) {
+    const argv = ["knowledge", "list", "--json"];
+    flag(argv, "registry", a.registry);
+    const state = await runPlan<unknown>(d, tool, argv);
+    if (!state.ok) return state.result;
+    knowledgeState = state.plan;
+  }
+  const voiceArgv = ["voice", "status", "--json"];
+  flag(voiceArgv, "registry", a.registry);
+  const voice = await runPlan<unknown>(d, tool, voiceArgv);
+  if (!voice.ok) return voice.result;
+  const facts = {
+    ...runFacts(plan, a, timeoutSeconds, refusals),
+    attachmentInputs,
+    knowledgeState,
+    voiceState: voice.plan,
+  };
 
   if (a.confirm === undefined) {
     return previewText(
@@ -322,13 +368,14 @@ export async function taskInput(a: RunArgs): Promise<{ path?: string; done(): Pr
  * The argv for a consented run in either mode: the target the digest
  * covered, the mode and the flags that shaped the plan, the output folder,
  * the task input, and the consented flags last. An autonomous run's
- * stdout is its result envelope; an interactive one has no JSON form (the
- * transcript and receipts are its record).
+ * stdout is its result envelope; the interactive driver adds its protocol
+ * flags and collects the event stream separately.
  */
 export function runArgv(a: RunArgs, c: RunConsent, mode: RunMode, inputPath?: string): string[] {
   const argv = ["run", ...target(a, c.plan.ref)];
   if (mode === "autonomous") argv.push("--output-format", "json");
   commonFlags(argv, a, mode);
+  flag(argv, "pin", a.local === undefined ? c.plan.digest : undefined);
   flag(argv, "out", a.out);
   if (inputPath !== undefined) argv.push("--input", value("inputFile", inputPath));
   return consentedArgv(argv, c.consent);

@@ -38,7 +38,7 @@ npm run build
 
 dest="$stage/$name"
 mkdir -p "$dest"
-cp -R dist package.json package-lock.json README.md LICENSE "$dest/"
+cp -R dist package.json package-lock.json README.md SKILL.md LICENSE "$dest/"
 # Production dependencies only, from the lockfile, with no install scripts: the
 # two runtime dependencies are plain JavaScript, so the tarball serves every
 # platform Node runs on.
