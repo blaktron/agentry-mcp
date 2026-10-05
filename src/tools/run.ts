@@ -102,6 +102,19 @@ export function registerRunTools(d: Driver): void {
           .array(z.string())
           .optional()
           .describe("Files or directories provided read-only under /inputs."),
+        knowledge: z
+          .array(z.string())
+          .max(5)
+          .optional()
+          .describe("Knowledge pack names or directories to attach read-only."),
+        voice: z.boolean().optional().describe("Attach this computer's Writing Voice."),
+        noVoice: z.boolean().optional().describe("Skip the Writing Voice for this run."),
+        voiceFile: z
+          .string()
+          .optional()
+          .describe("Attach this VOICE.md file instead of the stored voice."),
+        maxTurns: z.number().int().min(0).optional().describe("Tool-call budget; 0 is unlimited."),
+        maxCost: z.number().min(0).optional().describe("Cost budget in USD; 0 is unlimited."),
         intake: z
           .record(z.string(), z.string())
           .optional()
@@ -164,7 +177,7 @@ export function registerRunTools(d: Driver): void {
     {
       description:
         "Validate a QuickAgent workspace offline with the installed agentry CLI (`agentry validate --json`): the " +
-        "registry's manifest rules (V1–V9) and its S1/S3/S4 scanners, as data — issues, inventory and scan " +
+        "registry's manifest rules (the CLI names those it ran) and its S1/S3/S4 scanners, as data — issues, inventory and scan " +
         "findings with file and line, the bundle version, and whether publish would pass. The report comes back " +
         'whatever the verdict; exitClass "cli" beside it means it failed. For authoring: fix what it names, ' +
         "then validate again; publishing itself is `agentry publish` in a terminal.",

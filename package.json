@@ -1,6 +1,6 @@
 {
   "name": "@blaktron/agentry-mcp",
-  "version": "0.6.11",
+  "version": "0.6.12",
   "private": true,
   "description": "MCP server that drives the installed agentry CLI: search, read contracts, verify, check the machine, install, run and manage QuickAgents from Claude Code, Codex or any MCP host",
   "license": "MIT",
@@ -15,10 +15,11 @@
   "files": [
     "dist",
     "README.md",
+    "SKILL.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && cp src/pty-host.py dist/pty-host.py",
+    "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest": "npm run build",
     "test": "node --test test/*.test.js",

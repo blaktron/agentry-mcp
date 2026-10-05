@@ -10,18 +10,8 @@ import { spawn } from "node:child_process";
 import { access, constants } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 
-/**
- * The oldest CLI this server drives: v0.6.0, the CLI's first tagged release
- * (agentry-cli#327, DEV-148), which ships the plan-mode output the writing
- * tools need, agentry-cli#123 (`install --plan --json`, `uninstall --plan`,
- * `list --json`) and agentry-cli#124 (`run --plan --json`). A release reports
- * `0.6.0`, a dev prerelease `0.6.1-dev.2` (its X.Y.Z is compared); a build
- * from an untagged tree reports a git describe (`9d89740-dirty`, `0.0.0-dev`)
- * rather than a version, which is accepted and noted, since the floor cannot
- * be read from it. checkCli also probes `install --help` and `run --help` for
- * `--plan`, which catches such a build without the plan mode.
- */
-export const MIN_CLI_VERSION = "0.6.0";
+/** The current tool surface requires the CLI's Knowledge, Voice, built-ins and session protocol. */
+export const MIN_CLI_VERSION = "0.6.63";
 
 /** What `agentry --version` said, parsed. */
 export interface CliVersion {
@@ -228,6 +218,18 @@ export async function checkCli(
           `${issue} (${floor}) or newer. Update the CLI; the server never updates it for you.`,
       );
     }
+  }
+  const protocol = await runCli(bin, ["run", "--help"], { timeoutMs: 10_000 });
+  if (!/--session-protocol\b/.test(protocol.stdout + protocol.stderr))
+    throw new CliUnavailableError(
+      `${bin} has no run --session-protocol; update the CLI to ${floor} or newer.`,
+    );
+  for (const command of ["draft", "review", "knowledge", "voice", "builtins"]) {
+    const help = await runCli(bin, [command, "--help"], { timeoutMs: 10_000 });
+    if (help.spawnError || help.code !== 0)
+      throw new CliUnavailableError(
+        `${bin} has no ${command} command; update the CLI to ${floor} or newer.`,
+      );
   }
   return { ...v, floorChecked: v.semver !== undefined };
 }

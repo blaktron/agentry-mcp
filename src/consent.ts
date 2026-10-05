@@ -24,7 +24,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
-import { flag, value } from "./argv.js";
+import { ArgumentError, flag, value } from "./argv.js";
 import type { Driver } from "./driver.js";
 import { tail, toolText as text } from "./envelope.js";
 
@@ -88,7 +88,8 @@ export interface InstallPlan {
 }
 
 export interface InstallArgs {
-  ref: string;
+  ref?: string;
+  local?: string;
   target?: string;
   provider?: string;
   dir?: string;
@@ -108,12 +109,28 @@ export async function runPlan<P>(
 ): Promise<{ ok: true; plan: P; log: string } | { ok: false; result: ToolText }> {
   const r = await d.run(what, argv);
   if (r.isError) return { ok: false, result: r };
-  const env = JSON.parse((r.content[0] as { text: string }).text) as { result: P; log: string };
+  const env = JSON.parse((r.content[0] as { text: string }).text) as {
+    result: P;
+    log: string;
+    exitClass: string;
+  };
+  if (env.exitClass !== "ok") return { ok: false, result: { ...r, isError: true } };
   return { ok: true, plan: env.result, log: env.log };
 }
 
+function installTarget(a: InstallArgs, ref?: string): string[] {
+  if ((a.ref === undefined) === (a.local === undefined))
+    throw new ArgumentError("give exactly one of ref or local");
+  if (a.local !== undefined) {
+    if (a.target !== undefined || a.provider !== undefined || a.dir !== undefined)
+      throw new ArgumentError("local installs use the runner home; omit target, provider and dir");
+    return ["--local", value("local", a.local)];
+  }
+  return [value("ref", ref ?? a.ref!)];
+}
+
 function installPlanArgv(a: InstallArgs): string[] {
-  const argv = ["install", value("ref", a.ref), "--plan", "--json"];
+  const argv = ["install", ...installTarget(a), "--plan", "--json"];
   flag(argv, "target", a.target);
   flag(argv, "provider", a.provider);
   flag(argv, "dir", a.dir);
@@ -336,11 +353,15 @@ export async function install(d: Driver, a: InstallArgs): Promise<ToolText> {
   const planned = await runPlan<InstallPlan>(d, "agentry_install (plan)", installPlanArgv(a));
   if (!planned.ok) return planned.result;
   const { plan, log } = planned;
-  const unsigned = plan.attestation === "unsigned";
+  const unsigned = plan.attestation === "unsigned" || plan.attestation === "local";
   const unscanned = plan.attestation === "unscanned";
   const refusals = planRefusals(plan, { unsigned, unscanned });
   if (typeof refusals === "string") return text(`agentry_install: ${refusals}`, true);
-  const facts = installFacts(plan, refusals);
+  const facts = {
+    ...installFacts(plan, refusals),
+    local: a.local ?? "",
+    registry: a.registry ?? "",
+  };
 
   if (a.confirm === undefined) {
     return previewText(
@@ -364,7 +385,7 @@ export async function install(d: Driver, a: InstallArgs): Promise<ToolText> {
   // (ns/name@version) — never the floating ref the call carried, so a
   // range that moves between the re-plan and the write cannot install a
   // release the person did not see.
-  const argv = ["install", value("ref", plan.ref), "--json"];
+  const argv = ["install", ...installTarget(a, plan.ref), "--json"];
   flag(argv, "target", a.target);
   flag(argv, "provider", a.provider);
   flag(argv, "dir", a.dir);

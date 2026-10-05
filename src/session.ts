@@ -1,65 +1,36 @@
-/**
- * Interactive sessions (plan mcp-cli-driver M5, D6): the CLI's `run --mode
- * interactive` on a pseudo-terminal the server owns, driven the way its own
- * chat is driven — a line typed, Enter, the reply. The CLI insists on a
- * terminal for an interactive run (the chat is the input) and offers no
- * JSON form of one (the transcript and receipts are the record), so the
- * server gives it the terminal it wants: `pty-host.py` forks the CLI on a
- * pty and pumps bytes both ways, no shell in between.
- *
- * The reply to a turn is read from the run's own events receipt
- * (`receipts/events.ndjson`), which the engine appends to as the session
- * goes — `assistant_turn` closes a turn with the full text, `session_end`
- * says why it is over — rather than scraped off the screen: the chat is a
- * full-screen redraw, and the receipt is the record anyway. Everything the
- * pty said is kept raw in `<out>.pty.log` beside the run's output folder,
- * and its last lines, control sequences stripped, are what an error names
- * when the CLI stopped before the chat was up.
- *
- * One session per server at a time (M5), held on the Driver; a second
- * start is refused naming the open one.
- */
+/** Interactive sessions over the CLI JSON-line protocol; events arrive on fd 3. */
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createWriteStream, type WriteStream } from "node:fs";
-import { mkdtemp, open, stat } from "node:fs/promises";
+import { mkdtemp, open, readFile, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, basename, resolve } from "node:path";
+import type { Readable } from "node:stream";
 
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
+import { createHash } from "node:crypto";
+import { confirmed, isConsent, previewText } from "./consent.js";
+import { fingerprint } from "./snapshot.js";
 import { ArgumentError } from "./argv.js";
 import type { Driver } from "./driver.js";
 import { toolJSON as json, toolText as text } from "./envelope.js";
 import { isRunConsent, runArgv, runConsent, taskInput, type RunArgs } from "./run.js";
 
-/** How long the sandbox gets to come up before a start is given up on. */
-const START_TIMEOUT_MS = 180_000;
 /** The reply a turn waits for when the call names no limit. */
 export const DEFAULT_TURN_TIMEOUT_SECONDS = 300;
 /** After close asks the CLI to finish, how long its teardown gets before SIGINT, then SIGKILL. */
 const CLOSE_GRACE_MS = 120_000;
 const KILL_GRACE_MS = 30_000;
-/** How long a typed turn may go unrecorded before Enter is pressed again. */
-const ENTER_RETRY_MS = 5_000;
-/** After the chat's status line shows, a moment for its input reader to be up too. */
-const SETTLE_MS = 300;
-/** How often the receipt is read for new lines. */
-const POLL_MS = 200;
+const POLL_MS = 20;
 /** After SIGKILL, how long the process gets to be reaped before the close returns. */
 const REAP_MS = 5_000;
-/** How much of the pty stream is kept in memory for the error path; the file has all of it. */
+/** How much of the CLI stream is kept in memory for the error path; the file has all of it. */
 const SCREEN_KEEP = 65536;
-/** The terminal the CLI's chat is given. */
-const COLS = 200;
-const ROWS = 50;
-/** A C0 control byte or DEL: a key the chat would act on, not text. */
-const CONTROL_BYTE = /[\x00-\x1f\x7f]/;
-
 /** One line of the engine's events receipt (pkg/runner/session). */
 interface SessionEvent {
   kind: string;
+  refused?: string;
   time?: string;
   text?: string;
   reason?: string;
@@ -70,73 +41,57 @@ interface SessionEvent {
   costUsd?: number;
 }
 
-/** The chat's status line (`… · interactive · turns N/M · …`): on the screen, the chat is up. */
-const STATUS_LINE = /· interactive · turns \d+/;
-
-/** Control sequences the chat paints with; stripped from screen text an error quotes. */
-const CONTROL = /\x1b\[[0-9;?]*[A-Za-z]|\x1b[()][B0]|\x1b[=>]|\x1b\][^\x07]*\x07|\r/g;
-
-export function stripControl(s: string): string {
-  return s.replace(CONTROL, "");
-}
-
-/** The last non-blank lines of the pty stream, readable. */
-function screenTail(raw: string, lines = 12): string {
-  return stripControl(raw)
-    .split("\n")
-    .map((l) => l.trimEnd())
-    .filter((l) => l.trim() !== "")
-    .slice(-lines)
-    .join("\n");
-}
-
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** The pty host beside the built server. */
-export const PTY_HOST = fileURLToPath(new URL("./pty-host.py", import.meta.url));
-
-/** Reads the events receipt as it grows, one JSON line at a time. */
-class EventTail {
-  private offset = 0;
+/** The fd-3 event stream, decoded across chunk boundaries. */
+class EventStream {
+  private queue: SessionEvent[] = [];
+  private queuedBytes = 0;
   private partial = "";
-  constructor(readonly path: string) {}
-
-  /** Every whole line appended since the last call. */
-  async next(): Promise<SessionEvent[]> {
-    let size: number;
-    try {
-      size = (await stat(this.path)).size;
-    } catch {
-      return [];
-    }
-    if (size <= this.offset) return [];
-    const fh = await open(this.path, "r");
-    try {
-      const buf = Buffer.alloc(size - this.offset);
-      const { bytesRead } = await fh.read(buf, 0, buf.length, this.offset);
-      this.offset += bytesRead;
-      const chunk = this.partial + buf.subarray(0, bytesRead).toString("utf8");
-      const lines = chunk.split("\n");
+  problem?: string;
+  constructor(stream: Readable) {
+    stream.setEncoding("utf8");
+    stream.on("data", (chunk: string) => {
+      if (this.problem) return;
+      this.partial += chunk;
+      const lines = this.partial.split("\n");
       this.partial = lines.pop() ?? "";
-      const out: SessionEvent[] = [];
-      for (const l of lines) {
-        if (!l.trim()) continue;
+      if (this.partial.length > 16 << 20) {
+        this.problem = "protocol event exceeded 16 MiB";
+        this.partial = "";
+      }
+      for (const line of lines) {
+        if (!line.trim()) continue;
         try {
-          out.push(JSON.parse(l) as SessionEvent);
+          const event = JSON.parse(line) as SessionEvent;
+          if (typeof event.kind !== "string") throw new Error("missing kind");
+          // Streamed fragments have a full assistant_turn later and need no storage.
+          if (event.kind === "assistant_text") continue;
+          this.queuedBytes += Buffer.byteLength(line);
+          if (this.queuedBytes > 16 << 20) {
+            this.problem = "session events exceeded 16 MiB; close the session for its receipts";
+            this.queue = [];
+            break;
+          }
+          this.queue.push(event);
         } catch {
-          // Not the engine's JSON: kept out of the turn, left in the file.
+          this.problem = "the CLI emitted an invalid protocol event";
         }
       }
-      return out;
-    } finally {
-      await fh.close();
-    }
+    });
+    stream.on("error", (err) => {
+      this.problem = err.message;
+    });
+  }
+  async next(): Promise<SessionEvent[]> {
+    this.queuedBytes = 0;
+    return this.queue.splice(0);
   }
 }
 
 /** What a turn produced: the reply, the tools called, the usage, or the end. */
 export interface Turn {
-  /** The receipt recorded the user turn (Enter was taken). */
+  /** The receipt recorded the user turn (the protocol took it). */
   taken: boolean;
   reply?: string;
   toolCalls: string[];
@@ -152,29 +107,42 @@ export type SendOutcome =
   | { kind: "timeout"; turn: Turn; text: string }
   | { kind: "ended"; reason: string };
 
-export class PtySession {
+export class ProtocolSession {
   readonly id: string;
   readonly startedAt = new Date();
   private raw = "";
+  private closing = false;
   private log: WriteStream;
   private exit: Promise<number>;
   private exitCode: number | null = null;
-  private tail: EventTail;
+  private tail: EventStream;
   private endedReason: string | undefined;
   private busy = false;
   /** The text of a turn that went unanswered within its limit; the chat is still on it. */
   private awaiting: string | undefined;
+  private pendingTurn: Turn | undefined;
 
   constructor(
     readonly child: ChildProcess,
     readonly ref: string,
     readonly outDir: string,
-    readonly ptyLog: string,
+    readonly cliLog: string,
     private readonly cleanup: () => Promise<void>,
+    readonly inputsDir: string,
+    opening?: string,
   ) {
+    if (opening?.trim()) this.awaiting = opening;
     this.id = `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    this.log = createWriteStream(ptyLog, { mode: 0o600 });
-    this.tail = new EventTail(join(outDir, "receipts", "events.ndjson"));
+    this.log = createWriteStream(cliLog, { mode: 0o600 });
+    this.log.on("error", (err) => {
+      this.endedReason = `CLI log failed: ${err.message}`;
+      child.kill("SIGINT");
+    });
+    this.tail = new EventStream(child.stdio[3] as Readable);
+    child.stdin?.on("error", () => {});
+    child.on("error", (err) => {
+      this.endedReason = `spawn failed: ${err.message}`;
+    });
     child.stdout?.on("data", (d: Buffer) => {
       this.log.write(d);
       // Keep the last 64 KB for the error path; the file has all of it.
@@ -232,7 +200,7 @@ export class PtySession {
           }
           break;
         case "error":
-          if (turn) turn.errors.push(ev.text ?? "");
+          if (turn) turn.errors.push(`${ev.refused ? `${ev.refused}: ` : ""}${ev.text ?? ""}`);
           break;
         case "session_end":
           this.endedReason = ev.reason ?? "ended";
@@ -242,53 +210,26 @@ export class PtySession {
     }
   }
 
-  /**
-   * Waits for the chat to be up — its status line on the screen, which the
-   * CLI paints only once the sandbox is up and its chat is reading the
-   * terminal in raw mode — or for the CLI to stop. The receipt alone is
-   * too early: it exists while the harness is still shaking hands, and a
-   * line typed before the chat owns the terminal is cooked by the line
-   * discipline (Enter arrives as a newline the chat does not submit on).
-   */
-  async awaitStart(timeoutMs: number): Promise<{ ok: true } | { ok: false; why: string }> {
-    const until = Date.now() + timeoutMs;
-    while (Date.now() < until) {
-      if (this.exited) {
-        return {
-          ok: false,
-          why: `the CLI exited (${this.exitCode}) before the session started:\n${screenTail(this.raw)}`,
-        };
-      }
-      if (STATUS_LINE.test(stripControl(this.raw))) {
-        await sleep(SETTLE_MS);
-        return { ok: true };
-      }
-      await sleep(POLL_MS);
-    }
-    return {
-      ok: false,
-      why: `the session did not start within ${timeoutMs / 1000}s:\n${screenTail(this.raw)}`,
-    };
+  /** There is no ready event: start reports a launched process, not sandbox readiness. */
+  async awaitStart(): Promise<{ ok: true } | { ok: false; why: string }> {
+    return new Promise((resolve) => {
+      this.child.once("spawn", () => resolve({ ok: true }));
+      this.child.once("error", (err) => resolve({ ok: false, why: err.message }));
+    });
   }
 
-  /** Types one line into the chat. */
+  /** Send text as JSON data. */
   private type(line: string): void {
-    this.child.stdin?.write(line + "\r");
+    this.child.stdin?.write(JSON.stringify({ send: { text: line } }) + "\n");
   }
 
-  /**
-   * One user turn. Typed into the chat, then the receipt is read until the
-   * assistant's turn closes, the session ends, or the limit passes — in
-   * which case the chat is still answering, and the next send waits for
-   * that answer instead of typing (a busy chat drops the line): it comes
-   * back as the late reply to the earlier text, and `sent` says the new
-   * text was not sent.
-   */
+  /** A timed-out turn remains pending; a later call collects it before sending more. */
   async send(line: string, timeoutMs: number): Promise<SendOutcome> {
+    if (this.closing) throw new ArgumentError("the session is closing");
     if (this.busy) throw new ArgumentError("a turn is already in progress on this session");
     this.busy = true;
     try {
-      const turn: Turn = {
+      const turn: Turn = this.pendingTurn ?? {
         taken: false,
         toolCalls: [],
         usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 },
@@ -298,25 +239,33 @@ export class PtySession {
       // session, or the answer to a turn that went past its limit.
       const late = this.awaiting;
       this.absorb(await this.tail.next(), late === undefined ? undefined : turn);
-      if (this.endedReason) return { kind: "ended", reason: this.endedReason };
+      if (this.endedReason || this.exited)
+        return {
+          kind: "ended",
+          reason: this.endedReason ?? `CLI exited ${this.exitCode}: ${this.raw.slice(-4000)}`,
+        };
       if (late !== undefined) {
         turn.taken = true;
         this.awaiting = undefined;
         if (turn.reply === undefined) {
-          const got = await this.awaitTurn(turn, timeoutMs, false);
+          const got = await this.awaitTurn(turn, timeoutMs);
           if (got === "timeout") {
             this.awaiting = late;
+            this.pendingTurn = turn;
             return { kind: "timeout", turn, text: late };
           }
         }
+        this.pendingTurn = undefined;
         return { kind: "late", turn, text: late };
       }
       this.type(line);
-      const got = await this.awaitTurn(turn, timeoutMs, true);
+      const got = await this.awaitTurn(turn, timeoutMs);
       if (got === "timeout") {
         this.awaiting = line;
+        this.pendingTurn = turn;
         return { kind: "timeout", turn, text: line };
       }
+      this.pendingTurn = undefined;
       return { kind: "reply", turn, text: line };
     } finally {
       this.busy = false;
@@ -324,21 +273,13 @@ export class PtySession {
   }
 
   /** Reads the receipt until the turn has its reply or its end, or the limit passes. */
-  private async awaitTurn(
-    turn: Turn,
-    timeoutMs: number,
-    retryEnter: boolean,
-  ): Promise<"done" | "timeout"> {
+  private async awaitTurn(turn: Turn, timeoutMs: number): Promise<"done" | "timeout"> {
     const until = Date.now() + timeoutMs;
-    // An Enter the chat missed is pressed once more (on an empty input it does nothing).
-    let retryAt = retryEnter ? Date.now() + ENTER_RETRY_MS : Number.POSITIVE_INFINITY;
     while (Date.now() < until) {
-      if (!turn.taken && Date.now() > retryAt) {
-        this.child.stdin?.write("\r");
-        retryAt = Number.POSITIVE_INFINITY;
-      }
       this.absorb(await this.tail.next(), turn);
-      if (turn.reply !== undefined || turn.ended !== undefined) return "done";
+      if (this.tail.problem) throw new ArgumentError(this.tail.problem);
+      if (turn.reply !== undefined || turn.ended !== undefined || turn.errors.length > 0)
+        return "done";
       if (this.exited) {
         this.endedReason ??= "harness_exit";
         turn.ended = this.endedReason;
@@ -349,16 +290,30 @@ export class PtySession {
     return "timeout";
   }
 
-  /**
-   * Ends the session: the chat's own command (/finish asks the agent for
-   * its final result first; /quit does not), then the CLI's teardown; a
-   * CLI still there afterwards gets SIGINT, then SIGKILL. Returns the exit
-   * code and whether force was needed.
-   */
+  /** A consented file add, never an arbitrary protocol command. */
+  async add(path: string, content: Buffer): Promise<void> {
+    if (this.busy || this.awaiting !== undefined || this.closing)
+      throw new ArgumentError("a turn is in progress; collect its reply before adding a file");
+    if (this.exited || this.endedReason) throw new ArgumentError("the session has ended");
+    this.busy = true;
+    try {
+      const staged = join(this.inputsDir, basename(path));
+      await writeFile(staged, content, { flag: "wx", mode: 0o600 });
+      this.awaiting = `input added: ${basename(path)}`;
+      this.child.stdin?.write(JSON.stringify({ add: { path: staged } }) + "\n");
+    } catch (err) {
+      throw new ArgumentError(`cannot stage input: ${(err as Error).message}`);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /** Ask the CLI to end, then interrupt and kill only when its teardown stalls. */
   async close(finish: boolean): Promise<{ exitCode: number; forced: boolean }> {
+    this.closing = true;
     let forced = false;
     if (!this.exited) {
-      this.type(finish ? "/finish" : "/quit");
+      this.child.stdin?.write(JSON.stringify({ end: { finish } }) + "\n");
       if (!(await this.waitExit(CLOSE_GRACE_MS))) {
         forced = true;
         this.child.kill("SIGINT");
@@ -371,8 +326,17 @@ export class PtySession {
   }
 
   private async waitExit(ms: number): Promise<boolean> {
-    const t = sleep(ms).then(() => false);
-    return Promise.race([this.exit.then(() => true), t]);
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        this.exit.then(() => true),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(false), ms);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 }
 
@@ -387,8 +351,14 @@ export function installShutdown(d: Driver): void {
     const s = d.sessions.current;
     if (s && !s.exited) {
       s.child.kill("SIGINT");
-      s.child.once("close", then);
-      setTimeout(then, KILL_GRACE_MS).unref();
+      const hard = setTimeout(() => s.child.kill("SIGKILL"), KILL_GRACE_MS);
+      hard.unref();
+      s.child.once("close", () => {
+        clearTimeout(hard);
+        void s.close(false).finally(then);
+      });
+    } else if (s) {
+      void s.close(false).finally(then);
     } else {
       then();
     }
@@ -403,13 +373,15 @@ export function installShutdown(d: Driver): void {
   d.server.server.onclose = () => stop(() => {});
 }
 
-export type SessionStartArgs = Omit<RunArgs, "timeoutSeconds">;
+export type SessionStartArgs = RunArgs;
 
-/**
- * agentry_session_start: the run's two-call consent in interactive mode,
- * then the CLI on a pty; returns when the sandbox is up.
- */
+/** Preview/confirm, then launch the CLI with a dedicated event pipe. */
 export async function sessionStart(d: Driver, a: SessionStartArgs): Promise<CallToolResult> {
+  if (process.platform === "win32")
+    return text(
+      "agentry_session_start: the CLI session protocol is unavailable on Windows; use agentry run in a terminal.",
+      true,
+    );
   const slot = d.sessions;
   const open = slot.current;
   if (open) {
@@ -431,24 +403,53 @@ export async function sessionStart(d: Driver, a: SessionStartArgs): Promise<Call
     );
   }
   slot.reserved = true;
-  let session: PtySession;
+  let session: ProtocolSession;
+  let taskCleanup: (() => Promise<void>) | undefined;
+  let inputsCleanup: (() => Promise<void>) | undefined;
   try {
     // The output folder is where the receipt the server reads lives, so
     // the server names one when the call did not.
-    const base = a.out ?? join(await mkdtemp(join(tmpdir(), "agentry-mcp-session-")), "out");
+    const base = resolve(
+      d.cwd ?? process.cwd(),
+      a.out ?? join(await mkdtemp(join(tmpdir(), "agentry-mcp-session-")), "out"),
+    );
     const task = await taskInput(a);
+    taskCleanup = task.done;
+    const inputsDir = await mkdtemp(join(tmpdir(), "agentry-mcp-inputs-"));
+    inputsCleanup = () => rm(inputsDir, { recursive: true, force: true });
     const argv = runArgv({ ...a, out: base }, c, "interactive", task.path);
-    const child = spawn("python3", [PTY_HOST, String(COLS), String(ROWS), "--", d.bin, ...argv], {
-      env: { ...process.env, TERM: "xterm-256color", ...d.env },
+    await mkdir(resolve(d.cwd ?? process.cwd(), base), { recursive: true });
+    argv.push("--session-inputs", inputsDir);
+    const opening = task.path
+      ? await readFile(resolve(d.cwd ?? process.cwd(), task.path), "utf8")
+      : undefined;
+    argv.push("--session-protocol", "--output-format", "json");
+    const child = spawn(d.bin, argv, {
+      env: { ...process.env, ...d.env },
       cwd: d.cwd,
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe", "pipe"],
     });
-    session = new PtySession(child, c.plan.ref, base, `${base}.pty.log`, task.done);
+    session = new ProtocolSession(
+      child,
+      c.plan.ref,
+      base,
+      `${base}.cli.log`,
+      async () => {
+        await task.done();
+        await inputsCleanup?.();
+      },
+      inputsDir,
+      opening,
+    );
     slot.current = session;
+  } catch (err) {
+    await taskCleanup?.();
+    await inputsCleanup?.();
+    throw new ArgumentError(`session could not launch: ${(err as Error).message}`);
   } finally {
     slot.reserved = false;
   }
-  const started = await session.awaitStart(START_TIMEOUT_MS);
+  const started = await session.awaitStart();
   if (!started.ok) {
     await session.close(false);
     slot.current = undefined;
@@ -461,7 +462,8 @@ export async function sessionStart(d: Driver, a: SessionStartArgs): Promise<Call
     mode: "interactive",
     outDir: session.outDir,
     receiptsDir: session.receiptsDir,
-    ptyLog: session.ptyLog,
+    cliLog: session.cliLog,
+    launched: true,
     startedAt: session.startedAt.toISOString(),
   });
 }
@@ -473,7 +475,7 @@ export interface SessionSendArgs {
 }
 
 /** The open session under that id, or the tool error naming what is open. */
-function openSession(d: Driver, id: string, tool: string): PtySession | CallToolResult {
+function openSession(d: Driver, id: string, tool: string): ProtocolSession | CallToolResult {
   const s = d.sessions.current;
   if (!s) return text(`${tool}: no session is open; start one with agentry_session_start.`, true);
   if (s.id !== id)
@@ -481,33 +483,19 @@ function openSession(d: Driver, id: string, tool: string): PtySession | CallTool
   return s;
 }
 
-/**
- * The text as one line the chat takes as a turn: newlines fold to spaces,
- * and anything the chat would act on rather than read — a control byte
- * (a carriage return submits, an escape quits) or a leading slash (the
- * chat's own commands: /add would hand the run a host file consent never
- * covered) — is refused.
- */
+/** User text is JSON data; it cannot invoke a protocol command. */
 export function turnLine(textIn: string): string {
-  const line = textIn.replace(/\r?\n/g, " ").trim();
+  const line = textIn.trim();
   if (line === "") throw new ArgumentError("text must not be empty");
-  if (CONTROL_BYTE.test(line)) {
-    throw new ArgumentError(
-      "text must be plain text: a control character is a key the chat would act on, not a turn",
-    );
-  }
-  if (line.startsWith("/")) {
-    throw new ArgumentError(
-      'text must not start with "/": the chat\'s own commands (/finish, /quit, /add, /caps) are not turns; close the session with agentry_session_close',
-    );
-  }
+  if (Buffer.byteLength(JSON.stringify({ send: { text: line } })) > 1 << 20)
+    throw new ArgumentError("text exceeds the session protocol's 1 MiB command limit");
   return line;
 }
 
 /** agentry_session_send: one user turn in, the agent's reply out. */
 export async function sessionSend(d: Driver, a: SessionSendArgs): Promise<CallToolResult> {
   const s = openSession(d, a.sessionId, "agentry_session_send");
-  if (!(s instanceof PtySession)) return s;
+  if (!(s instanceof ProtocolSession)) return s;
   const line = turnLine(a.text);
   const timeoutMs = (a.turnTimeoutSeconds ?? DEFAULT_TURN_TIMEOUT_SECONDS) * 1000;
   const r = await s.send(line, timeoutMs);
@@ -533,8 +521,42 @@ export async function sessionSend(d: Driver, a: SessionSendArgs): Promise<CallTo
         note: `the reply to the earlier turn ${JSON.stringify(r.text)}; ${JSON.stringify(line)} was not sent — send it again`,
       });
     case "reply":
-      return json({ sessionId: s.id, sent: true, ...r.turn });
+      return json({ sessionId: s.id, sent: r.turn.taken, ...r.turn });
   }
+}
+
+/** A new host file is its own preview and confirmation, bound to its bytes. */
+export async function sessionAdd(
+  d: Driver,
+  a: { sessionId: string; path: string; confirm?: string },
+): Promise<CallToolResult> {
+  const s = openSession(d, a.sessionId, "agentry_session_add");
+  if (!(s instanceof ProtocolSession)) return s;
+  const path = resolve(d.cwd ?? process.cwd(), a.path);
+  // fingerprint rejects symlinks; this operation accepts only a file.
+  const fileDigest = await fingerprint(path);
+  const content = await readFile(path);
+  const facts = {
+    tool: "agentry_session_add",
+    sessionId: s.id,
+    path,
+    fileDigest,
+    size: content.length,
+    sha256: createHash("sha256").update(content).digest("hex"),
+  };
+  if (a.confirm === undefined) return previewText({ input: facts, writes: false }, facts);
+  const consent = await confirmed(d.server, "agentry_session_add", a.confirm, facts, {
+    unsigned: false,
+    ask: `Give ${path} (${content.length} bytes) to session ${s.id}, read-only?`,
+  });
+  if (!isConsent(consent)) return consent;
+  await s.add(path, content);
+  return json({
+    sessionId: s.id,
+    submitted: true,
+    path,
+    note: "The protocol will report input_added or input_refused; collect its notice with agentry_session_send before sending another turn.",
+  });
 }
 
 export interface SessionCloseArgs {
@@ -545,7 +567,7 @@ export interface SessionCloseArgs {
 /** agentry_session_close: end the chat, wait for the CLI's teardown, name the record. */
 export async function sessionClose(d: Driver, a: SessionCloseArgs): Promise<CallToolResult> {
   const s = openSession(d, a.sessionId, "agentry_session_close");
-  if (!(s instanceof PtySession)) return s;
+  if (!(s instanceof ProtocolSession)) return s;
   const reasonBefore = await s.ended();
   const { exitCode, forced } = await s.close(a.finish ?? true);
   d.sessions.current = undefined;
@@ -560,7 +582,7 @@ export async function sessionClose(d: Driver, a: SessionCloseArgs): Promise<Call
       await fh.close();
     }
   } catch {
-    // No envelope: the CLI stopped before writing one; the exit code and the pty log say what happened.
+    // No envelope: the CLI stopped before writing one; the exit code and the CLI log say what happened.
   }
   return json({
     sessionId: s.id,
@@ -571,10 +593,12 @@ export async function sessionClose(d: Driver, a: SessionCloseArgs): Promise<Call
     status: envelope?.status,
     result: envelope?.result,
     error: envelope?.error,
+    exitClass: envelope?.exitClass,
+    reasonDetail: (envelope as { reason?: unknown } | undefined)?.reason,
     transcript: join(s.receiptsDir, "transcript.md"),
     receiptsDir: s.receiptsDir,
     outDir: s.outDir,
     resultFile: join(s.outDir, "result.json"),
-    ptyLog: s.ptyLog,
+    cliLog: s.cliLog,
   });
 }

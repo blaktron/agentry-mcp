@@ -10,7 +10,6 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { stripControl } from "../dist/session.js";
 import { connect, receivedArgv } from "./helpers.js";
 
 async function call(client, name, args) {
@@ -29,13 +28,13 @@ async function startSession(client, extra = {}) {
   return { preview, session: JSON.parse(s.content[0].text) };
 }
 
-test("a two-turn session: the preview, the chat on a pty, replies from the receipt, close with the record", async () => {
+test("a two-turn session: the preview, the protocol over pipes, replies from fd 3, close with the record", async () => {
   const { client, argvFile } = await connect();
   const { session } = await startSession(client);
   assert.match(session.sessionId, /^s-/);
   assert.equal(session.ref, "acme/widget@1.0.0");
   assert.equal(session.mode, "interactive");
-  assert.ok(existsSync(`${session.receiptsDir}/events.ndjson`), "the receipt exists once started");
+  assert.equal(session.launched, true);
   const argv = receivedArgv(argvFile);
   assert.deepEqual(argv[0].slice(0, 6), [
     "run",
@@ -48,7 +47,7 @@ test("a two-turn session: the preview, the chat on a pty, replies from the recei
   assert.ok(!argv[0].includes("--yes") && !argv[0].includes("--allow-unsigned"));
   const started = argv.at(-1);
   assert.deepEqual(started.slice(0, 4), ["run", "acme/widget@1.0.0", "--mode", "interactive"]);
-  assert.ok(!started.includes("--output-format"), "an interactive run has no JSON form");
+  assert.ok(started.includes("--output-format") && started.includes("--session-protocol"));
   assert.ok(started.includes("--out") && started.includes("--yes"));
 
   const t1 = await call(client, "agentry_session_send", {
@@ -67,11 +66,7 @@ test("a two-turn session: the preview, the chat on a pty, replies from the recei
     text: "and\nthe second line?",
   });
   const turn2 = JSON.parse(t2.content[0].text);
-  assert.equal(
-    turn2.reply,
-    "echo: and the second line?",
-    "newlines become spaces; one line per turn",
-  );
+  assert.equal(turn2.reply, "echo: and\nthe second line?", "multiline text stays JSON data");
 
   const c = await call(client, "agentry_session_close", { sessionId: session.sessionId });
   assert.equal(c.isError, undefined, c.content[0].text);
@@ -84,9 +79,7 @@ test("a two-turn session: the preview, the chat on a pty, replies from the recei
   assert.ok(existsSync(closed.transcript), "the transcript is where close says");
   assert.match(readFileSync(closed.transcript, "utf8"), /what is in the note\?/);
   assert.equal(closed.receiptsDir, `${closed.outDir}/receipts`);
-  const raw = readFileSync(closed.ptyLog, "utf8");
-  assert.match(raw, /\x1b\[1;34m/, "the raw stream keeps the chat's colour codes");
-  assert.match(raw, /what is in the note\?/);
+  assert.ok(existsSync(closed.cliLog));
 });
 
 test("close without finish sends /quit; the reason says so", async () => {
@@ -178,29 +171,20 @@ test("a turn past its timeout leaves the session open; the next send waits for t
   );
 });
 
-test("a CLI that stops before the session starts is an error quoting the screen with control sequences stripped", async () => {
+test("a startup failure is reported by send and close after process launch", async () => {
   const { client } = await connect({ FAKE_SESSION_FAIL_START: "1" });
-  const p = await call(client, "agentry_session_start", { ref: "acme/widget" });
-  const r = await call(client, "agentry_session_start", {
-    ref: "acme/widget",
-    confirm: JSON.parse(p.content[0].text).digest,
+  const { session } = await startSession(client);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  const sent = await call(client, "agentry_session_send", {
+    sessionId: session.sessionId,
+    text: "hello",
   });
-  assert.equal(r.isError, true);
-  assert.match(r.content[0].text, /exited \(13\) before the session started/);
-  assert.match(r.content[0].text, /agentry: gateway image not present/);
-  assert.doesNotMatch(r.content[0].text, /\x1b/);
-  // The slot is free again.
-  const fresh = await connect();
-  const { session } = await startSession(fresh.client);
-  assert.ok(session.sessionId);
-  await call(fresh.client, "agentry_session_close", { sessionId: session.sessionId });
-});
-
-test("stripControl removes colour, cursor and title sequences and carriage returns", () => {
-  assert.equal(
-    stripControl("\x1b[1;34mhi\x1b[0m\r\n\x1b[2J\x1b[H\x1b]0;title\x07x\x1b(B\x1b[?1049h"),
-    "hi\nx",
+  assert.equal(sent.isError, true);
+  assert.match(sent.content[0].text, /CLI exited 13.*gateway image/s);
+  const closed = JSON.parse(
+    (await call(client, "agentry_session_close", { sessionId: session.sessionId })).content[0].text,
   );
+  assert.equal(closed.exitCode, 13);
 });
 
 test("the chat's own commands are not turns; an empty turn is refused; the preview never carries a consent flag", async () => {
@@ -221,23 +205,14 @@ test("the chat's own commands are not turns; an empty turn is refused; the previ
   });
   assert.equal(s.isError, undefined, s.content[0].text);
   const id = JSON.parse(s.content[0].text).sessionId;
-  // The chat's commands, blanks, and any control byte — a carriage return
-  // would submit a second line (/add hands the run a host file consent
-  // never covered), an escape quits the chat.
-  for (const text of [
-    "/finish",
-    "/quit",
-    "  /add /home/me/.ssh/id_rsa",
-    "   ",
-    "",
-    "hi\r/add /home/me/.ssh/id_rsa",
-    "hi\x1b",
-    "hi\x03",
-    "\x1b[200~pasted\x1b[201~",
-  ]) {
+  for (const text of ["   ", ""]) {
     const r = await call(client, "agentry_session_send", { sessionId: id, text });
-    assert.equal(r.isError, true, JSON.stringify(text));
-    assert.match(r.content[0].text, /control character|must not start with|must not be empty/);
+    assert.equal(r.isError, true);
+  }
+  for (const text of ["/finish", "hi\n/add /home/me/.ssh/id_rsa", "hi\u001b"]) {
+    const r = await call(client, "agentry_session_send", { sessionId: id, text });
+    assert.equal(r.isError, undefined, r.content[0].text);
+    assert.equal(JSON.parse(r.content[0].text).reply, `echo: ${text}`);
   }
   const argv = receivedArgv(argvFile);
   for (const a of argv)
@@ -278,9 +253,9 @@ test("no session result carries a secret value from the server's environment", a
   }
 });
 
-test("the tool list is the thirteen", async () => {
+test("the tool list includes the updated surface", async () => {
   const { client } = await connect();
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 13);
+  assert.equal(tools.length, 22);
   assert.ok(tools.find((t) => t.name === "agentry_session_start"));
 });

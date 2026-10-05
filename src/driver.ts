@@ -11,14 +11,14 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { ArgumentError } from "./argv.js";
 import { runCli, type CliOptions } from "./cli.js";
 import { toToolResult } from "./envelope.js";
-import type { PtySession } from "./session.js";
+import type { ProtocolSession } from "./session.js";
 
 /**
  * The one interactive session a server holds at a time (M5): the open one,
  * or a reservation while a start is between its consent and its spawn.
  */
 export interface SessionSlot {
-  current?: PtySession;
+  current?: ProtocolSession;
   reserved: boolean;
 }
 
@@ -37,7 +37,7 @@ export class Driver {
 
   readonly sessions: SessionSlot = { reserved: false };
 
-  /** The extra environment and working directory every CLI process gets (a session's pty host too). */
+  /** The extra environment and working directory every CLI process gets (including the session protocol process). */
   get env(): Record<string, string> | undefined {
     return this.defaults.env;
   }
