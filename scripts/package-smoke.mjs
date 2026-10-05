@@ -14,7 +14,7 @@
 // --expect-version makes the release refuse a tarball whose server reports
 // another version than the tag it is named for.
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,6 +39,10 @@ const fail = (msg) => {
 execFileSync("tar", ["-xzf", tarball, "-C", work]);
 const dir = join(work, basename(tarball).replace(/\.tar\.gz$/, ""));
 const entry = join(dir, "dist", "index.js");
+
+const skill = readFileSync(join(dir, "SKILL.md"), "utf8");
+if (!skill.startsWith("---\nname: agentry\n")) fail("the package has no usable Agentry skill");
+console.log("ok: the package includes SKILL.md");
 
 // 1. No CLI: a non-zero exit and the sentence that names the missing binary.
 function run(env, input, ms) {

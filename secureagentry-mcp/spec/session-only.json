@@ -4,6 +4,7 @@
   "operationIds": [
     "addSshKey",
     "clearCurrentUserData",
+    "clearTrustedDevices",
     "createDesktopGrant",
     "createToken",
     "decommissionOrg",

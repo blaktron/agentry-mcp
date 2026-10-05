@@ -31,8 +31,8 @@ test("findCli: AGENTRY_BIN first, then PATH, else a message naming what to do", 
 
 test("checkCli: a release at or above the floor passes, an older one is refused naming the floor", async () => {
   for (const [version, semver] of [
-    ["0.6.0", "0.6.0"],
-    ["0.6.1-dev.2", "0.6.1"],
+    ["0.6.63", "0.6.63"],
+    ["0.6.64-dev.2", "0.6.64"],
   ]) {
     process.env.FAKE_VERSION = version;
     try {
@@ -45,14 +45,14 @@ test("checkCli: a release at or above the floor passes, an older one is refused 
   }
   process.env.FAKE_VERSION = "0.5.9";
   try {
-    await assert.rejects(checkCli(FAKE), /is agentry 0\.5\.9; this server needs 0\.6\.0 or newer/);
+    await assert.rejects(checkCli(FAKE), /is agentry 0\.5\.9; this server needs 0\.6\.63 or newer/);
   } finally {
     delete process.env.FAKE_VERSION;
   }
   // The shipped floor is the CLI's first tagged release (agentry-cli#327);
   // the comparison is proven against an injected floor above the fake's
   // version.
-  assert.equal(MIN_CLI_VERSION, "0.6.0");
+  assert.equal(MIN_CLI_VERSION, "0.6.63");
   process.env.FAKE_VERSION = "0.4.0";
   try {
     await assert.rejects(
@@ -98,5 +98,16 @@ test("checkCli: a CLI without install --plan or run --plan is refused naming wha
     );
   } finally {
     delete process.env.FAKE_NO_RUN_PLAN;
+  }
+});
+
+test("an untagged CLI without the pipe protocol is refused", async () => {
+  process.env.FAKE_VERSION = "0.0.0-dev";
+  process.env.FAKE_NO_PROTOCOL = "1";
+  try {
+    await assert.rejects(checkCli(FAKE), /no run --session-protocol/);
+  } finally {
+    delete process.env.FAKE_VERSION;
+    delete process.env.FAKE_NO_PROTOCOL;
   }
 });

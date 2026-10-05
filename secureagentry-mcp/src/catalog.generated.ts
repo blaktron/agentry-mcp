@@ -52,7 +52,7 @@ export const API_VERSION = "0.3.0";
 export const API_BASE_PATH = "/api/v1";
 
 /** sha256 of spec/openapi.yaml, so a drifted catalog is detectable. */
-export const SPEC_SHA256 = "43ca9274b16db4576af29b1103c8d0f60a9d509b0456bc7426bc32728b151b3f";
+export const SPEC_SHA256 = "4190d5331a6667645379ada84547ad92fee28b8a09981f0c4b63a24da59c4627";
 
 export const ACTIONS: readonly Action[] = [
   {
@@ -237,7 +237,7 @@ export const ACTIONS: readonly Action[] = [
       "users"
     ],
     "summary": "Clear the caller's credentials, installs and settings, and keep the account (session only).",
-    "description": "Revokes every personal access token and SSH key, deletes every remembered browser (the ones that skip the second factor), consumes every pending desktop sign-in code, ends every session but the caller's, removes every account install, and resets the display name and the notification settings to their defaults (every switch on; mail still goes only to a verified address). The account itself stays: the handle, the email, the sign-in account at the directory, organization memberships, QuickAgents with their versions and repositories, stars, the subscription and credits are untouched. Audited as `user.data_clear` with the count of each class; after the commit an extension event `user.data_cleared` carries the user id, so an extension clears what it holds for the account (hosted run history). Session only: a token is refused, and so is a request without the session's CSRF token.",
+    "description": "Revokes every personal access token and SSH key, deletes every remembered browser (the ones that skip the second factor), consumes every pending desktop sign-in code, ends every session but the caller's, removes every account install, and resets the display name and the notification settings to their defaults (every switch on; mail still goes only to a verified address). The account itself stays: the handle, the email, the sign-in account at the directory, organization memberships, BriefAgents with their versions and repositories, stars, the subscription and credits are untouched. Audited as `user.data_clear` with the count of each class; after the commit an extension event `user.data_cleared` carries the user id, so an extension clears what it holds for the account (hosted run history). Session only: a token is refused, and so is a request without the session's CSRF token.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -246,6 +246,46 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "204",
         "description": "Cleared; the caller's session is still signed in."
+      }
+    ]
+  },
+  {
+    "id": "clearTrustedDevices",
+    "method": "DELETE",
+    "path": "/user/trusted-devices",
+    "tags": [
+      "users"
+    ],
+    "summary": "Clear every remembered browser of the caller's account (agentry#672).",
+    "description": "Revokes all of the caller's remembered browsers, this one included: each is asked for the second factor at its next sign-in. Sessions and authenticators are untouched. The response clears this browser's remembered-browser cookie, since its record is gone. Session-only: a PAT is refused (403), as on the session-revoking routes.",
+    "public": false,
+    "sessionOnly": true,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The number of remembered browsers cleared (0 when there were none)."
+      }
+    ]
+  },
+  {
+    "id": "countTrustedDevices",
+    "method": "GET",
+    "path": "/user/trusted-devices",
+    "tags": [
+      "users"
+    ],
+    "summary": "How many browsers skip the caller's second factor (agentry#672).",
+    "description": "The number of the caller's live remembered browsers: browsers where \"Remember this device for 30 days\" was ticked and whose record has not expired or been revoked. There is no list: the account's control is one button that clears them all (DEV-163). A PAT-authenticated caller gets 0, as it gets an empty session list: a token is not a way to take an inventory of someone's browsers.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The count."
       }
     ]
   },
@@ -613,6 +653,77 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "createOrgKnowledgePack",
+    "method": "POST",
+    "path": "/orgs/{org}/knowledge/packs",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "Create a shared pack, empty, with its data key wrapped for the organization (admins).",
+    "description": "As `POST /knowledge/packs`, with the data key wrapped by `POST /orgs/{org}/knowledge/keys/wrap`: the registry checks that it opens for the organization. The pack is not exportable by members until an admin marks it. Recorded in the organization's audit log (`org.knowledge_create`).",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "CreateKnowledgePackRequest",
+        "type": "object",
+        "required": [
+          "name",
+          "wrappedKey"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "wrappedKey": {
+            "title": "KnowledgeWrappedKey",
+            "type": "object",
+            "description": "A pack's data key as a wrapper sealed it: the wrapper's `kind` (`deployment` on a core registry), the `recipient` it is wrapped to (a key's id, never a key), and the sealed bytes.",
+            "required": [
+              "kind",
+              "recipient",
+              "key"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "recipient": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string",
+                "format": "byte"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "201",
+        "description": "The pack, in state `empty`."
+      }
+    ]
+  },
+  {
     "id": "createRulesetRelease",
     "method": "POST",
     "path": "/platform/ruleset-releases",
@@ -779,7 +890,7 @@ export const ACTIONS: readonly Action[] = [
             "items": {
               "title": "Scope",
               "type": "string",
-              "description": "PAT scopes (§12.3). A token can do only what its scopes allow; a\nsession acts with the account's full authority. `run:write` lets a\ntoken start, feed and cancel a hosted run of a QuickAgent and\n`run:read` lets it read a run, its log and its artefacts — both are\nconsumed only by a registry that mounts the runs extension, and\nunlock nothing on one that does not. `knowledge:read` and\n`knowledge:write` read and write the account's knowledge packs.\n",
+              "description": "PAT scopes (§12.3). A token can do only what its scopes allow; a\nsession acts with the account's full authority. `run:write` lets a\ntoken start, feed and cancel a hosted run of a BriefAgent and\n`run:read` lets it read a run, its log and its artefacts — both are\nconsumed only by a registry that mounts the runs extension, and\nunlock nothing on one that does not. `knowledge:read` and\n`knowledge:write` read and write the account's knowledge packs.\n`secret:write` sets and deletes the account's hosted-run secrets and\nnever lists or reads one; it is consumed only by a registry that\nmounts the vault extension.\n",
               "enum": [
                 "repo:read",
                 "repo:write",
@@ -792,7 +903,8 @@ export const ACTIONS: readonly Action[] = [
                 "run:read",
                 "run:write",
                 "knowledge:read",
-                "knowledge:write"
+                "knowledge:write",
+                "secret:write"
               ]
             }
           },
@@ -1019,8 +1131,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "installs"
     ],
-    "summary": "Remove the caller's record for a QuickAgent (idempotent).",
-    "description": "204 whether or not a record existed, and whether or not the name resolves: the row is the caller's own, so no QuickAgent is read and nothing is learned about one — a record whose QuickAgent the caller can no longer read is removed by the ref the list shows for it. Audited as `agent.uninstall` when a record went. A PAT needs `user:profile`.",
+    "summary": "Remove the caller's record for a BriefAgent (idempotent).",
+    "description": "204 whether or not a record existed, and whether or not the name resolves: the row is the caller's own, so no BriefAgent is read and nothing is learned about one — a record whose BriefAgent the caller can no longer read is removed by the ref the list shows for it. Audited as `agent.uninstall` when a record went. A PAT needs `user:profile`.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -1168,6 +1280,45 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "deleteOrgKnowledgePack",
+    "method": "DELETE",
+    "path": "/orgs/{org}/knowledge/packs/{packId}",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "Delete a shared pack, its stored trees and its wrapped key (admins).",
+    "description": "Recorded in the organization's audit log (`org.knowledge_delete`). A member's downloaded copy stays sealed under a data key only the organization's unwrap opens.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
+      {
+        "name": "packId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "204",
+        "description": "Deleted."
+      }
+    ]
+  },
+  {
     "id": "deleteOrgLogo",
     "method": "DELETE",
     "path": "/orgs/{org}/logo",
@@ -1283,7 +1434,7 @@ export const ACTIONS: readonly Action[] = [
       "users"
     ],
     "summary": "Remove one of the caller's own authenticators from the directory service (agentry#164).",
-    "description": "With auth.externalOnly and directory admin access, removes the caller's authenticator device of this kind and id through the directory's admin API, so the settings page manages MFA without ever showing the directory's own panel. The device must be on the caller's own account: an id that is somebody else's answers 404 exactly like a missing one. 404 when the server has no directory admin access; 502 when the directory did not answer.",
+    "description": "With auth.externalOnly and directory admin access, removes the caller's authenticator of this kind and id through the directory's admin API, so the settings page manages MFA without ever showing the directory's own panel. The authenticator must be on the caller's own account: an id that is somebody else's answers 404 exactly like a missing one. 404 when the server has no directory admin access; 502 when the directory did not answer.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -1370,6 +1521,44 @@ export const ACTIONS: readonly Action[] = [
     "sessionOnly": false,
     "deprecated": false,
     "params": [
+      {
+        "name": "packId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The sealed tree."
+      }
+    ]
+  },
+  {
+    "id": "downloadOrgKnowledgeTree",
+    "method": "GET",
+    "path": "/orgs/{org}/knowledge/packs/{packId}/tree",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "A shared pack's sealed tree, as stored, for any active member (409 `knowledge-scanning` while it is scanned).",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
       {
         "name": "packId",
         "in": "path",
@@ -1496,6 +1685,45 @@ export const ACTIONS: readonly Action[] = [
     "sessionOnly": false,
     "deprecated": false,
     "params": [
+      {
+        "name": "packId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The tree."
+      }
+    ]
+  },
+  {
+    "id": "exportOrgKnowledgePack",
+    "method": "GET",
+    "path": "/orgs/{org}/knowledge/packs/{packId}/export",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "A shared pack's tree, decrypted as it streams, to an admin, or to a member once the pack is marked exportable.",
+    "description": "As `GET /knowledge/packs/{packId}/export`. A member's export of a pack not marked exportable is 403 `knowledge-not-exportable`. Recorded in the organization's audit log (`org.knowledge_export`).",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
       {
         "name": "packId",
         "in": "path",
@@ -1965,6 +2193,73 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "getOrgKnowledgePack",
+    "method": "GET",
+    "path": "/orgs/{org}/knowledge/packs/{packId}",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "One of the organization's shared packs with its scan report.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
+      {
+        "name": "packId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The pack."
+      }
+    ]
+  },
+  {
+    "id": "getOrgKnowledgeUsage",
+    "method": "GET",
+    "path": "/orgs/{org}/knowledge/usage",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "What the organization keeps in the registry against the allocation its packs draw on.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The meter; `bytes` and `packs` are the organization's own packs."
+      }
+    ]
+  },
+  {
     "id": "getOrgLogo",
     "method": "GET",
     "path": "/orgs/{org}/logo",
@@ -2146,7 +2441,7 @@ export const ACTIONS: readonly Action[] = [
       "users"
     ],
     "summary": "Where the caller manages password, MFA and profile when a directory service owns the account (DEV-057).",
-    "description": "With auth.externalOnly, credentials live in the directory service (Authentik). This answers the settings page's question \"where do I change my password or add an authenticator?\" with the directory's flow URLs, and lists the caller's enrolled authenticator devices when the server has directory admin access (auth.idpAdminURL). Without a directory, `managed` is false and the rest is absent.",
+    "description": "With auth.externalOnly, credentials live in the directory service (Authentik). This answers the settings page's question \"where do I change my password or add an authenticator?\" with the directory's flow URLs, and lists the caller's enrolled authenticators when the server has directory admin access (auth.idpAdminURL). Without a directory, `managed` is false and the rest is absent.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -2154,7 +2449,7 @@ export const ACTIONS: readonly Action[] = [
     "responses": [
       {
         "code": "200",
-        "description": "Directory account links and devices."
+        "description": "Directory account links and enrolled authenticators."
       }
     ]
   },
@@ -2559,7 +2854,7 @@ export const ACTIONS: readonly Action[] = [
       "installs"
     ],
     "summary": "The caller's account installs, composed for a list.",
-    "description": "Every record the caller holds, newest change first. A record whose QuickAgent the caller can no longer read — made private to them, its organization suspended — is listed as the bare `ref` with `readable: false` and nothing else, so the list tells a former reader nothing they did not already know. A PAT needs `user:profile`.",
+    "description": "Every record the caller holds, newest change first. A record whose BriefAgent the caller can no longer read — made private to them, its organization suspended — is listed as the bare `ref` with `readable: false` and nothing else, so the list tells a former reader nothing they did not already know. A PAT needs `user:profile`.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -2579,7 +2874,7 @@ export const ACTIONS: readonly Action[] = [
       "platform"
     ],
     "summary": "Published advisories — for one agent, or the global feed (§8.7).",
-    "description": "With `affecting`, the advisories against that agent (newest first), under the agent's own read rule: a private agent's advisories are its readers' (the owning user, the owning org's admins, and anyone holding a grant on the agent), and anyone else — anonymous or signed in — gets the 404 a missing name gets, so the agent's existence is not discoverable here (agentry#313). Without it, the global feed: every published advisory against a public agent, newest first, keyset-paged with `cursor`/`limit` and a `Link: rel=\"next\"` header (§9.1). Each item carries `agent` (`ns/name`) so a feed reader can find the affected QuickAgent.",
+    "description": "With `affecting`, the advisories against that agent (newest first), under the agent's own read rule: a private agent's advisories are its readers' (the owning user, the owning org's admins, and anyone holding a grant on the agent), and anyone else — anonymous or signed in — gets the 404 a missing name gets, so the agent's existence is not discoverable here (agentry#313). Without it, the global feed: every published advisory against a public agent, newest first, keyset-paged with `cursor`/`limit` and a `Link: rel=\"next\"` header (§9.1). Each item carries `agent` (`ns/name`) so a feed reader can find the affected BriefAgent.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2887,7 +3182,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "platform"
     ],
-    "summary": "An account's packs by name and size, for support (platform staff).",
+    "summary": "An account's or an organization's packs by name and size, for support (platform staff).",
     "description": "Names, states and sizes only: never a byte of content, a digest, a scan report or a key.",
     "public": false,
     "sessionOnly": false,
@@ -2897,7 +3192,7 @@ export const ACTIONS: readonly Action[] = [
         "name": "owner",
         "in": "query",
         "required": true,
-        "description": "The account's handle.",
+        "description": "The account's or the organization's handle.",
         "schema": {
           "type": "string"
         }
@@ -2962,6 +3257,35 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Audit page."
+      }
+    ]
+  },
+  {
+    "id": "listOrgKnowledgePacks",
+    "method": "GET",
+    "path": "/orgs/{org}/knowledge/packs",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "The organization's shared packs, by name, for any active member.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "Packs, each with `shared`, `org` and `exportable`."
       }
     ]
   },
@@ -3879,8 +4203,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "installs"
     ],
-    "summary": "Record a QuickAgent release as installed to the account, or move the record to another version.",
-    "description": "The version must be a published release the caller can read: a non-reader gets the missing name's 404, an unpublished version `409 version-not-published`, a blocked QuickAgent `410 blocked`. The request carries the acceptances the release needs and is refused with `409 install-consent-required`, naming the missing ones in `missing`, when it lacks any: `capabilities` on a first install and, on an update, when the new version's declared capabilities widened against the accepted snapshot (`widened` lists what did); `unsigned` whenever the release carries no attestation; `unscanned` whenever it was admitted without a scan. A PUT on an existing record is the update, to any published version, an older one included: the version moves and the snapshot follows it. The action is audited as `agent.install`; no download counter moves. A PAT needs `user:profile`, and `agent:read` for a private QuickAgent.",
+    "summary": "Record a BriefAgent release as installed to the account, or move the record to another version.",
+    "description": "The version must be a published release the caller can read: a non-reader gets the missing name's 404, an unpublished version `409 version-not-published`, a blocked BriefAgent `410 blocked`. The request carries the acceptances the release needs and is refused with `409 install-consent-required`, naming the missing ones in `missing`, when it lacks any: `capabilities` on a first install and, on an update, when the new version's declared capabilities widened against the accepted snapshot (`widened` lists what did); `unsigned` whenever the release carries no attestation; `unscanned` whenever it was admitted without a scan. A PUT on an existing record is the update, to any published version, an older one included: the version moves and the snapshot follows it. The action is audited as `agent.install`; no download counter moves. A PAT needs `user:profile`, and `agent:read` for a private BriefAgent.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -5788,6 +6112,62 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "unwrapOrgKnowledgeKey",
+    "method": "POST",
+    "path": "/orgs/{org}/knowledge/keys/unwrap",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "Unwrap a data key wrapped for the organization, for any active member; refused once they are not one.",
+    "description": "The one door to a shared pack's words on a member's machine: the client keeps the answer in memory and asks again next time, so a member who is removed keeps sealed bytes they can no longer open. A wrapped key that does not open for the organization is 404 `knowledge-key-not-found`.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "KnowledgeWrappedKey",
+        "type": "object",
+        "description": "A pack's data key as a wrapper sealed it: the wrapper's `kind` (`deployment` on a core registry), the `recipient` it is wrapped to (a key's id, never a key), and the sealed bytes.",
+        "required": [
+          "kind",
+          "recipient",
+          "key"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "recipient": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "format": "byte"
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The data key."
+      }
+    ]
+  },
+  {
     "id": "updateAgent",
     "method": "PATCH",
     "path": "/agents/{ns}/{name}",
@@ -5956,6 +6336,61 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "updateOrgKnowledgePack",
+    "method": "PATCH",
+    "path": "/orgs/{org}/knowledge/packs/{packId}",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "Mark a shared pack exportable by the organization's members, or not (admins).",
+    "description": "Recorded in the organization's audit log (`org.knowledge_update`, with `exportable`).",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
+      {
+        "name": "packId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    ],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "UpdateKnowledgePackRequest",
+        "type": "object",
+        "required": [
+          "exportable"
+        ],
+        "properties": {
+          "exportable": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The pack."
+      }
+    ]
+  },
+  {
     "id": "updateUserNotificationSettings",
     "method": "PUT",
     "path": "/user/notifications",
@@ -6004,7 +6439,7 @@ export const ACTIONS: readonly Action[] = [
               },
               "advisories": {
                 "type": "boolean",
-                "description": "An advisory naming one of the person's QuickAgents was published."
+                "description": "An advisory naming one of the person's BriefAgents was published."
               },
               "orgInvites": {
                 "type": "boolean",
@@ -6134,6 +6569,49 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "uploadOrgKnowledgeTree",
+    "method": "PUT",
+    "path": "/orgs/{org}/knowledge/packs/{packId}/tree",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "Upload a shared pack's sealed tree, which replaces the one before and is scanned (admins).",
+    "description": "As `PUT /knowledge/packs/{packId}/tree`, counted against the allocation the organization's packs draw on.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
+      {
+        "name": "packId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    ],
+    "body": {
+      "required": true,
+      "contentType": "application/octet-stream"
+    },
+    "responses": [
+      {
+        "code": "202",
+        "description": "Stored; the pack is `scanning`."
+      }
+    ]
+  },
+  {
     "id": "verifyDomainClaim",
     "method": "POST",
     "path": "/orgs/{org}/domain-claims/verify",
@@ -6225,6 +6703,54 @@ export const ACTIONS: readonly Action[] = [
     "sessionOnly": false,
     "deprecated": false,
     "params": [],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "KnowledgeDataKey",
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "format": "byte",
+            "description": "A pack's 32-byte data key."
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The wrapped key."
+      }
+    ]
+  },
+  {
+    "id": "wrapOrgKnowledgeKey",
+    "method": "POST",
+    "path": "/orgs/{org}/knowledge/keys/wrap",
+    "tags": [
+      "knowledge"
+    ],
+    "summary": "Wrap a data key for the organization (admins).",
+    "description": "The wrapper seals the 32-byte data key for the organization: on a core registry under the deployment's knowledge sealing key, on an extension's to the organization's own key.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "org",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      }
+    ],
     "body": {
       "required": true,
       "contentType": "application/json",

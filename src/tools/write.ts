@@ -29,14 +29,23 @@ export function registerWriteTools(d: Driver): void {
         "digest: the server re-runs the preview, refuses if anything changed, and then installs. An unsigned " +
         "release also needs `acceptUnsigned: true` on the confirm call, and an unscanned one (admitted without a scan) " +
         "`acceptUnscanned: true`; pass either only if the person said so. " +
-        "The install goes where the CLI puts it: a Claude skill under ~/.claude/skills/<name>, or agents-md under " +
+        "The default install goes into the runner home; a requested embedded install is a Claude skill under ~/.claude/skills/<name>, or agents-md under " +
         "./agents/<name> with AGENTS.md updated.",
       inputSchema: {
-        ref: z.string().describe("namespace/name, optionally @version or @range."),
-        target: z
-          .enum(["claude-skill", "agents-md"])
+        ref: z
+          .string()
           .optional()
-          .describe("The install target; the manifest's default when omitted."),
+          .describe("namespace/name, optionally @version or @range; omit when local is given."),
+        local: z
+          .string()
+          .optional()
+          .describe(
+            "Unpublished QuickAgent directory to install into the runner home; requires acceptUnsigned.",
+          ),
+        target: z
+          .enum(["runner", "claude-skill", "agents-md"])
+          .optional()
+          .describe("The install target; runner when omitted."),
         provider: z
           .enum(["claude", "codex", "openclaw"])
           .optional()
