@@ -97,6 +97,7 @@ test("every exit class without JSON is a tool error naming the class, with the C
     15: "timeout",
     16: "budget",
     17: "outputSchema",
+    18: "blocked",
     42: "exit-42",
   };
   for (const [code, cls] of Object.entries(classes)) {

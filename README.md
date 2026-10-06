@@ -39,7 +39,7 @@ result is the CLI's JSON in an envelope:
 
 `exitClass` is the CLI's §R8 class (`ok`, `usage`, `verify`, `policy`,
 `compile`, `gateway`, `harness`, `timeout`, `budget`, `outputSchema`,
-`cli`). When the CLI wrote JSON, the envelope comes back whatever the class —
+`blocked`, `cli`). When the CLI wrote JSON, the envelope comes back whatever the class —
 `agentry doctor` writes its report and exits `cli` when a check fails, and
 the report is the answer. When there is no JSON, a non-zero exit is an MCP
 tool error naming the class and quoting the CLI's last lines; a zero exit
