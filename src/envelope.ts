@@ -21,6 +21,9 @@ export const EXIT_CLASSES: Record<number, string> = {
   15: "timeout",
   16: "budget",
   17: "outputSchema",
+  // The agent could not do its task with what the run had, by its own
+  // end_blocked or the runner's evidence (agentry-cli#629, DR-72).
+  18: "blocked",
 };
 
 export function exitClass(code: number): string {
