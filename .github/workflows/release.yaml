@@ -245,7 +245,7 @@ jobs:
       - uses: actions/setup-go@v5
         if: steps.signing.outputs.sums == 'sign'
         with:
-          go-version: "1.27.0"
+          go-version: "1.27.2"
           # Shared persistent host module cache; restoring the Actions cache
           # over it left partial modules in the core (agentry#225).
           cache: false
