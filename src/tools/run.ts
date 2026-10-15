@@ -1,5 +1,5 @@
 /**
- * The run tools (M4): setup, the autonomous run behind the two-call
+ * The run tools: setup, the autonomous run behind the two-call
  * consent, validate. Registered with the SDK's own shape so the handler
  * receives `extra` (the progress token, the notification sender).
  */

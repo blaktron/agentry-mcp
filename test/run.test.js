@@ -1,4 +1,4 @@
-// setup, run and validate over the fake CLI (plan §6): argv for every
+// setup, run and validate over the fake CLI: argv for every
 // argument; the preview is `run --plan --json` and lifts nothing; the temp
 // input file 0600 and removed; --intake per entry; progress only with a
 // progress token; the timeout's SIGINT and the envelope the CLI's teardown
@@ -275,7 +275,7 @@ test("a refusal the person cannot lift (attestation mismatch) stops the confirm"
   assert.equal(existsSync(writes), false);
 });
 
-test("every refusal is in the preview; with a vulnerable server beside the unsigned one, acceptUnsigned lifts nothing and the confirm stops (agentry-mcp#45)", async () => {
+test("every refusal is in the preview; with a vulnerable server beside the unsigned one, acceptUnsigned lifts nothing and the confirm stops", async () => {
   const writes = writesFile();
   const vuln =
     "declared MCP server npm:@acme/mcp-x@1.0.0 has a known critical advisory (GHSA-xxxx); re-run with --allow-vulnerable-mcp";
@@ -319,7 +319,7 @@ test("every refusal is in the preview; with a vulnerable server beside the unsig
     assert.ok(a.includes("--plan"), `only plans ran, never the run: ${a}`);
 });
 
-test("a CLI before agentry-cli#126 prints one refusal: the unsigned one still lifts with acceptUnsigned, a mismatch still stops", async () => {
+test("a CLI that prints only the deprecated single refusal: the unsigned one still lifts with acceptUnsigned, a mismatch still stops", async () => {
   const { client, argvFile } = await connect({ FAKE_RUN_ATTEST: "unsigned", FAKE_RUN_LEGACY: "1" });
   const p = await previewRun(client, { ref: "acme/widget" });
   assert.equal(p.plan.refusals, undefined);

@@ -1,15 +1,12 @@
-# Runs on the project's self-hosted runners: GitHub-hosted minutes for
-# this account are exhausted, so every repo in the estate builds there.
+# Runs on self-hosted runners.
 #
 # Two packages, two jobs: the root is the server that drives the installed
-# agentry CLI; secureagentry-mcp/ is the parked registry-API server, kept
-# green as it was (plan mcp-cli-driver D7).
+# agentry CLI; secureagentry-mcp/ is the registry-API server.
 name: ci
 
 on:
   push:
-    # dev is the integration branch; main is production (WORKFLOW.md
-    # "Branches", 2026-09-22).
+    # dev is the integration branch; main is production.
     branches: [main, dev]
   pull_request:
 
@@ -50,7 +47,7 @@ jobs:
         run: npm test
 
       # --yes, --allow-unsigned and --allow-unscanned reach the CLI only from
-      # a confirm call (plan §3), so they are spelled only in src/consent.ts.
+      # a confirm call, so they are spelled only in src/consent.ts.
       - name: Consent flags appear only in the confirm path
         run: |
           if grep -rn -e '--yes' -e '--allow-unsigned' -e '--allow-unscanned' src/ | grep -v 'src/consent.ts'; then
@@ -58,7 +55,7 @@ jobs:
           fi
           echo "ok: no consent flag outside the confirm path"
 
-  # The downloadable tarball (agentry-mcp#32), built by the same script the
+  # The downloadable tarball, built by the same script the
   # release runs, twice, so a change that breaks packaging or makes it
   # irreproducible fails here and not at a tag; then unpacked away from this
   # checkout and started, with no CLI (it must refuse) and with the tests'
@@ -87,8 +84,8 @@ jobs:
         run: node scripts/package-smoke.mjs "$RUNNER_TEMP/a/agentry-mcp-0.0.0-ci.tar.gz"
       # A tag's form must agree with the line its commit is on (vX.Y.Z on
       # main's, vX.Y.Z-dev.N on dev's), 1.x waits for AGENTRY_ALLOW_V1, and
-      # the next tag follows the scheme (agentry-mcp#48; the CLI's scripts and
-      # tests, agentry-cli#240 and #327).
+      # the next tag follows the scheme (scripts/release-tag.sh and
+      # scripts/release-registry.sh).
       - name: Release channel and tags by branch
         run: |
           scripts/acceptance/release-registry.sh

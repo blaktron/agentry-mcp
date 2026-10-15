@@ -1,18 +1,77 @@
 # agentry-mcp
 
-An MCP server that drives the **`agentry` CLI you already have**, so Claude
-Code, Codex or any MCP host can search a registry, read a QuickAgent's
-capability contract, verify a release, check and prepare the machine,
-install and remove QuickAgents, run them, and hold an interactive session
-with one — through tools whose results are the CLI's own JSON, behind the
-same consent the CLI asks for on a terminal.
+An MCP server that drives the `agentry` CLI already installed on your
+machine, so a coding agent (Claude Code, Codex or any MCP host) can search a
+registry, read a QuickAgent's capability contract, verify a release, check the
+machine, install and remove QuickAgents, run them and hold an interactive
+session with one. Tool results are the CLI's own JSON. Anything that writes or
+runs asks for the same consent the CLI asks for on a terminal.
 
-Local stdio server, TypeScript, on the official
+It is a local stdio server written in TypeScript on the official
 [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk).
-It bundles nothing: the CLI is the person's, with the person's login, consent
-memory and runner policy. Plan: `agentry-notes/plans/mcp-cli-driver.md`.
+It bundles no CLI: the login, consent memory and runner policy are the
+CLI's.
 
-## Reading
+## Prerequisites
+
+- Node 20 or newer.
+- The `agentry` CLI on the machine, found through `AGENTRY_BIN` or `PATH`
+  (see the [CLI documentation](https://docs.secureagentry.net/runner/)). The
+  server runs `agentry --version` at start and refuses to start below
+  `MIN_CLI_VERSION` (`src/cli.ts`) or without `install --plan` and
+  `run --plan`.
+- Signing in (`agentry login`) is done once in a terminal; the server uses
+  that login and never sees the token.
+
+## Build, test and lint
+
+```sh
+npm ci
+npm run build      # tsc into dist/
+npm test           # builds, then runs the tests against a fake agentry CLI
+npm run check      # typecheck, prettier, prose gate, tests
+npm run format     # prettier --write
+```
+
+`scripts/package.sh <version> <out-dir>` builds the downloadable tarball and
+`node scripts/package-smoke.mjs <tarball>` unpacks it and starts the server.
+CI runs both, and `.github/workflows/release.yaml` builds and signs a release
+from a tag.
+
+## Register it with a coding agent
+
+The server is `dist/index.js`, from a source build or from an unpacked
+`agentry-mcp-<version>.tar.gz`.
+
+**Claude Code**
+
+```sh
+claude mcp add agentry -- node /path/to/agentry-mcp/dist/index.js
+```
+
+**Codex**
+
+```sh
+codex mcp add agentry -- node /path/to/agentry-mcp/dist/index.js
+```
+
+Either host can pass `AGENTRY_BIN` when the CLI is not on its `PATH`:
+
+```sh
+claude mcp add agentry -e AGENTRY_BIN=/path/to/agentry -- node /path/to/agentry-mcp/dist/index.js
+codex mcp add agentry --env AGENTRY_BIN=/path/to/agentry -- node /path/to/agentry-mcp/dist/index.js
+```
+
+[SKILL.md](SKILL.md) is a skill for the host (copy it to
+`~/.claude/skills/agentry/SKILL.md` or `~/.codex/skills/agentry/SKILL.md`)
+that covers installation, registration, consent, runs, sessions, Knowledge,
+Writing Voice and authoring.
+
+## Tools
+
+Read tools run one CLI command with an argv built from typed arguments, never
+a shell string. The result is the CLI's JSON in an envelope with `exitClass`
+and the CLI's last stderr lines as `log`.
 
 | Tool                     | Runs                            | Returns                                                                                                                  |
 | ------------------------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -25,27 +84,16 @@ memory and runner policy. Plan: `agentry-notes/plans/mcp-cli-driver.md`.
 | `agentry_voice_status`   | `agentry voice status --json`   | local and account Voice metadata and review                                                                              |
 | `agentry_doctor`         | `agentry doctor --json`         | machine readiness: policy, provider key **name**, docker, images, exec catalog                                           |
 
-Read tools are one CLI invocation with an argv built from typed arguments —
-never a shell string, and a value that looks like a flag is refused. The
-result is the CLI's JSON in an envelope:
-
-```json
-{
-  "result": { "…": "the CLI's own output" },
-  "exitClass": "ok",
-  "log": "the CLI's last stderr lines"
-}
-```
-
-`exitClass` is the CLI's §R8 class (`ok`, `usage`, `verify`, `policy`,
-`compile`, `gateway`, `harness`, `timeout`, `budget`, `outputSchema`,
-`blocked`, `cli`). When the CLI wrote JSON, the envelope comes back whatever the class —
-`agentry doctor` writes its report and exits `cli` when a check fails, and
-the report is the answer. When there is no JSON, a non-zero exit is an MCP
-tool error naming the class and quoting the CLI's last lines; a zero exit
-without JSON is an error too. The server never reads the CLI's prose.
-
-## Installing, in two calls
+Writing and running tools take two calls. The first, without `confirm`, runs
+the CLI's plan mode, writes nothing and returns what consent would cover plus
+a `digest`: an HMAC-SHA-256, under a key only the server process holds, over
+exactly those facts. The second carries that digest. The server plans again,
+refuses if anything changed, and only then runs the command. `--yes`,
+`--allow-unsigned` and `--allow-unscanned` reach the CLI from no other path
+(CI checks this). An unsigned release needs `acceptUnsigned: true` on the
+confirm, an unscanned one `acceptUnscanned: true`; other refusals stop the
+confirm. When the host supports MCP elicitation, the server also asks the
+person before the write.
 
 | Tool                     | Runs                                                                 | Returns                                                           |
 | ------------------------ | -------------------------------------------------------------------- | ----------------------------------------------------------------- |
@@ -53,90 +101,23 @@ without JSON is an error too. The server never reads the CLI's prose.
 | `agentry_uninstall`      | `agentry uninstall --plan --json`, then `agentry uninstall --json`   | the preview with a `digest`, then what was removed                |
 | `agentry_list_installed` | `agentry list --json`                                                | every install record, with `present` (its directory still exists) |
 
-The CLI asks you on a terminal before it installs. This server has no
-terminal, and the model is not you. So installing is two calls:
-
-1. **Preview.** `agentry_install` without `confirm` runs the CLI's plan mode
-   and writes nothing. It returns what consent would cover — the resolved
-   version, the capability contract, the diff against what this machine
-   accepted before, the attestation verdict (`verified`, `unsigned`,
-   `unscanned`, `mismatch` or `unverifiable`), the refusal an install
-   would meet, where it would go — plus `digest`: an HMAC-SHA-256, under a
-   key only this server process holds, over exactly those facts. The model
-   is told to show you the contract.
-2. **Confirm.** The same call with `confirm` set to that digest. The server
-   runs the preview again, refuses if anything changed (the version, the
-   contract, the signature, the directory), and only then runs the install
-   with `--yes`. An unsigned release needs `acceptUnsigned: true` on the
-   confirm as well, which the model is told to pass only if you said so.
-   An unscanned release, one the registry admitted without a scan, needs
-   `acceptUnscanned: true` in the same way. It is a consent of its own,
-   because no findings, report or attestation stand behind that release,
-   and `acceptUnsigned` does not cover it.
-
-The digest is the control, not the instruction: a model cannot confirm what
-the server did not show it — it cannot mint a digest from the facts, since
-the key is the server's — and `--yes`, `--allow-unsigned` and
-`--allow-unscanned` reach the CLI from no other path (CI greps for them). The default target is `runner`; `target: "claude-skill"` or `"agents-md"` requests an embedded install. `local` installs an unpublished directory into the runner home and needs `acceptUnsigned`; target/provider/dir overrides do not apply.
-
-The install names the release the preview resolved, never a
-floating range. When your host supports MCP elicitation, the server also
-asks you directly before the write, and a "no" cancels. Removing is the
-same two calls.
-
-## Running
-
 | Tool               | Runs                                                                                             | Returns                                                                                                           |
 | ------------------ | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
 | `agentry_setup`    | `agentry setup --json` (with or without the image pulls)                                         | the policy as configured — provider, model, the key's variable **name** — and whether the images are ready        |
 | `agentry_run`      | `agentry run --plan --json`, then `agentry run --mode autonomous --output-format json` consented | the run plan with a `digest`, then the CLI's result envelope with `receiptsDir`, `resultFile`, `outDir` beside it |
 | `agentry_validate` | `agentry validate DIR --json`                                                                    | the rules and scan findings as data, and whether publish would pass                                               |
 
-A run is the same two calls as an install. The preview is the CLI's run
-plan (`run --plan --json`, agentry-cli#124): the compiled plan — the release
-that resolved, the capabilities and enforcement a run would apply, the tools
-it would be served, the gateway and proxy shape, the budgets — which is
-exactly what the run enforces, with the attestation verdict and every refusal
-a run would meet (`refusals`, each with its message and the flag that lifts
-it, agentry-cli#126). Only an unsigned release's refusal (`acceptUnsigned`)
-and an unscanned one's (`acceptUnscanned`) can be lifted on the confirm; any
-other, such as a declared MCP server with a known high or critical advisory,
-stops the confirm with its message, since the server never passes
-`--allow-vulnerable-mcp`. For the preview the CLI asks nothing and records
-nothing, and the server lifts nothing: the preview carries no consent flag.
-The digest is over the whole plan, its refusals included, plus what the call
-itself brings to the run — the intake
-answers, the files and the input file, where the output lands, the budget —
-so a policy, an image, a budget or an answer that changed between the two
-calls changes the digest; the task input as text is not in it, since it
-changes nothing about what the run may reach. The confirm re-plans, asks
-you when the host can, and runs the release the preview resolved. The runner's isolation and receipts are the CLI's,
-untouched: the server invokes `agentry run` as you would from a terminal,
-and the result names the receipts directory, which is the record of what
-was enforced; its `runPlanSha256` is the preview's `planSha256`.
+A run's preview is the CLI's compiled run plan with the attestation verdict
+and every refusal a run would meet. A run stops at `timeoutSeconds`, or at the
+runner policy's own budget when the call names none: the CLI ends it, the
+server sends SIGINT 30 s later if the process is still there, and kills it
+60 s after that. Progress streams as MCP progress notifications when the
+host asks for them.
 
-`setup` carries no consent flag either: the server gives the CLI no
-terminal, and setup without one fills every gap from its provider table
-instead of asking.
-
-`input` text is written to a temp file the server removes after the run;
-`inputFile` passes a path you already have; `intake` answers the
-QuickAgent's questions by id, and a required one left unanswered is an
-error from the run naming it. A run stops at `timeoutSeconds`, or at the
-runner policy's own budget when the call names none (the preview shows
-which): the CLI ends it, and if the process is still there 30 s later the
-server sends SIGINT, on which the CLI tears down and writes its envelope
-(`error: interrupted`, class `cli`) — the result comes back with
-`timedOut: true` beside it. A CLI that has not exited 60 s after that is
-killed, and the error says so and that its teardown may not have run. Progress — the CLI's
-own narration — streams as MCP progress notifications when the host asks
-for them, and the last lines come back as `log`. A local workspace
-(`local`) has attestation `local` and needs `acceptUnsigned` on the
-confirm, like an unsigned release. An unscanned release needs
-`acceptUnscanned`. A verdict the person cannot lift (`mismatch`,
-`unverifiable`) stops the confirm.
-
-## Sessions
+Interactive sessions launch `agentry run --mode interactive
+--session-protocol --output-format json`, with JSON-line commands on stdin
+and an event pipe on descriptor 3. One session runs at a time. Windows uses
+the terminal CLI because the pipe protocol is unavailable there.
 
 | Tool                    | Runs                                                                                                                       | Returns                                                                                         |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -145,24 +126,12 @@ confirm, like an unsigned release. An unscanned release needs
 | `agentry_session_add`   | a consented JSON add command to the open chat session                                                                      | staged file submission; collect its notice or refusal with send                                 |
 | `agentry_session_close` | a JSON end command to the open chat session, then the CLI's teardown                                                       | why the session ended, the envelope's status and result, the transcript, the receipts directory |
 
-Sessions launch `agentry run --mode interactive --session-protocol
---output-format json`, with JSON-line commands on stdin and a dedicated event
-pipe on descriptor 3. No terminal or Python dependency is needed. Start reports
-`launched: true`, not sandbox readiness: the CLI has no ready event. Startup
-failures are reported on send/close. Windows sessions use the terminal CLI
-because its pipe protocol is unavailable there.
-
-Replies, usage and typed refusals come from the redacted event pipe. A late or
-opening turn is returned with `sent: false` and `lateReplyTo`; the new text is
-held back until it is collected. Multiline and slash-prefixed messages are
-literal data, never commands. Each new file uses `agentry_session_add`'s own
-preview/confirm, bound to its content, then is staged in a private directory
-passed as `--session-inputs`. Send collects its notice or `input_refused` result.
-One session runs at a time. Close sends a typed end command and waits for
-teardown, escalating to SIGINT and SIGKILL when needed. `cliLog`, transcript,
-result and receipt paths identify the record.
-
-## Authoring and personal context
+Authoring tools use operation previews, since the CLI offers no compiled plan
+mode for them. The preview names the command, input fingerprints, output, web
+choice, budgets, policy digest, embedded-package digests and current
+Knowledge and Voice metadata; the confirm re-reads those facts and refuses
+changes. These runs use the person's keys and can incur model, AI Review and
+search charges.
 
 | Tool                      | Runs                                                     | Returns                                                   |
 | ------------------------- | -------------------------------------------------------- | --------------------------------------------------------- |
@@ -171,185 +140,29 @@ result and receipt paths identify the record.
 | `agentry_knowledge_build` | `agentry knowledge create/add --output-format json`      | Creator build report and receipts                         |
 | `agentry_voice_build`     | `agentry voice create/improve/edit --output-format json` | Voice Writer build report and receipts                    |
 
-These tools use two-call **operation previews**, since the CLI offers no compiled
-plan mode for them. The preview names the command, input fingerprints, output,
-web choice, budgets, policy digest, embedded-package digests and current
-Knowledge/Voice metadata. Confirmation re-reads those facts and refuses changes
-before running. It does not lift attestation or vulnerability gates. These runs
-use the person's keys and may incur model, AI Review and search charges. Local
-input trees for consent must contain regular files/directories without symlinks,
-within 20,000 entries and 1 GiB. This bounds the server's fingerprint work.
+Not exposed: signing in (`agentry login`), publishing (`agentry publish`),
+Knowledge import/upload/download/export/delete, Voice
+set/attach/delete and account upload/download, `agentry files ensure`,
+Unsafe Mode and vulnerable-server lifts. Those stay in a terminal.
 
-Run and session arguments include `knowledge`, `voice`/`noVoice`/`voiceFile`,
-`maxTurns` and `maxCost`, in addition to files, intake, adapter and timeout.
-A registry run pins the preview's archive digest. File contents and explicit
-attachments are fingerprinted again at confirmation; names of kept packs and
-Voice metadata are included too. Failure `reason` fields are passed through.
+The server has no credential store. Tools take key names and never return
+their values.
 
-Commands without this MCP's machine-readable consent support stay in a
-terminal: Knowledge import/upload/download/export/delete, Voice
-set/attach/delete and account upload/download, and `agentry files ensure`.
-The last prepares the files image and ClamAV signatures, but currently prints
-text. Unsafe Mode and vulnerable-server lifts are not exposed here.
+## Layout
 
-Not here, on purpose: **signing in** (`agentry login` once in a terminal; the
-server uses that login) and **publishing** (`agentry publish` in a terminal,
-where the person sees the pipeline's verdict).
+| Path                 | Contents                                                            |
+| -------------------- | ------------------------------------------------------------------- |
+| `src/`               | the server: CLI seam, consent, runs, sessions, tools                |
+| `test/`              | tests against a fake `agentry` CLI (`fake-agentry.sh`)              |
+| `scripts/`           | packaging, the prose gate, release tag and registry rules           |
+| `build/release.env`  | the registries a release names, chosen by the branch it is cut from |
+| `secureagentry-mcp/` | a separate registry-API server with its own build, see its README   |
 
-## Install
+## Licence
 
-The server needs Node 20 or newer, the `agentry` CLI on this machine (from
-https://secureagentry.net/download, or built from
-[agentry-cli](https://github.com/blaktron/agentry-cli)). Sessions use the CLI's pipe protocol on Linux/macOS; Windows uses terminal sessions.
+MIT, see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-**From the download page.** Once the site imports the release
-(agentry-web#250, agentry-web#444; the first release is v0.6.0), https://secureagentry.net/download carries
-`agentry-mcp-<version>.tar.gz`: the built server with its dependencies, one
-file for every platform. Check its SHA-256 against the one on the card, then
-unpack it anywhere; nothing is installed and nothing is fetched afterwards:
+## Documentation
 
-```sh
-tar -xzf agentry-mcp-<version>.tar.gz
-```
-
-The server is `agentry-mcp-<version>/dist/index.js`. A newer version is a new
-tarball: unpack it beside the old one and point your host at the new path.
-
-**From source**, for working on the server itself:
-
-```sh
-git clone https://github.com/blaktron/agentry-mcp
-cd agentry-mcp && npm install && npm run build
-```
-
-The server is then `agentry-mcp/dist/index.js`.
-
-**Claude Code** — one command, then `/mcp` in a Claude Code session lists
-`agentry` and its tools:
-
-```sh
-claude mcp add agentry -- node /path/to/agentry-mcp-<version>/dist/index.js
-```
-
-**Codex** — the same shape; `codex mcp list` shows it afterwards:
-
-```sh
-codex mcp add agentry -- node /path/to/agentry-mcp-<version>/dist/index.js
-```
-
-Either host can pass `AGENTRY_BIN` when the CLI is not on its `PATH`
-(`claude mcp add agentry -e AGENTRY_BIN=/path/to/agentry -- node …`,
-`codex mcp add agentry --env AGENTRY_BIN=/path/to/agentry -- node …`).
-Sign in to a registry once in a terminal (`agentry login`); the server uses
-that login and never sees the token.
-
-The server finds the CLI through `AGENTRY_BIN`, else `agentry` on `PATH`,
-runs `agentry --version` once at start, and refuses to start without a CLI
-at or above `MIN_CLI_VERSION` (`src/cli.ts`) that has `install --plan` and
-`run --plan` (agentry-cli#123 and #124; the floor is v0.6.63 for the current Knowledge, Voice, built-ins and session protocol, and the plan modes are probed directly as
-well). A CLI release reports `0.6.0` and a dev prerelease `0.6.1-dev.2`, whose
-`X.Y.Z` is compared; a build of the CLI from an untagged tree reports a git
-describe rather than a version, which is accepted, and the start-up line says
-the floor was not checked.
-
-## Install the skill
-
-The release includes [SKILL.md](SKILL.md), a reusable installation and usage
-skill. Copy it into your host's `agentry/SKILL.md` skill directory (for example
-`~/.codex/skills/agentry/SKILL.md` or `~/.claude/skills/agentry/SKILL.md`). It covers
-the CLI installer, verified server downloads, registration, consent, runs,
-sessions, Knowledge, Writing Voice and authoring.
-
-## What the server holds
-
-The server has no credential store. The CLI uses its existing login and key
-storage or inherited environment; the policy names the model key variable.
-Tools take key names only and never return their values — `agentry doctor` prints key **names**
-only.
-
-## Honest posture
-
-The registry reports each release as scanned, with a finding count, or as
-unscanned, and as signed or unsigned — never as safe. The tool descriptions and the
-instructions say the same; `npm run prose-check` refuses a never-word in
-any string literal under `src/` or in this README.
-
-## Development
-
-```sh
-npm run check     # typecheck, prettier, prose gate, tests (a fake agentry on stdin/stdout)
-scripts/package.sh 0.0.0-dev "$HOME/scratch/mcp-package"         # the downloadable tarball, as a release builds it
-node scripts/package-smoke.mjs "$HOME/scratch/mcp-package/agentry-mcp-0.0.0-dev.tar.gz"   # unpack it and start it
-```
-
-## Releases
-
-Every build that ships is released under a version (DEV-148, agentry-mcp#48
-and #36). A tag is one of two forms, and the branch line its commit is on
-must agree:
-
-- `vX.Y.Z` on a commit on `main`'s first-parent line (a promotion's merge
-  commit) is a **production release**;
-- `vX.Y.Z-dev.N` (N from 1) on a commit on `dev`'s first-parent line is a
-  **dev prerelease** of the version `main` releases next.
-
-`scripts/release-tag.sh` (the CLI's, copied unchanged, with
-`scripts/release-registry.sh` and `build/release.env`) refuses any other
-form, a form on the wrong line, a release that does not move forward, and any
-1.x unless the operator has set the repository variable `AGENTRY_ALLOW_V1=true`
-(agentry#522), before anything is built. `package.json`'s version and
-`SERVER_VERSION` (`src/server.ts`) stay `X.Y.Z`, and a tag names them; the
-tarball is named for the whole tag: a dev prerelease's server reports its
-`X.Y.Z` (0.6.1 for v0.6.1-dev.3), and the tarball's name and `BUILD-INFO` say
-which prerelease it is. The server bakes no registry (it drives the person's
-CLI, which chooses one); `BUILD-INFO` names the channel.
-
-**Cutting one** (agents may; only the operator moves the minor version or cuts
-1.0.0). Both version strings on `dev` are the version `main` releases next:
-after `main` releases `vX.Y.Z`, a pull request into `dev` bumps both to
-`X.Y.(Z+1)`, and the promotion carries them. At each release, re-sync the
-parked server's vendored API contract against the core's newest release
-(`secureagentry-mcp/scripts/sync-spec.sh <core checkout at the tag>`, then its
-`npm run generate`; decision M1, agentry-mcp#14): CI cannot, since this
-repository holds no token that reads the core. Then:
-
-```bash
-git fetch --tags origin
-tag=$(scripts/release-tag.sh next dev) && git tag "$tag" origin/dev && git push origin "$tag"    # a dev prerelease of dev's head
-tag=$(scripts/release-tag.sh next main) && git tag "$tag" origin/main && git push origin "$tag"  # a production release of main's head
-```
-
-`next` must name the `X.Y.Z` both version strings carry;
-`RELEASE_VERSION=X.Y.0` is the operator's, for the first tag of a minor they
-have chosen (the first cut of all, v0.6.0, is one: `next` alone would name
-0.6.0 anyway, since this repository had no tag). Tag a head only after its
-merge is verified, and watch the `release` run to green.
-
-**The workflow** runs in three jobs. **`package`** checks the tag, runs
-`npm run check`, builds the tarball with `scripts/package.sh` (CI builds it
-twice on every pull request and requires the same digest), starts it
-unpacked, and writes `BUILD-INFO` and `SHA256SUMS`; it holds no secret.
-**`sign`** checks out no code and runs no npm: it takes that bundle, checks
-the sums, and signs them with the estate's update-signing key through the
-desktop's `signrelease -product agentry-mcp` when the `release` environment
-holds its two secrets, `AGENTRY_UPDATE_SIGNING_KEY` (the estate key, the
-desktop's) and `AGENTRY_BUILD_TOKEN` (read access to the private desktop
-module the signer is installed from). Signed where signing exists, unsigned
-where it does not (DEV-148): with neither secret the bundle is passed on
-without `SHA256SUMS.minisig` and the Release says so; with only one the
-release fails; and once the repository variable `AGENTRY_REQUIRE_SIGNING=true`
-is set, a missing one fails it too. `scripts/operator/release-setup.sh` sets up
-the environment and both secrets (agentry-mcp#33) — the key decrypted from
-the operator's backup straight into the secret — and runs a dry run; re-run it
-after a key rotation. **`publish`** makes the GitHub Release with the bundle
-for every tag: a `-dev.N` tag's is a prerelease, a `vX.Y.Z` tag's a full
-release and the latest, notes generated from the commits under a header
-naming the signature; from 1.0.0 on a minor or major release (`vX.Y.0`) is
-left a draft for the operator to approve its notes, and before 1.0.0 nothing
-is held. The site's downloads importer takes the
-bundle (agentry-web#250, agentry-web#444). A `workflow_dispatch` is a dry run
-that publishes no Release.
-
-`secureagentry-mcp/` is the registry-API server this repository shipped
-before 2026-09-12, parked as it was: its own `package.json`, its own
-`npm run check`, its CI job kept. See its README.
+- [Agentry MCP server](https://docs.secureagentry.net/agentry/mcp/)
+- [The `agentry` CLI](https://docs.secureagentry.net/runner/)

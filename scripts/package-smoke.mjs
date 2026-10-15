@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The packaged server, started the way a person starts it (agentry-mcp#32):
+// The packaged server, started the way a person starts it:
 // unpack the tarball into an empty directory, far from this checkout's
 // node_modules, and run its dist/index.js.
 //

@@ -1,5 +1,5 @@
 /**
- * The four read-only tools (M1): each one `agentry <cmd> --json`, the
+ * The four read-only tools: each one `agentry <cmd> --json`, the
  * result the CLI's own JSON in the envelope. Their descriptions are what the
  * host's model reads before calling, so they say what the registry says —
  * scanned, N findings, signed or unsigned — and never more.

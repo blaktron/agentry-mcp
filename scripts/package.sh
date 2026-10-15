@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The downloadable server (agentry-mcp#32): one self-contained tarball,
+# The downloadable server: one self-contained tarball,
 # agentry-mcp-<version>.tar.gz, holding the built server, its production
 # dependencies, the README and the licence under one top-level directory
 # agentry-mcp-<version>/. A person unpacks it anywhere and points their host at

@@ -1,5 +1,5 @@
 /**
- * The result envelope every tool returns (plan D3): the CLI's own JSON
+ * The result envelope every tool returns: the CLI's own JSON
  * passed through, the exit class named, and the stderr tail as `log` — the
  * server parses no prose. An exit class other than ok is an MCP tool error
  * whose text names the class and quotes the CLI's last lines, so the host
@@ -22,7 +22,7 @@ export const EXIT_CLASSES: Record<number, string> = {
   16: "budget",
   17: "outputSchema",
   // The agent could not do its task with what the run had, by its own
-  // end_blocked or the runner's evidence (agentry-cli#629, DR-72).
+  // end_blocked or the runner's evidence.
   18: "blocked",
 };
 

@@ -1,9 +1,9 @@
 /**
- * The seam to the person's `agentry` binary (plan mcp-cli-driver D1): found
- * through AGENTRY_BIN or on PATH, checked once at start, and invoked with an
- * argv assembled from typed arguments — never a shell string. The server
- * never downloads, bundles or updates the CLI: it is the person's, with the
- * person's login, consent memory and runner policy.
+ * The seam to the person's `agentry` binary: found through AGENTRY_BIN or
+ * on PATH, checked once at start, and invoked with an argv assembled from
+ * typed arguments — never a shell string. The server never downloads,
+ * bundles or updates the CLI: it is the person's, with the person's login,
+ * consent memory and runner policy.
  */
 
 import { spawn } from "node:child_process";
@@ -205,17 +205,13 @@ export async function checkCli(
   }
   // A build from an untagged tree carries no version to compare, so the
   // output the writing tools need is probed directly as well:
-  // `install --plan` (agentry-cli#123) and `run --plan` (agentry-cli#124)
-  // are what the consent previews run.
-  for (const [command, issue] of [
-    ["install", "agentry-cli#123"],
-    ["run", "agentry-cli#124"],
-  ] as const) {
+  // `install --plan` and `run --plan` are what the consent previews run.
+  for (const command of ["install", "run"]) {
     const help = await runCli(bin, [command, "--help"], { timeoutMs: 10_000 });
     if (help.spawnError || !/--plan\b/.test(help.stdout + help.stderr)) {
       throw new CliUnavailableError(
-        `${bin} (agentry ${v.raw}) has no \`${command} --plan\`; this server needs the CLI from ` +
-          `${issue} (${floor}) or newer. Update the CLI; the server never updates it for you.`,
+        `${bin} (agentry ${v.raw}) has no \`${command} --plan\`; this server needs the CLI ` +
+          `${floor} or newer. Update the CLI; the server never updates it for you.`,
       );
     }
   }

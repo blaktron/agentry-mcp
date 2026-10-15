@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# The CLI's release tags (agentry-cli#327; DEV-148): what a tag may be, and
-# the next one to cut.
+# This repository's release tags: what a tag may be, and the next one to cut.
 #
 #   scripts/release-tag.sh check <tag> [<commit>]   (the release workflow's preflight)
 #   scripts/release-tag.sh next dev|main            (an agent cutting a release)
@@ -8,10 +7,10 @@
 # The scheme. A main release is vX.Y.Z on a commit on main's first-parent
 # line (production, baking production's registry); a dev release is
 # vX.Y.Z-dev.N, N from 1, on dev's first-parent line (baking dev's). The line
-# is scripts/release-registry.sh's rule (agentry-cli#240, DR-33); a form that
-# disagrees with it, any other form, and any 1.x or later unless
-# AGENTRY_ALLOW_V1 is exactly "true" (the repository variable only the
-# operator's 1.0 step sets, agentry#522) are refused before anything is built.
+# is scripts/release-registry.sh's rule; a form that disagrees with it, any
+# other form, and any 1.x or later unless AGENTRY_ALLOW_V1 is exactly "true"
+# (the repository variable only the operator's 1.0 step sets) are refused
+# before anything is built.
 #
 # check prints, for $GITHUB_OUTPUT:
 #   version=X.Y.Z[-dev.N]   the tag without its v: what the binaries report
@@ -35,7 +34,7 @@
 #   - else the highest X.Y.Z that dev has prereleased above the newest
 #     vX.Y.Z (main releases what dev has been testing);
 #   - else the newest vX.Y.Z with its patch bumped (agents mint patches);
-#   - else 0.6.0, where every component starts (DEV-148).
+#   - else 0.6.0, where every component starts.
 # dev gets vX.Y.Z-dev.<one more than the highest N>, main gets vX.Y.Z. It
 # reads the local tags: `git fetch --tags origin` first.
 set -euo pipefail
@@ -47,7 +46,7 @@ stable_re="^v$n\.$n\.$n\$"
 v1_guard() { # <version>
   local major=${1%%.*}
   if [ "$major" -ge 1 ] && [ "${AGENTRY_ALLOW_V1:-}" != true ]; then
-    die "a v$major release is the operator's (set the repository variable AGENTRY_ALLOW_V1=true, agentry#522)"
+    die "a v$major release is the operator's (set the repository variable AGENTRY_ALLOW_V1=true)"
   fi
 }
 # The newest vX.Y.Z whose commit is on main's first-parent line: a stray
@@ -89,8 +88,8 @@ cmd_check() {
   fi
   if [ "$prerelease" = false ]; then
     latest=true
-    # Before 1.0.0 nothing is held (operator, 2026-09-25): only a minor or
-    # major from 1.0.0 on waits for the operator's notes.
+    # Before 1.0.0 nothing is held: only a minor or major from 1.0.0 on waits
+    # for the operator's notes.
     [ "$patch" = 0 ] && [ "$major" -ge 1 ] && draft=true
   fi
   printf 'version=%s\nchannel=%s\nregistry=%s\nprerelease=%s\nlatest=%s\ndraft=%s\n' \

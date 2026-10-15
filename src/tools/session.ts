@@ -1,5 +1,5 @@
 /**
- * The session tools (M5): start, send, close — an interactive run on a
+ * The session tools: start, send, close — an interactive run on a
  * CLI protocol process the server owns, one at a time.
  */
 
