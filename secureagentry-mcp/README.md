@@ -30,10 +30,10 @@ tools** for everything else.
 | Access          | `agentry_list_grants`, `agentry_set_grant`                                                                                                  |
 | Everything else | `agentry_search_actions`, `agentry_execute_action`                                                                                          |
 
-The catalog behind the last two carries every operation in the Agentry API
-(152 in the vendored contract) — review queues, org policy, SSO and SCIM, webhooks, domain claims,
-advisories, audit exports, platform trust-and-safety — so the long tail is
-reachable without spending 120 tool schemas of context on it. The model
+The catalog behind the last two carries every operation in the vendored
+Agentry API contract — review queues, org policy, SSO and SCIM, webhooks,
+domain claims, advisories, audit exports, platform trust-and-safety — so the
+long tail is reachable without a tool schema per operation in context. The model
 searches by intent, reads one operation's schema, and executes it.
 
 **Publishing has no dedicated tool here.** Versions reach a registry by pushing
@@ -98,7 +98,7 @@ credential came from, whether writes are enabled, and who the account is.
 **Some routes refuse personal access tokens entirely.** Token minting and
 revocation, SSH keys, session management, 2FA and account erasure are
 browser-session routes: the API rejects a PAT there whatever its scopes. This
-server knows which eleven operations those are, extracted from the registry's
+server knows which operations those are, extracted from the registry's
 own authorization table rather than guessed. It refuses them _before_ the
 request goes out, with a message saying to set `AGENTRY_SESSION_COOKIE`. A bare
 403 does not say why, so an agent reading one retries with different scopes
