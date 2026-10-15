@@ -1,6 +1,5 @@
 /**
- * Runs, setup and validate (plan mcp-cli-driver M4, §6). A run is one CLI
- * process the server waits on: `agentry run --mode autonomous
+ * Runs, setup and validate. A run is one CLI process the server waits on: `agentry run --mode autonomous
  * --output-format json`, its stderr forwarded as MCP progress when the host
  * sent a progress token and kept as `log`, its stdout the CLI's result
  * envelope passed through with `receiptsDir`, `resultFile` and `outDir`
@@ -8,10 +7,10 @@
  * invokes `agentry run` exactly as a person would.
  *
  * Consent is the same two calls as install (src/consent.ts). The preview is
- * `run --plan --json` (agentry-cli#124): the compiled plan — exactly what a
+ * `run --plan --json`: the compiled plan — exactly what a
  * run would enforce (the contract, the tools, the gateway, the proxy, the
  * budgets) — with the attestation verdict and every refusal a run would
- * meet (agentry-cli#126), printed without asking or recording anything.
+ * meet, printed without asking or recording anything.
  * The digest is over that whole plan. The consented flags are spelled in
  * consent.ts only; this file hands it the argv to append to, and the
  * preview carries neither.
@@ -132,7 +131,7 @@ export interface RunArgs {
   acceptUnscanned?: boolean;
 }
 
-/** The run plan the CLI prints (agentry-cli#124); the fields consent reads. */
+/** The run plan the CLI prints; the fields consent reads. */
 export interface RunPlan {
   ref: string;
   version: string;
@@ -153,7 +152,7 @@ export interface RunPlan {
   diff?: { widened?: string[]; narrowed?: string[] };
   needsConfirmation: boolean;
   reason?: string;
-  /** Every refusal a run would meet (agentry-cli#126); read through planRefusals. */
+  /** Every refusal a run would meet; read through planRefusals. */
   refusals?: PlanRefusal[];
   /** Deprecated by the CLI: refusals[0].message, read when refusals is absent. */
   refusal?: string;
@@ -281,7 +280,7 @@ export async function runConsent(
   const timeoutSeconds =
     a.timeoutSeconds ?? plan.plan.budgets?.timeoutSeconds ?? DEFAULT_RUN_TIMEOUT_SECONDS;
   // Every refusal the run would meet, shown before the person consents,
-  // not only the first (agentry-mcp#45).
+  // not only the first.
   const refusals = planRefusals(plan, { unsigned, unscanned });
   if (typeof refusals === "string") return text(`${tool}: ${refusals}`, true);
   const attachmentInputs = [];

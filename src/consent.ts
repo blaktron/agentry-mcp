@@ -1,12 +1,11 @@
 /**
- * The two-call consent (plan mcp-cli-driver §5, D4). The CLI asks on a
- * terminal; the server has none and the model is not the person. So every
- * writing tool is two calls: a preview that runs the CLI's plan mode and
- * writes nothing, returning what consent would cover plus `digest`; and a
- * confirm carrying that digest, which recomputes the preview, refuses on
- * any difference, and only then runs the writing command. The digest is
- * the control, not the tool description: a model cannot confirm what the
- * server did not show it.
+ * The two-call consent. The CLI asks on a terminal; the server has none
+ * and the model is not the person. So every writing tool is two calls: a
+ * preview that runs the CLI's plan mode and writes nothing, returning what
+ * consent would cover plus `digest`; and a confirm carrying that digest,
+ * which recomputes the preview, refuses on any difference, and only then
+ * runs the writing command. The digest is the control, not the tool
+ * description: a model cannot confirm what the server did not show it.
  *
  * `--yes`, `--allow-unsigned` and `--allow-unscanned` are spelled in this
  * file and nowhere else (CI greps for them): `--yes` only after a digest
@@ -14,7 +13,7 @@
  * unsigned AND the confirm call said `acceptUnsigned: true`, and
  * `--allow-unscanned` only when the preview said it is unscanned AND the
  * confirm said `acceptUnscanned: true`. Unscanned is its own consent, not a
- * kind of unsigned (DR-27): the registry admitted the release without a
+ * kind of unsigned: the registry admitted the release without a
  * scan, so no findings, report or attestation stand behind it, and
  * `acceptUnsigned` does not lift it.
  */
@@ -67,7 +66,7 @@ export function consentDigest(facts: unknown): string {
   return "sha256:" + createHmac("sha256", sessionKey).update(canonical(facts)).digest("hex");
 }
 
-/** The install plan the CLI prints (agentry-cli#102); the fields consent reads. */
+/** The install plan the CLI prints; the fields consent reads. */
 export interface InstallPlan {
   ref: string;
   version: string;
@@ -200,7 +199,7 @@ export interface Consent {
 }
 
 /**
- * One refusal a plan reports (agentry-cli#126): the gate it comes from,
+ * One refusal a plan reports: the gate it comes from,
  * what it says, and the flag that lifts it — absent when none does.
  */
 export interface PlanRefusal {
@@ -237,8 +236,8 @@ function isRefusal(r: unknown): r is PlanRefusal {
 /**
  * Every refusal a plan reports, in the order a run meets them: the CLI's
  * `refusals` when it prints them, else its one deprecated `refusal`, whose
- * lift is what it always was here — the verdict's own flag for an unsigned
- * or unscanned release, none for anything else. A `refusals` this server
+ * lift is the verdict's own flag for an unsigned or unscanned release and
+ * none for anything else. A `refusals` this server
  * cannot read, or an empty one beside a `refusal`, is never read as "no
  * refusal": the first is an error (a string), the second falls back.
  */

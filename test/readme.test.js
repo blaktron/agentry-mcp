@@ -1,4 +1,4 @@
-// The README's tool tables and the registered tools agree (M6): every
+// The README's tool tables and the registered tools agree: every
 // `agentry_*` row in a README table is a registered tool, every registered
 // tool has a row, and the descriptions name the same CLI command the row
 // says the tool runs.

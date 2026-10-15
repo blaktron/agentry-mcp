@@ -7,13 +7,13 @@
 #   FAKE_ARGV      a file to append the received argv to, one arg per line
 #   FAKE_SLEEP     seconds to hang before answering
 #   FAKE_NO_PLAN   set to make `install --help` omit --plan (an old CLI)
-#   FAKE_NO_RUN_PLAN  set to make `run --help` omit --plan (a CLI between #123 and #124)
+#   FAKE_NO_RUN_PLAN  set to make `run --help` omit --plan (a CLI without run --plan)
 #   FAKE_RUN_ATTEST   the run plan's attestation for a registry ref (default verified; --local is always local)
 #   FAKE_RUN_REFUSAL  the run plan's attestation refusal, in place of the verdict's own (no lift)
 #   FAKE_RUN_LIFT     the lift FAKE_RUN_REFUSAL carries (default none)
 #   FAKE_RUN_VULN     a vulnerable_server refusal the run plan reports after the attestation's (lift --allow-vulnerable-mcp)
 #   FAKE_RUN_VULN_FILE  a file whose content, when it exists, is FAKE_RUN_VULN (so a test can change it between calls)
-#   FAKE_RUN_LEGACY   the run plan prints only the one deprecated `refusal`, as a CLI before agentry-cli#126
+#   FAKE_RUN_LEGACY   the run plan prints only the one deprecated `refusal`, as a CLI without the refusals list
 #   FAKE_RUN_REFUSALS_RAW  the run plan's `refusals` value, verbatim JSON (a malformed CLI)
 #   FAKE_INTAKE_REQUIRED  the run (not the plan) fails on a missing --intake, as the CLI does
 #   FAKE_SESSION_IDLE     seconds an interactive session waits for a turn before ending on idle_timeout
@@ -115,7 +115,7 @@ case "$1" in
         verified) ;;
         *) [ -z "$rrefusal" ] && rrefusal="attestation $ratt — a run refuses" ;;
       esac
-      # refusals[] as agentry-cli#126 prints it; refusal is its first message.
+      # refusals[] as the CLI prints it; refusal is its first message.
       rjson=$(RREF="$rrefusal" RLIFT="$rlift" RVULN="$rvuln" LEGACY="${FAKE_RUN_LEGACY:-}" RAW="${FAKE_RUN_REFUSALS_RAW:-}" python3 -c '
 import json, os
 rs = []
@@ -143,7 +143,7 @@ print(out, end="")')
       [ -n "${FAKE_WRITES:-}" ] && echo ran >> "$FAKE_WRITES"
       echo "narration: verify ok" >&2; echo "narration: gateway up" >&2
       if [ -n "${FAKE_RUN_SLEEP:-}" ]; then
-        # SIGINT: what the real CLI does since agentry-cli#124 — tear down,
+        # SIGINT: what the real CLI does: tear down,
         # write the envelope with error interrupted under class cli.
         trap 'kill $SLEEPER 2>/dev/null; echo "narration: SIGINT: tearing down" >&2; echo "{\"status\":\"error\",\"exitCode\":1,\"exitClass\":\"cli\",\"error\":\"interrupted\",\"outDir\":\"/tmp/out\",\"resultFile\":\"/tmp/out/result.json\",\"receipts\":{\"dir\":\"/tmp/out/receipts\",\"runPlanSha256\":\"abc\"},\"result\":\"\"}"; exit 1' INT
         sleep "$FAKE_RUN_SLEEP" & SLEEPER=$!; wait $SLEEPER

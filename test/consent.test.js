@@ -1,5 +1,5 @@
-// The two-call consent (plan §5, D4) over the fake CLI: a preview writes
-// nothing and returns a digest; a confirm with the right digest runs the
+// The two-call consent over the fake CLI: a preview writes nothing and
+// returns a digest; a confirm with the right digest runs the
 // write with --yes; a stale, wrong or missing digest is refused with a
 // message that says to preview again; --allow-unsigned reaches argv only
 // with unsigned in the preview and acceptUnsigned in the call, and

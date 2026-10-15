@@ -134,8 +134,7 @@ finish() {
 TOTAL_STAGES=6
 
 # ---------------------------------------------------------------------------
-# agentry-mcp: what the signed release needs that only the operator holds
-# (agentry-mcp#33, register DEV-125).
+# agentry-mcp: what the signed release needs that only the operator holds.
 #
 #   1. the `release` environment, admitting only main and v* tags;
 #   2. AGENTRY_UPDATE_SIGNING_KEY, the estate's update-signing key, decrypted
@@ -306,7 +305,7 @@ SUMMARY+=("$TOKEN_SECRET -> $REPO, environment $ENV_NAME")
 pause
 
 stage "Keep signing on"
-say "The release signs where it can and ships unsigned where it cannot (DEV-148):"
+say "The release signs where it can and ships unsigned where it cannot:"
 say "with neither secret a tag is released unsigned, and says so. Now that both"
 say "exist, AGENTRY_REQUIRE_SIGNING=true makes a missing one fail the release, so"
 say "a recreated environment or a deleted secret cannot quietly turn signing off."
@@ -340,7 +339,7 @@ if gh workflow view release -R "$REPO" --ref main >/dev/null 2>&1; then
   [ -n "$RUN_ID" ] || die "the dispatched run did not appear within a minute; find it under Actions › release"
   step "run $RUN_ID: https://github.com/$REPO/actions/runs/$RUN_ID"
   gh run watch "$RUN_ID" -R "$REPO" --exit-status && step "the dry run is green" \
-    || warn "the dry run did not pass; its log says which step, and the agent on #33 can read it"
+    || warn "the dry run did not pass; its log says which step"
   SUMMARY+=("release dry run $RUN_ID")
 else
   warn "release.yaml is not on main yet; run this stage later with:"

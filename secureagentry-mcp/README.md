@@ -1,12 +1,9 @@
-# secureagentry-mcp (parked)
+# secureagentry-mcp
 
-**On hold.** This is the registry-API MCP server the repository shipped until
-2026-09-12, moved here as it was when `agentry-mcp` turned into a server that
-drives the installed `agentry` CLI (the repository root; see
-`agentry-notes/plans/mcp-cli-driver.md`). It still builds and its tests still
-run under its own `npm run check`, its CI job is kept, and it is not published.
-Its `package.json` still says `@blaktron/agentry-mcp`; nothing below was
-rewritten for the move beyond this note.
+A standalone MCP server in the `agentry-mcp` repository, separate from the
+server at the repository root (which drives the installed `agentry` CLI). It
+has its own `package.json`, build and tests, and a CI job of its own. Its
+`package.json` names the package `@blaktron/agentry-mcp`.
 
 An MCP server for **Agentry account and repository automation**. It gives an
 agent the account, organization and agent-repository surface of an Agentry
@@ -34,7 +31,7 @@ tools** for everything else.
 | Everything else | `agentry_search_actions`, `agentry_execute_action`                                                                                          |
 
 The catalog behind the last two carries every operation in the Agentry API
-(152 at core v0.6.10) — review queues, org policy, SSO and SCIM, webhooks, domain claims,
+(152 in the vendored contract) — review queues, org policy, SSO and SCIM, webhooks, domain claims,
 advisories, audit exports, platform trust-and-safety — so the long tail is
 reachable without spending 120 tool schemas of context on it. The model
 searches by intent, reads one operation's schema, and executes it.
@@ -50,8 +47,8 @@ reach that operation, so the server's instructions tell the model not to.
 Requires Node 20 or newer.
 
 ```bash
-git clone https://github.com/blaktron/agentry-mcp && cd agentry-mcp
-npm install
+git clone https://github.com/blaktron/agentry-mcp && cd agentry-mcp/secureagentry-mcp
+npm ci
 npm run build
 ```
 
@@ -59,7 +56,7 @@ Register it with Claude Code:
 
 ```bash
 claude mcp add agentry --env AGENTRY_REGISTRY=https://registry.example.test \
-  -- node /path/to/agentry-mcp/dist/index.js
+  -- node /path/to/agentry-mcp/secureagentry-mcp/dist/index.js
 ```
 
 Or, in any MCP host's config:
@@ -69,7 +66,7 @@ Or, in any MCP host's config:
   "mcpServers": {
     "agentry": {
       "command": "node",
-      "args": ["/path/to/agentry-mcp/dist/index.js"],
+      "args": ["/path/to/agentry-mcp/secureagentry-mcp/dist/index.js"],
       "env": { "AGENTRY_REGISTRY": "https://registry.example.test" }
     }
   }

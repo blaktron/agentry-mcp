@@ -1,4 +1,4 @@
-// Interactive sessions over the pty the server owns (plan §6, M5, D6):
+// Interactive sessions over the pty the server owns:
 // the start is the run's consent in interactive mode and carries no
 // consent flag on the preview; a two-turn conversation with the reply from
 // the events receipt; the per-turn timeout leaves the session open; a

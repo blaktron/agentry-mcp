@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-// The prose gate (plan mcp-cli-driver §3, the honest-posture invariant):
-// no never-word of scripts/prose/never.txt appears in a string literal of
-// src/**/*.ts or in the README outside an allowlisted phrase. Tool
-// descriptions and the instructions block are what a host's model reads
+// The prose gate: no never-word of scripts/prose/never.txt appears in a
+// string literal of src/**/*.ts or in the README outside an allowlisted
+// phrase. Tool descriptions and the instructions block are what a host's model reads
 // before it acts, so this is where "safe" would do the most damage.
 //
 //   node scripts/prose-check.mjs              run the gate

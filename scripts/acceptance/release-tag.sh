@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Acceptance for agentry-cli#327: a release tag's form must agree with the
+# Acceptance for scripts/release-tag.sh: a release tag's form must agree with the
 # branch line its commit is on, 1.x waits for the operator, and the next tag
-# an agent cuts follows the scheme (DEV-148).
+# an agent cuts follows the scheme.
 #
 #   scripts/acceptance/release-tag.sh
 #
-# Builds a throwaway origin with the estate's branch model (as
+# Builds a throwaway origin with the project's branch model (as
 # release-registry.sh's acceptance does), clones it as actions/checkout does,
 # and asks scripts/release-tag.sh about each tag form on each line, then
 # about the next tag as releases accumulate. Needs git; no network, no go.
@@ -86,7 +86,7 @@ expect "1.0.0 waits for the operator's notes (draft)" true field draft <<<"$out"
 
 # The next tag an agent cuts.
 next() { scripts/release-tag.sh next "$@"; }
-expect "no release yet: main's first is v0.6.0 (DEV-148)" v0.6.0 next main
+expect "no release yet: main's first is v0.6.0" v0.6.0 next main
 expect "no release yet: dev's first is v0.6.0-dev.1" v0.6.0-dev.1 next dev
 g tag v0.6.0 "$p1"
 expect "after v0.6.0, dev's next is v0.6.1-dev.1" v0.6.1-dev.1 next dev

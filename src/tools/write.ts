@@ -1,5 +1,5 @@
 /**
- * The writing tools (M3): install and uninstall behind the two-call consent
+ * The writing tools: install and uninstall behind the two-call consent
  * of src/consent.ts, and the install list. The descriptions tell the model,
  * in the imperative, to show the person the contract before confirming;
  * the digest, not the description, is what stops a confirm the person did
