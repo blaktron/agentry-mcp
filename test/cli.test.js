@@ -49,9 +49,8 @@ test("checkCli: a release at or above the floor passes, an older one is refused 
   } finally {
     delete process.env.FAKE_VERSION;
   }
-  // The shipped floor is the CLI's first tagged release (agentry-cli#327);
-  // the comparison is proven against an injected floor above the fake's
-  // version.
+  // The shipped floor is the CLI's first tagged release; the
+  // comparison is proven against an injected floor above the fake's version.
   assert.equal(MIN_CLI_VERSION, "0.6.63");
   process.env.FAKE_VERSION = "0.4.0";
   try {
@@ -85,7 +84,7 @@ test("checkCli: a CLI without install --plan or run --plan is refused naming wha
   try {
     await assert.rejects(
       checkCli(FAKE),
-      /has no `install --plan`; this server needs the CLI from agentry-cli#123/,
+      /has no `install --plan`; this server needs the CLI 0\.6\.63 or newer/,
     );
   } finally {
     delete process.env.FAKE_NO_PLAN;
@@ -94,7 +93,7 @@ test("checkCli: a CLI without install --plan or run --plan is refused naming wha
   try {
     await assert.rejects(
       checkCli(FAKE),
-      /has no `run --plan`; this server needs the CLI from agentry-cli#124/,
+      /has no `run --plan`; this server needs the CLI 0\.6\.63 or newer/,
     );
   } finally {
     delete process.env.FAKE_NO_RUN_PLAN;

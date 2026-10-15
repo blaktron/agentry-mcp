@@ -17,8 +17,8 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# The parked server sits one level down since 2026-09-12 (DEV-100), so the
-# core checkout is two levels up from here; pass a path to use another.
+# The registry-API server sits one level down in this repository, so the core
+# checkout is two levels up from here; pass a path to use another.
 src="${1:-$here/../../agentry}"
 
 [ -f "$src/schemas/openapi.yaml" ] || { echo "no openapi.yaml under $src" >&2; exit 1; }

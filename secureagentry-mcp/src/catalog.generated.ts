@@ -52,7 +52,7 @@ export const API_VERSION = "0.3.0";
 export const API_BASE_PATH = "/api/v1";
 
 /** sha256 of spec/openapi.yaml, so a drifted catalog is detectable. */
-export const SPEC_SHA256 = "4190d5331a6667645379ada84547ad92fee28b8a09981f0c4b63a24da59c4627";
+export const SPEC_SHA256 = "b84ede0adeb7fa85c2cfa7e90c6ab65a314113b76d90eb1e4164944737554a27";
 
 export const ACTIONS: readonly Action[] = [
   {
@@ -91,6 +91,7 @@ export const ACTIONS: readonly Action[] = [
       "users"
     ],
     "summary": "Register an SSH public key for ssh://git@…/{ns}/{name}.git (session-only).",
+    "description": "Refused with `403 feature-not-included` where the caller's subscription does not include adding SSH keys; a self-hosted registry includes it. Keys already held keep working and can be listed and removed on every subscription.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -211,7 +212,7 @@ export const ACTIONS: readonly Action[] = [
           "role": {
             "title": "OrgRoleAssignment",
             "type": "string",
-            "description": "The role a PUT assigns. security_reviewer is refused outside a first-party organization, and owner — retired by agentry#360, kept here so an older client's request still parses — is refused with a 422 that names the roles that exist.\n",
+            "description": "The role a PUT assigns. security_reviewer is refused outside a first-party organization. `owner` is accepted by the schema but refused with a 422 that names the roles that exist.\n",
             "enum": [
               "admin",
               "member",
@@ -230,6 +231,73 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "checkDraft",
+    "method": "POST",
+    "path": "/model-input/check",
+    "tags": [
+      "model-input"
+    ],
+    "summary": "AI Review of a finished draft before it is submitted.",
+    "description": "Reads a finished QuickAgent draft's rendered package the two ways AI Review will: with the release rubric that stage S5 of the pipeline asks at publish (the manifest as its canonical JSON and every text file, in the same chunks, state and request shape, under the same rubric hash), so the person knows before Submit what AI Review will flag; and with the draft question set, which asks whether the draft's instruction does the task its description asks for. A rubric question at 2 or more (the gate's medium) is a finding and `flagged`; so is a draft question at 2 or more. A half the judge could not answer for is `not_scanned`. This is not the publication scan: a submitted version is scanned in full whatever this said. Nothing of the package is kept or logged. `usage` is for the record, never a price (AI Review is 1 credit for a whole draft). Callers as for `POST /model-input/scan`. 422 `draft-unreadable` for a package with no `agent.yaml`, one that does not parse, or no instruction file; 413 `draft-too-large` past 32 files or 65,536 bytes of text; 503 `model-input-unavailable` when the deployment's judge is not TypeSafe's Jev.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "DraftCheckRequest",
+        "type": "object",
+        "required": [
+          "description",
+          "files"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string",
+            "maxLength": 8192,
+            "description": "The person's description the draft was made from, as the Drafter read it. It is asked about as data, beside the draft."
+          },
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "description": "Every text file of the rendered package, `agent.yaml` and the instruction file among them; at most 65,536 bytes in all.",
+            "items": {
+              "title": "DraftCheckFile",
+              "type": "object",
+              "required": [
+                "path",
+                "content"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512,
+                  "description": "The file's path in the package, relative and clean."
+                },
+                "content": {
+                  "type": "string",
+                  "description": "The file's text, UTF-8."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The rubric's verdict and the draft set's."
+      }
+    ]
+  },
+  {
     "id": "clearCurrentUserData",
     "method": "POST",
     "path": "/user/clear-data",
@@ -237,7 +305,7 @@ export const ACTIONS: readonly Action[] = [
       "users"
     ],
     "summary": "Clear the caller's credentials, installs and settings, and keep the account (session only).",
-    "description": "Revokes every personal access token and SSH key, deletes every remembered browser (the ones that skip the second factor), consumes every pending desktop sign-in code, ends every session but the caller's, removes every account install, and resets the display name and the notification settings to their defaults (every switch on; mail still goes only to a verified address). The account itself stays: the handle, the email, the sign-in account at the directory, organization memberships, BriefAgents with their versions and repositories, stars, the subscription and credits are untouched. Audited as `user.data_clear` with the count of each class; after the commit an extension event `user.data_cleared` carries the user id, so an extension clears what it holds for the account (hosted run history). Session only: a token is refused, and so is a request without the session's CSRF token.",
+    "description": "Revokes every personal access token and SSH key, deletes every remembered browser (the ones that skip the second factor), consumes every pending desktop sign-in code, ends every session but the caller's, removes every account install, and resets the display name and the notification settings to their defaults (every switch on; mail still goes only to a verified address). The account itself stays: the handle, the email, the sign-in account at the directory, organization memberships, QuickAgents with their versions and repositories, stars, the subscription and credits are untouched. Audited as `user.data_clear` with the count of each class; after the commit an extension event `user.data_cleared` carries the user id, so an extension clears what it holds for the account (hosted run history). Session only: a token is refused, and so is a request without the session's CSRF token.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -256,7 +324,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "users"
     ],
-    "summary": "Clear every remembered browser of the caller's account (agentry#672).",
+    "summary": "Clear every remembered browser of the caller's account.",
     "description": "Revokes all of the caller's remembered browsers, this one included: each is asked for the second factor at its next sign-in. Sessions and authenticators are untouched. The response clears this browser's remembered-browser cookie, since its record is gone. Session-only: a PAT is refused (403), as on the session-revoking routes.",
     "public": false,
     "sessionOnly": true,
@@ -276,8 +344,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "users"
     ],
-    "summary": "How many browsers skip the caller's second factor (agentry#672).",
-    "description": "The number of the caller's live remembered browsers: browsers where \"Remember this device for 30 days\" was ticked and whose record has not expired or been revoked. There is no list: the account's control is one button that clears them all (DEV-163). A PAT-authenticated caller gets 0, as it gets an empty session list: a token is not a way to take an inventory of someone's browsers.",
+    "summary": "How many browsers skip the caller's second factor.",
+    "description": "The number of the caller's live remembered browsers: browsers where \"Remember this device for 30 days\" was ticked and whose record has not expired or been revoked. There is no list: the account's control is one button that clears them all. A PAT-authenticated caller gets 0, as it gets an empty session list: a token is not a way to take an inventory of someone's browsers.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -296,7 +364,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "agents"
     ],
-    "summary": "Create an agent and its hosted git repository (§9.2).",
+    "summary": "Create an agent and its hosted git repository.",
     "description": "A private agent counts against the namespace's private-agent cap when the deployment's entitlements set one (the hosted product's subscription tiers): at the cap the answer is `422` with the problem type `private-agent-cap`, and the same on `PATCH` when an agent is turned private. A core registry caps nothing. A cap never deletes or hides an agent that is already private.",
     "public": false,
     "sessionOnly": false,
@@ -332,7 +400,7 @@ export const ACTIONS: readonly Action[] = [
             "items": {
               "title": "AgentMode",
               "type": "string",
-              "description": "A run mode a release supports (DEV-088). `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop. A release declares one or both.\n",
+              "description": "A run mode a release supports. `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop. A release declares one or both.\n",
               "enum": [
                 "autonomous",
                 "interactive"
@@ -372,7 +440,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "audit"
     ],
-    "summary": "Start an async NDJSON audit export (admin+, §12.6).",
+    "summary": "Start an async NDJSON audit export (admin+).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -415,7 +483,7 @@ export const ACTIONS: readonly Action[] = [
       "users"
     ],
     "summary": "Record a one-time grant for the desktop app's browser sign-in.",
-    "description": "Session-only. The server's own `/ui/authorize` page (DR-17) calls this after the user consents; the response is a short-lived, single-use `code` bound to the app's `state` nonce. No token is minted here — the desktop app exchanges the code at `POST /auth/desktop/exchange` from its own process, so the PAT never travels in a URL (DEV-058 hardening, agentry#19). The grant's scopes are fixed to the desktop set (agent:read, agent:publish, repo:read, repo:write, user:profile, run:read, run:write).",
+    "description": "Session-only. The server's own `/ui/authorize` page calls this after the user consents; the response is a short-lived, single-use `code` bound to the app's `state` nonce. No token is minted here — the desktop app exchanges the code at `POST /auth/desktop/exchange` from its own process, so the PAT never travels in a URL. The grant's scopes are fixed to the desktop set (agent:read, agent:publish, repo:read, repo:write, user:profile, run:read, run:write).",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -452,7 +520,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "domains"
     ],
-    "summary": "Start a domain claim; returns the DNS TXT challenge (admin+, §12.4).",
+    "summary": "Start a domain claim; returns the DNS TXT challenge (admin+).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -527,7 +595,7 @@ export const ACTIONS: readonly Action[] = [
           "role": {
             "title": "OrgRoleAssignment",
             "type": "string",
-            "description": "The role a PUT assigns. security_reviewer is refused outside a first-party organization, and owner — retired by agentry#360, kept here so an older client's request still parses — is refused with a 422 that names the roles that exist.\n",
+            "description": "The role a PUT assigns. security_reviewer is refused outside a first-party organization. `owner` is accepted by the schema but refused with a 422 that names the roles that exist.\n",
             "enum": [
               "admin",
               "member",
@@ -730,8 +798,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "platform"
     ],
-    "summary": "Register a ruleset release (platform staff, §9.2).",
-    "description": "Records the versioned scanner bundle a deployment is running, so scan runs can name it. Omitting the body registers the server's own embedded bundle (§8.3). Honours `Idempotency-Key`; re-registering the same semver returns the existing row.",
+    "summary": "Register a ruleset release (platform staff).",
+    "description": "Records the versioned scanner bundle a deployment is running, so scan runs can name it. Omitting the body registers the server's own embedded bundle. Honours `Idempotency-Key`; re-registering the same semver returns the existing row.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -775,7 +843,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "scim"
     ],
-    "summary": "Mint a SCIM bearer token (admin, §12.5).",
+    "summary": "Mint a SCIM bearer token (admin).",
     "description": "403 `feature-not-included` while the organization's subscription does not include directory provisioning. Tokens already issued are left alone by a subscription change and provision again the moment it includes SCIM.",
     "public": false,
     "sessionOnly": false,
@@ -864,7 +932,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "users"
     ],
-    "summary": "Mint a PAT. The secret is returned exactly once (D-22).",
+    "summary": "Mint a PAT. The secret is returned exactly once.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -890,12 +958,13 @@ export const ACTIONS: readonly Action[] = [
             "items": {
               "title": "Scope",
               "type": "string",
-              "description": "PAT scopes (§12.3). A token can do only what its scopes allow; a\nsession acts with the account's full authority. `run:write` lets a\ntoken start, feed and cancel a hosted run of a BriefAgent and\n`run:read` lets it read a run, its log and its artefacts — both are\nconsumed only by a registry that mounts the runs extension, and\nunlock nothing on one that does not. `knowledge:read` and\n`knowledge:write` read and write the account's knowledge packs.\n`secret:write` sets and deletes the account's hosted-run secrets and\nnever lists or reads one; it is consumed only by a registry that\nmounts the vault extension.\n",
+              "description": "PAT scopes. A token can do only what its scopes allow; a\nsession acts with the account's full authority. `run:write` lets a\ntoken start, feed and cancel a hosted run of a QuickAgent and\n`run:read` lets it read a run, its log and its artefacts — both are\nconsumed only by a registry that mounts the runs extension, and\nunlock nothing on one that does not. `agent:manage` takes the owner\nactions on a QuickAgent the caller administers (make it public or\nprivate, retire, restore, delete), which `org:admin`\nalso covers, and reaches none of its other settings. `knowledge:read` and\n`knowledge:write` read and write the account's knowledge packs.\n`secret:write` sets and deletes the account's hosted-run secrets and\nnever lists or reads one; it is consumed only by a registry that\nmounts the vault extension. `voice:read` reads the account's Writing\nVoice and `voice:write` puts, restores, sets and deletes it.\n",
               "enum": [
                 "repo:read",
                 "repo:write",
                 "agent:publish",
                 "agent:read",
+                "agent:manage",
                 "org:admin",
                 "review:act",
                 "audit:read",
@@ -904,18 +973,20 @@ export const ACTIONS: readonly Action[] = [
                 "run:write",
                 "knowledge:read",
                 "knowledge:write",
-                "secret:write"
+                "secret:write",
+                "voice:read",
+                "voice:write"
               ]
             }
           },
           "expiresAt": {
             "type": "string",
             "format": "date-time",
-            "description": "Defaults to the max PAT lifetime (§12.3); a later value is refused with 422, not clamped."
+            "description": "Defaults to the max PAT lifetime; a later value is refused with 422, not clamped."
           },
           "orgHandle": {
             "type": "string",
-            "description": "Bind the token to this org (§12.4). Requires the current session to be SSO-fresh for the org; org-bound tokens live at most 90 days (a later expiresAt is refused with 422) and are the only tokens accepted against an enforced-SSO org's resources.\n"
+            "description": "Bind the token to this org. Requires the current session to be SSO-fresh for the org; org-bound tokens live at most 90 days (a later expiresAt is refused with 422) and are the only tokens accepted against an enforced-SSO org's resources.\n"
           }
         }
       }
@@ -934,7 +1005,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "webhooks"
     ],
-    "summary": "Create a webhook endpoint (admin+, §9.3).",
+    "summary": "Create a webhook endpoint (admin+).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -962,7 +1033,7 @@ export const ACTIONS: readonly Action[] = [
         "properties": {
           "url": {
             "type": "string",
-            "description": "HTTPS endpoint (§9.3 requires https)."
+            "description": "HTTPS endpoint (https is required)."
           },
           "events": {
             "type": "array",
@@ -987,7 +1058,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "reviews"
     ],
-    "summary": "Approve or reject a version under review (not its author, §12.2).",
+    "summary": "Approve or reject a version under review (not its author, unless platform staff).",
+    "description": "An author cannot decide their own version (403), whatever their organization role. Platform staff may decide any item, their own versions included; the decision's audit event then carries `self_decision: true`.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -1131,8 +1203,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "installs"
     ],
-    "summary": "Remove the caller's record for a BriefAgent (idempotent).",
-    "description": "204 whether or not a record existed, and whether or not the name resolves: the row is the caller's own, so no BriefAgent is read and nothing is learned about one — a record whose BriefAgent the caller can no longer read is removed by the ref the list shows for it. Audited as `agent.uninstall` when a record went. A PAT needs `user:profile`.",
+    "summary": "Remove the caller's record for a QuickAgent (idempotent).",
+    "description": "204 whether or not a record existed, and whether or not the name resolves: the row is the caller's own, so no QuickAgent is read and nothing is learned about one — a record whose QuickAgent the caller can no longer read is removed by the ref the list shows for it. Audited as `agent.uninstall` when a record went. A PAT needs `user:profile`.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -1170,8 +1242,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "agents"
     ],
-    "summary": "Delete an agent that was never published (maintain, §9.2).",
-    "description": "Deletes the agent and its hosted repository. Refused (409) once the agent has any version row, because §4.3 forbids deleting version rows: a version past `submitted` is history consumers may depend on, and a version still at `submitted` is mid-pipeline. Published agents are yanked or blocked, never deleted.",
+    "summary": "Delete an agent (the namespace's administrators).",
+    "description": "A token needs `agent:manage` or `org:admin`. An agent with no version row is deleted outright, with its hosted repository. An agent with version history is deleted as a tombstone: every published or quarantined version is yanked, the agent becomes private, and every route by name, the git transport and hosted runs answer the 404 a missing name gets, to everyone. Nothing is removed — version rows are kept forever, and the archives, receipts and audit trail stay — and the name stays held in its namespace: creating it again answers `409 name-held`. It cannot be undone. A tombstone needs `confirm` set to the agent's name (`422 confirm-name` otherwise). Refused with `409` while a version is still in the pipeline or in review, and while the agent carries trust & safety records (advisories, abuse reports, a quarantine or a block), which outlive the publisher's wish to remove it.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -1193,6 +1265,15 @@ export const ACTIONS: readonly Action[] = [
           "type": "string",
           "pattern": "^[a-z0-9](?:[a-z0-9-]{0,63}[a-z0-9])?$"
         }
+      },
+      {
+        "name": "confirm",
+        "in": "query",
+        "required": false,
+        "description": "The agent's name, required to delete an agent with version history.",
+        "schema": {
+          "type": "string"
+        }
       }
     ],
     "responses": [
@@ -1202,7 +1283,11 @@ export const ACTIONS: readonly Action[] = [
       },
       {
         "code": "409",
-        "description": "The agent has versions, advisories, or abuse reports."
+        "description": "A version is in flight, or the agent carries trust & safety records."
+      },
+      {
+        "code": "422",
+        "description": "`confirm-name`: an agent with version history, and `confirm` is missing or not its name."
       }
     ]
   },
@@ -1213,8 +1298,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "users"
     ],
-    "summary": "Erase the caller's account (GDPR flow, §12.7).",
-    "description": "Purges personal data and pseudonymizes the account. Published public versions are never deleted (§12.7): they are either yanked, so already-installed copies keep verifying, or the personal-namespace agents are transferred to an organization the caller administers. When the account has published public versions the choice is explicit: omitting `publishedContent` is a 400, never a silent yank. When the deployment holds credentials in a directory service and is configured to reach it (`AGENTRY_IDP_ADMIN_URL`), the sign-in account there is deleted in the same step; the outcome is audited as `user.directory_erase` and returned in the `X-Agentry-Directory-Erasure` header. A failed directory attempt does not undo the registry's erasure: it is retried by a job with backoff (each attempt audited) and the response says `pending`; a retry budget that runs out is audited as `abandoned` and raised to the operator. An account that is an organization's last admin is refused (409 last-admin) until another admin is in place; a transfer that would put the organization over its private-agent cap is refused (422 private-agent-cap) with nothing erased. The erased account's memberships go with it.",
+    "summary": "Erase the caller's account (GDPR flow).",
+    "description": "Purges personal data and pseudonymizes the account. Published public versions are never deleted: they are either yanked, so already-installed copies keep verifying, or the personal-namespace agents are transferred to an organization the caller administers. When the account has published public versions the choice is explicit: omitting `publishedContent` is a 400, never a silent yank. When the deployment holds credentials in a directory service and is configured to reach it (`AGENTRY_IDP_ADMIN_URL`), the sign-in account there is deleted in the same step; the outcome is audited as `user.directory_erase` and returned in the `X-Agentry-Directory-Erasure` header. A failed directory attempt does not undo the registry's erasure: it is retried by a job with backoff (each attempt audited) and the response says `pending`; a retry budget that runs out is audited as `abandoned` and raised to the operator. An account that is an organization's last admin is refused (409 last-admin) until another admin is in place; a transfer that would put the organization over its private-agent cap is refused (422 private-agent-cap) with nothing erased. The erased account's memberships go with it.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -1354,7 +1439,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "sso"
     ],
-    "summary": "Delete a connection (admin, §12.4).",
+    "summary": "Delete a connection (admin).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -1433,7 +1518,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "users"
     ],
-    "summary": "Remove one of the caller's own authenticators from the directory service (agentry#164).",
+    "summary": "Remove one of the caller's own authenticators from the directory service.",
     "description": "With auth.externalOnly and directory admin access, removes the caller's authenticator of this kind and id through the directory's admin API, so the settings page manages MFA without ever showing the directory's own panel. The authenticator must be on the caller's own account: an id that is somebody else's answers 404 exactly like a missing one. 404 when the server has no directory admin access; 502 when the directory did not answer.",
     "public": false,
     "sessionOnly": false,
@@ -1472,13 +1557,52 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "deleteUserReportLogo",
+    "method": "DELETE",
+    "path": "/user/report-settings/logo",
+    "tags": [
+      "users"
+    ],
+    "summary": "Remove the logo from the caller's report design.",
+    "description": "The design stays. Removing a logo that is not there is not an error.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The settings, now without a logo."
+      }
+    ]
+  },
+  {
+    "id": "deleteVoice",
+    "method": "DELETE",
+    "path": "/voice",
+    "tags": [
+      "voice"
+    ],
+    "summary": "Delete the caller's voice, every version of it and its data key.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "204",
+        "description": "Deleted."
+      }
+    ]
+  },
+  {
     "id": "deleteWebhook",
     "method": "DELETE",
     "path": "/orgs/{org}/webhooks/{id}",
     "tags": [
       "webhooks"
     ],
-    "summary": "Delete a webhook endpoint (admin+, §9.3).",
+    "summary": "Delete a webhook endpoint (admin+).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -1506,6 +1630,29 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "204",
         "description": "Deleted."
+      }
+    ]
+  },
+  {
+    "id": "discardVoicePending",
+    "method": "DELETE",
+    "path": "/voice/pending",
+    "tags": [
+      "voice"
+    ],
+    "summary": "Drop the caller's pending version, in review or flagged.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The voice without a pending version."
+      },
+      {
+        "code": "404",
+        "description": "There is no pending version (`voice-not-found`)."
       }
     ]
   },
@@ -1583,7 +1730,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "versions"
     ],
-    "summary": "Download the release archive (§9.4; counts an install).",
+    "summary": "Download the release archive (counts an install).",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -1627,7 +1774,7 @@ export const ACTIONS: readonly Action[] = [
       },
       {
         "code": "410",
-        "description": "Version blocked by trust & safety (§7)."
+        "description": "Version blocked by trust & safety."
       }
     ]
   },
@@ -1639,7 +1786,7 @@ export const ACTIONS: readonly Action[] = [
       "auth"
     ],
     "summary": "Exchange a desktop sign-in code for the PAT it granted.",
-    "description": "Unauthenticated; the code is the credential. Single use, bound to the `state` nonce the desktop app generated, and valid for 60 seconds from the grant. The PAT is minted at this moment and returned exactly once, like `createToken`. Rate-limited with the login class (§19).",
+    "description": "Unauthenticated; the code is the credential. Single use, bound to the `state` nonce the desktop app generated, and valid for 60 seconds from the grant. The PAT is minted at this moment and returned exactly once, like `createToken`. Rate-limited with the login class.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -1742,6 +1889,73 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "forkAgent",
+    "method": "POST",
+    "path": "/agents/{ns}/{name}/fork",
+    "tags": [
+      "agents"
+    ],
+    "summary": "Fork a public agent into a namespace the caller may create in.",
+    "description": "Makes a private copy of a public agent: a new agent in `namespace`, under the origin's name unless `name` gives another, that records the origin and the published version it was taken from, for good. A fork is never public (`PATCH` to public answers `409 fork-stays-private`). The fork is answered `202` with `forkState: copying`: a worker then copies the origin's repository (every branch and tag, objects copied rather than shared), writes one commit, \"Fork of ns/name@version\", that renames the manifest into the fork's namespace, tags it with the origin's version and submits it through the pipeline like any submission, charged like one. `forkState` is then `ready`, or `failed` with `forkDetail` saying why. The origin must be readable, public, neither quarantined nor blocked, and have a published version; the caller must be able to create a private agent in `namespace` (its owner, or an active member of the organization), within its agent quota and private-agent cap. A name the namespace already has answers `409 name-taken`; one a deleted agent holds, `409 name-held`.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "ns",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
+      {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,63}[a-z0-9])?$"
+        }
+      }
+    ],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "type": "object",
+        "required": [
+          "namespace"
+        ],
+        "properties": {
+          "namespace": {
+            "type": "string",
+            "description": "The namespace the fork goes into."
+          },
+          "name": {
+            "type": "string",
+            "description": "The fork's name; the origin's when absent."
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "202",
+        "description": "The fork, its copy under way."
+      },
+      {
+        "code": "409",
+        "description": "`name-taken`, `name-held`, `fork-source` (the origin is not public, or is quarantined or blocked) or `nothing-to-fork` (it has no published version)."
+      },
+      {
+        "code": "422",
+        "description": "`private-agent-cap`, or a name that is not one."
+      }
+    ]
+  },
+  {
     "id": "getAdvisory",
     "method": "GET",
     "path": "/advisories/{advisoryId}",
@@ -1749,6 +1963,7 @@ export const ACTIONS: readonly Action[] = [
       "platform"
     ],
     "summary": "One published advisory (permalink); public agents only.",
+    "description": "Only an advisory against a public agent resolves; any other id is a 404, so a private agent's advisory is not discoverable by id. A holder of the agent's release reads it through `affecting`.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -1778,7 +1993,7 @@ export const ACTIONS: readonly Action[] = [
       "agents"
     ],
     "summary": "Agent metadata (public agents readable by anyone).",
-    "description": "A public agent is readable by anyone. A private agent is readable by its owner, the owning org's admins, and anyone holding a grant on it; every other caller, anonymous included, gets the 404 a missing name gets — never a 401 or 403 that would confirm the name exists. The same rule holds on every route under `/agents/{ns}/{name}` (agentry#313).",
+    "description": "A public agent is readable by anyone. A private agent is readable by its owner, the owning org's admins, and anyone holding a grant on it; every other caller, anonymous included, gets the 404 a missing name gets — never a 401 or 403 that would confirm the name exists. The same rule holds on every route under `/agents/{ns}/{name}`.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -1816,7 +2031,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "agents"
     ],
-    "summary": "The agent README rendered to sanitized HTML (§10.3, D-11).",
+    "summary": "The agent README rendered to sanitized HTML.",
     "description": "Markdown is rendered server-side through a strict allowlist: no raw HTML, no user styles, no SVG, external links rewritten, and invisible or bidi Unicode replaced with visible placeholders.",
     "public": true,
     "sessionOnly": false,
@@ -1864,7 +2079,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "stars"
     ],
-    "summary": "Star count and install counts for an agent (§9.2).",
+    "summary": "Star count and install counts for an agent.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -1902,7 +2117,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "audit"
     ],
-    "summary": "Poll an audit export's status and download reference (admin+, §12.6).",
+    "summary": "Poll an audit export's status and download reference (admin+).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -2055,7 +2270,7 @@ export const ACTIONS: readonly Action[] = [
       "platform"
     ],
     "summary": "DSSE attestation over the bundle `…/latest/bundle` serves.",
-    "description": "An in-toto statement (predicate `https://agentry.dev/attestation/ruleset/v1`) whose subject digest is the bundle's content digest, signed with the registry's release-signing key (`/.well-known/agentry/signing-keys.json`). Lets `agentry validate --rules-update` verify a fetched bundle by signature rather than only by the digest the same server advertised (agentry#25). The worker signs it at start and stores it, so every replica serves the same envelope (agentry#479). 404 when the registry does not sign (`signing.kind: none`), or when no process holding the signing key has started with this bundle yet (a rolling deploy).",
+    "description": "An in-toto statement (predicate `https://agentry.dev/attestation/ruleset/v1`) whose subject digest is the bundle's content digest, signed with the registry's release-signing key (`/.well-known/agentry/signing-keys.json`). Lets `agentry validate --rules-update` verify a fetched bundle by signature rather than only by the digest the same server advertised. The worker signs it at start and stores it, so every replica serves the same envelope. 404 when the registry does not sign (`signing.kind: none`), or when no process holding the signing key has started with this bundle yet (a rolling deploy).",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2075,7 +2290,7 @@ export const ACTIONS: readonly Action[] = [
       "meta"
     ],
     "summary": "The newest published S3/S4 rule bundle, for `agentry validate --rules-update`.",
-    "description": "Returns the deployment's rule bundle as an uncompressed tar of the bundle directory (`bundle.yaml` plus the family YAML files), exactly the bytes `pkg/rules.LoadBundle` reads. The advertised identity travels in headers so a client can check what it got without unpacking first: `X-Agentry-Bundle-Semver`: the ruleset release semver; `X-Agentry-Bundle-Digest`: the `sha256:<hex>` content digest recorded on the `ruleset_releases` row; `ETag`: the same digest. The digest is the pin: a client MUST recompute it over the received bundle and refuse a mismatch. Bundle-level *signatures* do not exist yet (see DEVIATIONS DEV-024); this endpoint pins by digest only.",
+    "description": "Returns the deployment's rule bundle as an uncompressed tar of the bundle directory (`bundle.yaml` plus the family YAML files), exactly the bytes `pkg/rules.LoadBundle` reads. The advertised identity travels in headers so a client can check what it got without unpacking first: `X-Agentry-Bundle-Semver`: the ruleset release semver; `X-Agentry-Bundle-Digest`: the `sha256:<hex>` content digest recorded on the `ruleset_releases` row; `ETag`: the same digest. The digest is the pin: a client MUST recompute it over the received bundle and refuse a mismatch. Bundle-level *signatures* do not exist yet; this endpoint pins by digest only.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2094,8 +2309,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "mcp-servers"
     ],
-    "summary": "The registry's last vulnerability check of one MCP server package version (agentry#177).",
-    "description": "What S7 recorded for the exact package version: `safe` means no known advisories at `lastCheckedAt`, `vulnerable` lists them, `error` means the last lookup failed and the advisories are the last known. 404 when no manifest has ever declared this version. The runner asks here before installing a declared server.",
+    "summary": "The registry's last vulnerability check of one MCP server package version.",
+    "description": "What S7 recorded for the exact package version: `safe` means no known advisories at `lastCheckedAt`, `vulnerable` lists them, `error` means the last lookup failed and the advisories are the last known. Each advisory carries its own `severity` and the gate's rating of it, `gateSeverity`. 404 when no manifest has ever declared this version. The runner asks here before installing a declared server.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2143,7 +2358,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "meta"
     ],
-    "summary": "Server version and self-host feature flags (§9.2).",
+    "summary": "Server version and self-host feature flags.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2267,7 +2482,7 @@ export const ACTIONS: readonly Action[] = [
       "orgs"
     ],
     "summary": "The organization's logo, as this registry re-encoded it.",
-    "description": "A raster the core decoded and encoded again from the pixels: the bytes an admin uploaded are never what is served (§10.3). The type is pinned and not sniffed. The URL an organization's resource carries (`logoUrl`) names the content by its `v`, and that URL is served as immutable for a year; the bare path, or one whose `v` is no longer the logo served, answers the current logo with `no-cache`. Clients render `logoUrl` as given and never build the path. 404 when the organization has none, or is not one the caller may see.",
+    "description": "A raster the core decoded and encoded again from the pixels: the bytes an admin uploaded are never what is served. The type is pinned and not sniffed. The URL an organization's resource carries (`logoUrl`) names the content by its `v`, and that URL is served as immutable for a year; the bare path, or one whose `v` is no longer the logo served, answers the current logo with `no-cache`. Clients render `logoUrl` as given and never build the path. 404 when the organization has none, or is not one the caller may see.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2325,7 +2540,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "policies"
     ],
-    "summary": "The read-only platform baseline policy (§8.6).",
+    "summary": "The read-only platform baseline policy.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2411,7 +2626,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "sso"
     ],
-    "summary": "SP SAML metadata for this org's connection (§12.4).",
+    "summary": "SP SAML metadata for this org's connection.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2440,7 +2655,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "users"
     ],
-    "summary": "Where the caller manages password, MFA and profile when a directory service owns the account (DEV-057).",
+    "summary": "Where the caller manages password, MFA and profile when a directory service owns the account.",
     "description": "With auth.externalOnly, credentials live in the directory service (Authentik). This answers the settings page's question \"where do I change my password or add an authenticator?\" with the directory's flow URLs, and lists the caller's enrolled authenticators when the server has directory admin access (auth.idpAdminURL). Without a directory, `managed` is false and the rest is absent.",
     "public": false,
     "sessionOnly": false,
@@ -2460,7 +2675,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "users"
     ],
-    "summary": "How the registry's alerts reach the caller (agentry#190).",
+    "summary": "How the registry's alerts reach the caller.",
     "description": "Email per kind of notification, and whether the dependency-alert banner shows in a front end (the site reads it). An account that never changed anything reads back with everything on.",
     "public": false,
     "sessionOnly": false,
@@ -2511,13 +2726,51 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "getUserReportSettings",
+    "method": "GET",
+    "path": "/user/report-settings",
+    "tags": [
+      "users"
+    ],
+    "summary": "The report design the caller's PDF reports take.",
+    "description": "A profile setting: the whole report design, a theme document version 2, that `export_pdf` renders with in the caller's runs. The model never chooses it. An account that never chose reads back with no `design`, which is not the same as Plain: a signed-in client then falls to its own configuration, else Plain.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "include",
+        "in": "query",
+        "required": false,
+        "description": "`logo` answers the design with its logo, if the person has one. Without it the design comes without a `logo` key, so a client built before logos still reads it.",
+        "schema": {
+          "title": "ReportSettingsInclude",
+          "type": "string",
+          "description": "What a report settings answer carries beyond the design.",
+          "enum": [
+            "logo"
+          ],
+          "x-enum-varnames": [
+            "ReportSettingsIncludeLogo"
+          ]
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The settings."
+      }
+    ]
+  },
+  {
     "id": "getVersionAttestation",
     "method": "GET",
     "path": "/agents/{ns}/{name}/versions/{version}/attestation",
     "tags": [
       "versions"
     ],
-    "summary": "The signed DSSE attestation (§8.8), verbatim.",
+    "summary": "The signed DSSE attestation, verbatim.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2568,8 +2821,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "versions"
     ],
-    "summary": "Read one file from the version's release archive (§10.2).",
-    "description": "Text files return UTF-8 content up to the display cap with a truncation flag; binary files return metadata only (binary true), never raw bytes (§10.3). Same access gate as listVersionFiles.",
+    "summary": "Read one file from the version's release archive.",
+    "description": "Text files return UTF-8 content up to the display cap with a truncation flag; binary files return metadata only (binary true), never raw bytes. Same access gate as listVersionFiles.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2618,7 +2871,7 @@ export const ACTIONS: readonly Action[] = [
       },
       {
         "code": "410",
-        "description": "Version blocked by trust & safety (§7)."
+        "description": "Version blocked by trust & safety."
       }
     ]
   },
@@ -2676,7 +2929,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "versions"
     ],
-    "summary": "The validated manifest (canonical JSON, §4.2).",
+    "summary": "The validated manifest (canonical JSON).",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2723,7 +2976,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "versions"
     ],
-    "summary": "The scan report for a version (findings, ruleset, verdict, §8).",
+    "summary": "The scan report for a version (findings, ruleset, verdict).",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2764,13 +3017,40 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "getVoice",
+    "method": "GET",
+    "path": "/voice",
+    "tags": [
+      "voice"
+    ],
+    "summary": "The caller's Writing Voice, every version's text with its review.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The voice."
+      },
+      {
+        "code": "404",
+        "description": "The caller keeps no voice here (`voice-not-found`)."
+      },
+      {
+        "code": "503",
+        "description": "The store is off (`voice-unconfigured`) — no key wrapper, or no Jev judge to review voices with."
+      }
+    ]
+  },
+  {
     "id": "getWebhook",
     "method": "GET",
     "path": "/orgs/{org}/webhooks/{id}",
     "tags": [
       "webhooks"
     ],
-    "summary": "Get a webhook endpoint (admin+, §9.3).",
+    "summary": "Get a webhook endpoint (admin+).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -2854,7 +3134,7 @@ export const ACTIONS: readonly Action[] = [
       "installs"
     ],
     "summary": "The caller's account installs, composed for a list.",
-    "description": "Every record the caller holds, newest change first. A record whose BriefAgent the caller can no longer read — made private to them, its organization suspended — is listed as the bare `ref` with `readable: false` and nothing else, so the list tells a former reader nothing they did not already know. A PAT needs `user:profile`.",
+    "description": "Every record the caller holds, newest change first. A record whose QuickAgent the caller can no longer read — made private to them, its organization suspended — is listed as the bare `ref` with `readable: false` and nothing else, so the list tells a former reader nothing they did not already know. A PAT needs `user:profile`.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -2873,8 +3153,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "platform"
     ],
-    "summary": "Published advisories — for one agent, or the global feed (§8.7).",
-    "description": "With `affecting`, the advisories against that agent (newest first), under the agent's own read rule: a private agent's advisories are its readers' (the owning user, the owning org's admins, and anyone holding a grant on the agent), and anyone else — anonymous or signed in — gets the 404 a missing name gets, so the agent's existence is not discoverable here (agentry#313). Without it, the global feed: every published advisory against a public agent, newest first, keyset-paged with `cursor`/`limit` and a `Link: rel=\"next\"` header (§9.1). Each item carries `agent` (`ns/name`) so a feed reader can find the affected BriefAgent.",
+    "summary": "Published advisories — for one agent, or the global feed.",
+    "description": "With `affecting`, the advisories against that agent (newest first), under the agent's own read rule: a private agent's advisories are its readers' (the owning user, the owning org's admins, and anyone holding a grant on the agent), and anyone else — anonymous or signed in — gets the 404 a missing name gets, so the agent's existence is not discoverable here. The one exception is a holder of one of its releases: a signed-in caller whose account install names the agent, or any caller presenting with `digest` the archive digest of a version of it that was ever published, gets its advisories whatever its visibility, retired or deleted state now, so the people who installed it while it was public still learn of an advisory published after it went private. Without it, the global feed: every published advisory against a public agent, newest first, keyset-paged with `cursor`/`limit` and a `Link: rel=\"next\"` header. Each item carries `agent` (`ns/name`) so a feed reader can find the affected QuickAgent.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -2886,6 +3166,16 @@ export const ACTIONS: readonly Action[] = [
         "description": "ns/name. Omit for the global feed.",
         "schema": {
           "type": "string"
+        }
+      },
+      {
+        "name": "digest",
+        "in": "query",
+        "required": false,
+        "description": "With `affecting`: the `archiveDigest` of a release of that agent the caller holds. It proves the caller held the agent, so its advisories are served even when the agent is now private, retired or deleted. Ignored without `affecting` and when the caller can read the agent anyway.",
+        "schema": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
         }
       },
       {
@@ -2924,7 +3214,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "agents"
     ],
-    "summary": "Recent activity for an agent (§9.2).",
+    "summary": "Recent activity for an agent.",
     "description": "Drawn from the audit log. Anyone who can see a public agent gets the public-safe subset: publishes and yanks; callers with an explicit read grant (or namespace-derived read) see the fuller stream including submissions, settings changes, and grant changes.",
     "public": true,
     "sessionOnly": false,
@@ -3023,6 +3313,7 @@ export const ACTIONS: readonly Action[] = [
       "agents"
     ],
     "summary": "List agents in a namespace (public ones for everyone).",
+    "description": "Public agents for everyone; the private ones too for the namespace's owner and the active members of its organization. A deleted agent is never listed. The publisher's page narrows and orders the list with `q`, `state`, `forks` and `sort`, and each agent carries `installs30d`, `lastSubmittedAt`, `forkCount` on a public agent, `forkedFrom` and `forkState` on a fork and, when it is retired, `retiredAt`.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -3033,6 +3324,57 @@ export const ACTIONS: readonly Action[] = [
         "required": true,
         "schema": {
           "type": "string"
+        }
+      },
+      {
+        "name": "q",
+        "in": "query",
+        "required": false,
+        "description": "Case-insensitive substring of the agent's name or summary.",
+        "schema": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      {
+        "name": "state",
+        "in": "query",
+        "required": false,
+        "description": "`active` lists agents that are not retired, `retired` only the retired ones; absent, both.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "active",
+            "retired"
+          ]
+        }
+      },
+      {
+        "name": "forks",
+        "in": "query",
+        "required": false,
+        "description": "`only` lists the namespace's forks, `none` the agents that are not forks; absent, both.",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "only",
+            "none"
+          ]
+        }
+      },
+      {
+        "name": "sort",
+        "in": "query",
+        "required": false,
+        "description": "`name` (the default), `newest` (created), `installs` (the last 30 days) or `submitted` (the newest submission of any version).",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "name",
+            "newest",
+            "installs",
+            "submitted"
+          ]
         }
       }
     ],
@@ -3050,7 +3392,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "search"
     ],
-    "summary": "Public agents tagged with {tag} (§9.2).",
+    "summary": "Public agents tagged with {tag}.",
     "description": "Matches the tag list of each agent's latest published manifest (`manifest.tags`, V8). Blocked agents never appear.",
     "public": true,
     "sessionOnly": false,
@@ -3101,7 +3443,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "domains"
     ],
-    "summary": "List domain claims (admin+, §12.4).",
+    "summary": "List domain claims (admin+).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -3159,7 +3501,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "knowledge"
     ],
-    "summary": "The caller's knowledge packs, by name (agentry#593).",
+    "summary": "The caller's knowledge packs, by name.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -3212,7 +3554,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "audit"
     ],
-    "summary": "Org audit events, newest first (admin+; cursor paged, §12.6).",
+    "summary": "Org audit events, newest first (admin+; cursor paged).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -3325,8 +3667,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "audit"
     ],
-    "summary": "Audit events across every org (platform staff, §12.6).",
-    "description": "The staff-wide slice of the audit log, newest first. Staff access to it is itself audited (§12.6), one event per call.",
+    "summary": "Audit events across every org (platform staff).",
+    "description": "The staff-wide slice of the audit log, newest first. Staff access to it is itself audited, one event per call.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -3384,7 +3726,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "platform"
     ],
-    "summary": "Reports of the scheduled red-team job against the S3/S4 gate (§17.5; platform staff).",
+    "summary": "Reports of the scheduled red-team job against the S3/S4 gate (platform staff).",
     "description": "Newest first. Each report is one run of the attack corpus's rewrites (paraphrase, encoding, unicode and obfuscation mutators) scanned with the rule bundle in service, and lists the rewrites an expected rule no longer caught. Report-only: nothing on the publish path reads these.",
     "public": false,
     "sessionOnly": false,
@@ -3445,7 +3787,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "reviews"
     ],
-    "summary": "Pending review items (platform staff or org security_reviewer).",
+    "summary": "Pending review items (platform staff, or an org's security_reviewer for its queue).",
+    "description": "The platform queue is platform staff's. An org queue is that organization's reviewers' and platform staff's; staff may leave `org` out to list every organization's pending items, and anyone else must name it (422).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -3466,6 +3809,7 @@ export const ACTIONS: readonly Action[] = [
         "name": "org",
         "in": "query",
         "required": false,
+        "description": "The organization of an org queue; optional for platform staff.",
         "schema": {
           "type": "string"
         }
@@ -3495,7 +3839,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "platform"
     ],
-    "summary": "Ruleset releases, newest first (platform staff, §10.1 console).",
+    "summary": "Ruleset releases, newest first (platform staff).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -3514,7 +3858,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "scim"
     ],
-    "summary": "List active SCIM provisioning tokens (admin, §12.5).",
+    "summary": "List active SCIM provisioning tokens (admin).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -3543,7 +3887,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "users"
     ],
-    "summary": "List the caller's SSH public keys for the git transport (§6.1 Q7).",
+    "summary": "List the caller's SSH public keys for the git transport.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -3562,7 +3906,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "sso"
     ],
-    "summary": "List the org's SSO connections (admin, §12.4).",
+    "summary": "List the org's SSO connections (admin).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -3677,7 +4021,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "users"
     ],
-    "summary": "The caller's own activity — the audit events they performed (agentry#192).",
+    "summary": "The caller's own activity — the audit events they performed.",
     "description": "Sign-ins, tokens and SSH keys created or revoked, profile and notification changes, publishes and reviews, newest first, with the address and user agent each was performed from. Keyset-paged like the agent activity feed.",
     "public": false,
     "sessionOnly": false,
@@ -3717,7 +4061,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "users"
     ],
-    "summary": "Open dependency alerts on published versions the caller submitted (agentry#177).",
+    "summary": "Open dependency alerts on published versions the caller submitted.",
     "description": "A dependency alert says a published version declares an MCP server version that the daily sweep found to carry a newly known high or critical vulnerability. It closes on its own when the version is yanked, quarantined or blocked, or when the advisory is withdrawn; publishing a fixed version does not close the old version's alert. A front end shows these; the site renders them as the banner after sign-in and on the dashboard.",
     "public": false,
     "sessionOnly": false,
@@ -3737,7 +4081,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "users"
     ],
-    "summary": "List the caller's active browser sessions (§12.1).",
+    "summary": "List the caller's active browser sessions.",
     "description": "Sessions are cookie sessions. A PAT-authenticated caller has no sessions of its own, so the list is empty (200, not an error). A PAT is not a way to enumerate someone's browser sessions.",
     "public": false,
     "sessionOnly": false,
@@ -3757,8 +4101,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "versions"
     ],
-    "summary": "List the files inside the version's release archive (§10.2).",
-    "description": "The same inventory a reviewer sees (§10.1), opened under the download access gate: published and yanked versions list, blocked versions return 410, quarantined versions 409. Browsing does not count an install.",
+    "summary": "List the files inside the version's release archive.",
+    "description": "The same inventory a reviewer sees, opened under the download access gate: published and yanked versions list, blocked versions return 410, quarantined versions 409. Browsing does not count an install.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -3798,7 +4142,7 @@ export const ACTIONS: readonly Action[] = [
       },
       {
         "code": "410",
-        "description": "Version blocked by trust & safety (§7)."
+        "description": "Version blocked by trust & safety."
       }
     ]
   },
@@ -3847,7 +4191,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "webhooks"
     ],
-    "summary": "Recent delivery attempts for an endpoint (admin+, §9.3).",
+    "summary": "Recent delivery attempts for an endpoint (admin+).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -3906,7 +4250,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "webhooks"
     ],
-    "summary": "List webhook endpoints (admin+, §9.3).",
+    "summary": "List webhook endpoints (admin+).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -3936,7 +4280,7 @@ export const ACTIONS: readonly Action[] = [
       "auth"
     ],
     "summary": "Password (+TOTP when enabled) login; sets the session cookie.",
-    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`, DEV-057), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
+    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -3985,7 +4329,7 @@ export const ACTIONS: readonly Action[] = [
       "auth"
     ],
     "summary": "Revoke the current session.",
-    "description": "Answers 204 for a native or OIDC session. For a session established through an organization's SAML connection whose IdP publishes a Single Logout endpoint, answers 200 with the IdP logout URL the browser should be sent to next (SP-initiated SLO, §12.4); the registry session is revoked either way.",
+    "description": "Answers 204 for a native or OIDC session. For a session established through an organization's SAML connection whose IdP publishes a Single Logout endpoint, answers 200 with the IdP logout URL the browser should be sent to next (SP-initiated SLO); the registry session is revoked either way.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -4008,7 +4352,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "sso"
     ],
-    "summary": "OIDC redirect URI: exchange the code and establish a session (§12.4).",
+    "summary": "OIDC redirect URI: exchange the code and establish a session.",
     "description": "When the start carried a `next`, this is browser mode: the session and CSRF cookies are set and the answer is a 303 to that path, and a failure is a 303 to the sign-in page carrying the reason. Otherwise the answer is the JSON below. 404 while the organization's subscription does not include SSO.",
     "public": true,
     "sessionOnly": false,
@@ -4058,7 +4402,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "sso"
     ],
-    "summary": "Begin the OIDC auth-code + PKCE flow (redirect to IdP, §12.4).",
+    "summary": "Begin the OIDC auth-code + PKCE flow (redirect to IdP).",
     "description": "404 while the organization's subscription does not include SSO: the door is not there to be started. `next` puts the callback in browser mode.",
     "public": true,
     "sessionOnly": false,
@@ -4097,7 +4441,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "webhooks"
     ],
-    "summary": "Send a test delivery to an endpoint (admin+, §9.2).",
+    "summary": "Send a test delivery to an endpoint (admin+).",
     "description": "Enqueues a signed `ping` delivery through the ordinary webhook machinery (same signature header, same SSRF guard, same retry schedule), so the recorded attempt appears in `GET …/{id}/deliveries`. Honours `Idempotency-Key`.",
     "public": false,
     "sessionOnly": false,
@@ -4136,7 +4480,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "platform"
     ],
-    "summary": "Quarantine, block, or reinstate an agent (platform staff, §7).",
+    "summary": "Quarantine, block, or reinstate an agent (platform staff).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -4203,8 +4547,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "installs"
     ],
-    "summary": "Record a BriefAgent release as installed to the account, or move the record to another version.",
-    "description": "The version must be a published release the caller can read: a non-reader gets the missing name's 404, an unpublished version `409 version-not-published`, a blocked BriefAgent `410 blocked`. The request carries the acceptances the release needs and is refused with `409 install-consent-required`, naming the missing ones in `missing`, when it lacks any: `capabilities` on a first install and, on an update, when the new version's declared capabilities widened against the accepted snapshot (`widened` lists what did); `unsigned` whenever the release carries no attestation; `unscanned` whenever it was admitted without a scan. A PUT on an existing record is the update, to any published version, an older one included: the version moves and the snapshot follows it. The action is audited as `agent.install`; no download counter moves. A PAT needs `user:profile`, and `agent:read` for a private BriefAgent.",
+    "summary": "Record a QuickAgent release as installed to the account, or move the record to another version.",
+    "description": "The version must be a published release the caller can read: a non-reader gets the missing name's 404, an unpublished version `409 version-not-published`, a blocked QuickAgent `410 blocked`. The request carries the acceptances the release needs and is refused with `409 install-consent-required`, naming the missing ones in `missing`, when it lacks any: `capabilities` on a first install and, on an update, when the new version's declared capabilities widened against the accepted snapshot (`widened` lists what did); `unsigned` whenever the release carries no attestation; `unscanned` whenever it was admitted without a scan. A PUT on an existing record is the update, to any published version, an older one included: the version moves and the snapshot follows it. The action is audited as `agent.install`; no download counter moves. A PAT needs `user:profile`, and `agent:read` for a private QuickAgent.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -4305,7 +4649,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "sso"
     ],
-    "summary": "Create or update a SAML/OIDC connection (admin, §12.4).",
+    "summary": "Create or update a SAML/OIDC connection (admin).",
     "description": "403 `feature-not-included` while the organization's subscription does not include single sign-on. An existing connection is left alone by a subscription change and works again the moment the subscription includes SSO.",
     "public": false,
     "sessionOnly": false,
@@ -4363,14 +4707,91 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "putUserReportLogo",
+    "method": "PUT",
+    "path": "/user/report-settings/logo",
+    "tags": [
+      "users"
+    ],
+    "summary": "Set the logo of the caller's report design.",
+    "description": "Multipart, one part named `file`: PNG or JPEG, at most 512 KB. The core decodes it, scales it down to fit 1024 pixels each way and encodes it again as PNG from the pixels, so nothing of the upload but its pixels is kept; the runner draws it only in the title block, and it never comes from the model or a URL. Anything but a PNG or a JPEG (SVG and GIF included) is 415 `unsupported-image`; over 512 KB, over 16 million pixels, or over 512 KB as a PNG is 413 `upload-too-large`. A logo travels with a design, so with none saved this is 409 `conflict`. Replaces any logo the design had. The answer carries the design with its logo.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "body": {
+      "required": true,
+      "contentType": "multipart/form-data"
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The logo is set."
+      }
+    ]
+  },
+  {
+    "id": "putVoice",
+    "method": "PUT",
+    "path": "/voice",
+    "tags": [
+      "voice"
+    ],
+    "summary": "Put a new version of the caller's voice, to be reviewed before it is live.",
+    "description": "The text becomes the pending version, replacing any pending one, and its review is queued; the live version stays live until this one passes. `source` is `edit` for text saved on the web and `upload` for a voice sent from a client. A deployment whose extension charges for the review may refuse the call in its own status and words (a balance, say) before anything is stored.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "PutVoiceRequest",
+        "type": "object",
+        "required": [
+          "text",
+          "source"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The VOICE.md, UTF-8, at most 32 KiB."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "edit",
+              "upload"
+            ]
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "202",
+        "description": "The voice, its new version pending and `reviewing`."
+      },
+      {
+        "code": "413",
+        "description": "The text is past 32 KiB (`voice-too-large`)."
+      },
+      {
+        "code": "422",
+        "description": "The text is not a voice (`voice-invalid`) — empty, not UTF-8, or holding a NUL."
+      }
+    ]
+  },
+  {
     "id": "register",
     "method": "POST",
     "path": "/auth/register",
     "tags": [
       "auth"
     ],
-    "summary": "Create an individual account (email+password, §12.1).",
-    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`, DEV-057), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
+    "summary": "Create an individual account (email+password).",
+    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -4658,7 +5079,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "platform"
     ],
-    "summary": "Report malicious or abusive content (authed, rate-limited §8.7).",
+    "summary": "Report malicious or abusive content (authed, rate-limited).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -4748,7 +5169,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "versions"
     ],
-    "summary": "Resolve ns/name@range to a concrete version (§9.4 step 1).",
+    "summary": "Resolve ns/name@range to a concrete version.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -4779,6 +5200,112 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Resolution result."
+      }
+    ]
+  },
+  {
+    "id": "restoreAgent",
+    "method": "POST",
+    "path": "/agents/{ns}/{name}/restore",
+    "tags": [
+      "agents"
+    ],
+    "summary": "Restore a retired agent (the namespace's administrators).",
+    "description": "Returns a retired agent to the visibility it had. A token needs `agent:manage` or `org:admin`. Back to public it meets the rules of any agent becoming public (`409 agent-unscanned`, also when pipeline: skip was set while it was retired); back to private it takes a place under the private-agent cap again (`422 private-agent-cap`). `409 agent-not-retired` when it is not retired.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "ns",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
+      {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,63}[a-z0-9])?$"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The restored agent."
+      }
+    ]
+  },
+  {
+    "id": "restoreVoice",
+    "method": "POST",
+    "path": "/voice/restore",
+    "tags": [
+      "voice"
+    ],
+    "summary": "Put the previous version back.",
+    "description": "A previous version reviewed under the question set in use now trades places with the live one at once (200). One reviewed under another set becomes the pending version, source `restore`, and is reviewed like any other (202); a deployment that charges for a review may refuse that call first.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The previous version is live, and the live one is previous."
+      },
+      {
+        "code": "202",
+        "description": "The previous version is pending, in review."
+      },
+      {
+        "code": "409",
+        "description": "There is no previous version (`voice-no-previous`)."
+      }
+    ]
+  },
+  {
+    "id": "retireAgent",
+    "method": "POST",
+    "path": "/agents/{ns}/{name}/retire",
+    "tags": [
+      "agents"
+    ],
+    "summary": "Retire an agent (the namespace's administrators).",
+    "description": "Makes the agent private and labels it retired, keeping the visibility it had for Restore. A token needs `agent:manage` or `org:admin`. A retired agent takes no submission (`409 agent-retired`), is in no public listing, and holds no place under the private-agent cap. Its versions are untouched. Retiring a retired agent changes nothing.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "ns",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
+        }
+      },
+      {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,63}[a-z0-9])?$"
+        }
+      }
+    ],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The retired agent."
       }
     ]
   },
@@ -4847,7 +5374,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "scim"
     ],
-    "summary": "Revoke a SCIM token (admin, §12.5).",
+    "summary": "Revoke a SCIM token (admin).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -4885,7 +5412,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "users"
     ],
-    "summary": "Revoke a PAT immediately (§12.3).",
+    "summary": "Revoke a PAT immediately.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -4914,7 +5441,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "users"
     ],
-    "summary": "Revoke one of the caller's own sessions (§12.1).",
+    "summary": "Revoke one of the caller's own sessions.",
     "description": "Own sessions only. An id that is not one of the caller's live sessions answers 404 whether it does not exist or belongs to somebody else. The two are deliberately indistinguishable. Session-only: a PAT cannot revoke sessions (403).",
     "public": false,
     "sessionOnly": true,
@@ -4944,7 +5471,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "sso"
     ],
-    "summary": "SAML Assertion Consumer Service: consume a signed assertion (§12.4).",
+    "summary": "SAML Assertion Consumer Service: consume a signed assertion.",
     "description": "A `RelayState` form field holding a same-origin path puts this in browser mode: the session and CSRF cookies are set and the answer is a 303 to that path, and a failure is a 303 to the sign-in page carrying the reason, because a browser cannot read a problem document. Anything else in `RelayState` is ignored. Without one the answer is the JSON below. 404 while the organization's subscription does not include SSO.",
     "public": true,
     "sessionOnly": false,
@@ -4978,7 +5505,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "sso"
     ],
-    "summary": "SAML Single Logout endpoint, HTTP-POST binding (§12.4).",
+    "summary": "SAML Single Logout endpoint, HTTP-POST binding.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -5011,7 +5538,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "sso"
     ],
-    "summary": "SAML Single Logout endpoint, HTTP-Redirect binding (§12.4).",
+    "summary": "SAML Single Logout endpoint, HTTP-Redirect binding.",
     "description": "Accepts a signed IdP-initiated LogoutRequest (revokes the sessions it names and answers the IdP with a LogoutResponse) or the IdP's LogoutResponse to an SP-initiated logout (validated, then the browser is sent home).",
     "public": true,
     "sessionOnly": false,
@@ -5045,7 +5572,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "model-input"
     ],
-    "summary": "AI Review of text a model is about to read (agentry#608).",
+    "summary": "AI Review of text a model is about to read.",
     "description": "Scans pushed text as model input: the deployment's judge is asked the model-input question set (injection, exfiltration, user deception, obfuscation), in 8 KiB chunks asked in parallel, and answers per chunk with scores. The text's score is the highest over its chunks and questions; 2 or more (the gate's medium) is `withheld`, and a chunk the judge could not answer (an error, a timeout, an answer out of shape) makes the text `not_scanned`, which a caller treats as withheld. Nothing of the text is kept or logged. `usage` counts the judge's requests and tokens for the record; it is never a price (AI Review is charged per operation, not per scan). Open to platform staff by session, and to a hosted job's credential in `X-Agentry-Job-Token` where an extension admits it; a token is refused whatever its scopes. 503 `model-input-unavailable` when the deployment's judge is not TypeSafe's Jev.",
     "public": false,
     "sessionOnly": false,
@@ -5096,7 +5623,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "search"
     ],
-    "summary": "Full-text search over public agents with facets (§10.4).",
+    "summary": "Full-text search over public agents with facets.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -5118,7 +5645,7 @@ export const ACTIONS: readonly Action[] = [
         "schema": {
           "title": "AgentMode",
           "type": "string",
-          "description": "A run mode a release supports (DEV-088). `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop. A release declares one or both.\n",
+          "description": "A run mode a release supports. `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop. A release declares one or both.\n",
           "enum": [
             "autonomous",
             "interactive"
@@ -5129,7 +5656,7 @@ export const ACTIONS: readonly Action[] = [
         "name": "capability",
         "in": "query",
         "required": false,
-        "description": "Capability the latest published version actually asks for, e.g. `network`, `filesystem`, `exec`, `secrets`, `dataAccess` (§5.4). A capability declared as `none`, null, or empty does not match: `network: {egress: none}` is not a network agent.",
+        "description": "Capability the latest published version actually asks for, e.g. `network`, `filesystem`, `exec`, `secrets`, `dataAccess`, or `targetHosts` (a machine the person names when the run starts), or `browser` (a headless browser for the sites the person names). A capability declared as `none`, null, or empty does not match: `network: {egress: none}` is not a network agent.",
         "schema": {
           "type": "string",
           "maxLength": 64
@@ -5202,7 +5729,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "model-input"
     ],
-    "summary": "Web search through the deployment's provider, every result scanned (agentry#608).",
+    "summary": "Web search through the deployment's provider, every result scanned.",
     "description": "Searches the web through the deployment's search provider with the registry's own key, then scans each result (its title, address and snippet) as model input, as `POST /model-input/scan` does. Only scanned results come back: a `withheld` or `not_scanned` result carries its origin (scheme and host), verdict and scores, never its title, its snippet or the rest of its address. The query goes to the search provider and is neither kept nor logged. Callers as for `POST /model-input/scan`. 503 `web-search-unavailable` when no provider is configured, 503 `model-input-unavailable` when there is no judge to scan the results, 502 `web-search-failed` when the provider did not answer.",
     "public": false,
     "sessionOnly": false,
@@ -5238,6 +5765,26 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "The scanned results."
+      }
+    ]
+  },
+  {
+    "id": "sendEmailVerification",
+    "method": "POST",
+    "path": "/user/email-verification",
+    "tags": [
+      "users"
+    ],
+    "summary": "Send the caller a new activation link.",
+    "description": "Mails a new link that confirms the account's address and so activates it. An unactivated account (an address not yet confirmed) can read but not write; this is one of the few writes it may make. At most one mail per account every five minutes, counted from the last one sent, the one sent at the first sign-in included: sooner is a 429 with `Retry-After` and `resendAfter`. A link works once and for 24 hours, and an earlier unexpired link keeps working. An account whose address is already confirmed, or that has no address a link can reach, is a 409.",
+    "public": false,
+    "sessionOnly": true,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The link was sent."
       }
     ]
   },
@@ -5293,7 +5840,7 @@ export const ACTIONS: readonly Action[] = [
           "role": {
             "title": "AgentRole",
             "type": "string",
-            "description": "Per-agent grant levels (§12.2), read < write < maintain < publish.",
+            "description": "Per-agent grant levels, read < write < maintain < publish.",
             "enum": [
               "read",
               "write",
@@ -5363,7 +5910,7 @@ export const ACTIONS: readonly Action[] = [
           "role": {
             "title": "AgentRole",
             "type": "string",
-            "description": "Per-agent grant levels (§12.2), read < write < maintain < publish.",
+            "description": "Per-agent grant levels, read < write < maintain < publish.",
             "enum": [
               "read",
               "write",
@@ -5388,7 +5935,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "reviews"
     ],
-    "summary": "Confirm or dismiss a finding (§8.5 dismissals).",
+    "summary": "Confirm or dismiss a finding.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -5442,7 +5989,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "orgs"
     ],
-    "summary": "Change a member's role (admin). Adding is retired: an organization is joined by accepting an invitation, or by an admin approving someone the IdP provisioned, and a PUT for a handle that holds no membership answers 422 naming those doors.",
+    "summary": "Change a member's role (admin). This route does not add members: an organization is joined by accepting an invitation, or by an admin approving someone the IdP provisioned, and a PUT for a handle that holds no membership answers 422 naming those doors.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -5478,7 +6025,7 @@ export const ACTIONS: readonly Action[] = [
           "role": {
             "title": "OrgRoleAssignment",
             "type": "string",
-            "description": "The role a PUT assigns. security_reviewer is refused outside a first-party organization, and owner — retired by agentry#360, kept here so an older client's request still parses — is refused with a 422 that names the roles that exist.\n",
+            "description": "The role a PUT assigns. security_reviewer is refused outside a first-party organization. `owner` is accepted by the schema but refused with a 422 that names the roles that exist.\n",
             "enum": [
               "admin",
               "member",
@@ -5503,7 +6050,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "policies"
     ],
-    "summary": "Set the org policy overlay (admin; tighten-only, §8.6).",
+    "summary": "Set the org policy overlay (admin; tighten-only).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -5540,8 +6087,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "auth"
     ],
-    "summary": "Social login redirect URI: establish a session (§12.1).",
-    "description": "Exchanges the code, verifies the identity, then links or JIT-creates an individual account (`identities.provider_kind='social'`). Auto-linking to an existing account happens only when the provider asserts a verified email that matches a verified account email (T-12); otherwise the response is 409 and the accounts must be linked explicitly. When the account has TOTP enabled the response is a pending 2FA challenge rather than a session. A login begun with `next` (browser mode) answers 303 to that in-app path once the session cookie is set, or to `/login?error=…` on failure; the JSON result is the API mode, used when `next` was absent.",
+    "summary": "Social login redirect URI: establish a session.",
+    "description": "Exchanges the code, verifies the identity, then links or JIT-creates an individual account (`identities.provider_kind='social'`). Auto-linking to an existing account happens only when the provider asserts a verified email that matches a verified account email; otherwise the response is 409 and the accounts must be linked explicitly. When the account has TOTP enabled the response is a pending 2FA challenge rather than a session. A login begun with `next` (browser mode) answers 303 to that in-app path once the session cookie is set, or to `/login?error=…` on failure; the JSON result is the API mode, used when `next` was absent.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -5550,7 +6097,7 @@ export const ACTIONS: readonly Action[] = [
         "name": "provider",
         "in": "path",
         "required": true,
-        "description": "Social identity provider id (§12.1). google and microsoft use their built-in OIDC endpoints; openai and claude need an operator-set issuer; authentik is the deployment's own directory service (DEV-057) and also needs one; an unconfigured provider answers 404.",
+        "description": "Social identity provider id. google and microsoft use their built-in OIDC endpoints; openai and claude need an operator-set issuer; authentik is the deployment's own directory service and also needs one; an unconfigured provider answers 404.",
         "schema": {
           "type": "string",
           "enum": [
@@ -5602,8 +6149,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "auth"
     ],
-    "summary": "Begin social login with a configured provider (§12.1).",
-    "description": "Individual-account login through a social identity provider (`google` = OIDC proper; `github` = an OAuth2 shim, since GitHub is not an OIDC issuer). Providers must be configured on the server (`AGENTRY_SOCIAL_<PROVIDER>_CLIENT_ID`/`_SECRET`); unconfigured providers return 404. This is individual login and never grants org membership. Org SSO lives under /orgs/{org}/sso (§12.4).",
+    "summary": "Begin social login with a configured provider.",
+    "description": "Individual-account login through a social identity provider (`google` = OIDC proper; `github` = an OAuth2 shim, since GitHub is not an OIDC issuer). Providers must be configured on the server (`AGENTRY_SOCIAL_<PROVIDER>_CLIENT_ID`/`_SECRET`); unconfigured providers return 404. This is individual login and never grants org membership. Org SSO lives under /orgs/{org}/sso.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -5612,7 +6159,7 @@ export const ACTIONS: readonly Action[] = [
         "name": "provider",
         "in": "path",
         "required": true,
-        "description": "Social identity provider id (§12.1). google and microsoft use their built-in OIDC endpoints; openai and claude need an operator-set issuer; authentik is the deployment's own directory service (DEV-057) and also needs one; an unconfigured provider answers 404.",
+        "description": "Social identity provider id. google and microsoft use their built-in OIDC endpoints; openai and claude need an operator-set issuer; authentik is the deployment's own directory service and also needs one; an unconfigured provider answers 404.",
         "schema": {
           "type": "string",
           "enum": [
@@ -5649,7 +6196,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "stars"
     ],
-    "summary": "Star an agent (idempotent, §9.2).",
+    "summary": "Star an agent (idempotent).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -5687,7 +6234,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "versions"
     ],
-    "summary": "Server-sent events for a version's pipeline progress (§11 \"SSE/poll\"; agentry#65).",
+    "summary": "Server-sent events for a version's pipeline progress.",
     "description": "Streams `event: status` messages (JSON: status, statusReason, the scan stages completed so far, done) whenever something changes, about once a second while a scan runs, and closes after the terminal state — published, rejected, needs_review, quarantined — or after five minutes, whichever comes first. Same visibility rules as the version itself. Clients that cannot consume SSE poll the version resource instead.",
     "public": true,
     "sessionOnly": false,
@@ -5735,8 +6282,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "versions"
     ],
-    "summary": "Submit a version for publication (§7 state machine entry).",
-    "description": "Two sources (§6.5): JSON {tag} submits an existing repo tag (git-tag source); multipart/form-data with an `archive` part (tar.zst) submits a client-built package (cli-upload source; the server re-validates, re-packs deterministically, and compares digests: client packing is never trusted). A deployment with an admission extension (the hosted product's subscription tiers) may refuse a submission after every core check has passed and before anything is stored: `402` with the problem type `credits-exhausted` carries `balance`, `resetsAt` and `account` — the handle whose balance is short, which is the submitter's own or, for a member of a paid organization, the organization's — at the top level of the problem body. `402 subscription-inactive` refuses one whose payer is an organization that is awaiting payment or has lapsed, and carries `account` the same way. `503 admission-unavailable` means the check could not be reached and nothing was recorded. A core registry never answers any of them. The gate's verdict never depends on admission.",
+    "summary": "Submit a version for publication.",
+    "description": "Two sources: JSON {tag} submits an existing repo tag (git-tag source); multipart/form-data with an `archive` part (tar.zst) submits a client-built package (cli-upload source; the server re-validates, re-packs deterministically, and compares digests: client packing is never trusted). A deployment with an admission extension (the hosted product's subscription tiers) may refuse a submission after every core check has passed and before anything is stored: `402` with the problem type `credits-exhausted` carries `balance`, `resetsAt` and `account` — the handle whose balance is short, which is the submitter's own or, for a member of a paid organization, the organization's — at the top level of the problem body. `402 subscription-inactive` refuses one whose payer is an organization that is awaiting payment or has lapsed, and carries `account` the same way. `503 admission-unavailable` means the check could not be reached and nothing was recorded. A core registry never answers any of them. The gate's verdict never depends on admission.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -5844,7 +6391,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "sso"
     ],
-    "summary": "Probe a stored connection without signing in (admin, §12.4; agentry#50).",
+    "summary": "Probe a stored connection without signing in (admin).",
     "description": "OIDC: runs discovery against the stored issuer and reports the endpoints it advertises. SAML: parses the stored IdP metadata and reports entity id, sign-on URLs and signing-certificate expiry. Neither contacts the IdP's sign-in flow or uses the client secret. A failed probe is a 200 with ok=false and the reason, so the admin page can show it inline.",
     "public": false,
     "sessionOnly": false,
@@ -5886,8 +6433,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "auth"
     ],
-    "summary": "Complete a pending 2FA challenge and open the session (§12.1).",
-    "description": "Second leg of a login that could not carry a TOTP code inline. Today the only such login is social login: its callback is a browser redirect. The challenge is opaque, single-use and expires in five minutes; it proves nothing on its own, so a valid TOTP code is still required.",
+    "summary": "Complete a pending 2FA challenge and open the session.",
+    "description": "Second leg of a login that could not carry a TOTP code inline. The only such login is social login: its callback is a browser redirect. The challenge is opaque and expires in five minutes; it proves nothing on its own, so a valid TOTP code is still required. It is single use: completing it records it as consumed in the database every replica reads, so a second completion is refused with 401 `totp-challenge-used`, and an expired one with 401 `totp-challenge-expired`. A wrong code does not consume it; attempts are held to the login rate limit. When the consumed record cannot be written, the challenge is refused with 503 and no session is opened.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -5926,7 +6473,7 @@ export const ACTIONS: readonly Action[] = [
       "auth"
     ],
     "summary": "Begin TOTP enrollment; returns the provisioning secret.",
-    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`, DEV-057), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
+    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -5946,7 +6493,7 @@ export const ACTIONS: readonly Action[] = [
       "auth"
     ],
     "summary": "Confirm TOTP enrollment with a current code.",
-    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`, DEV-057), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
+    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -6034,7 +6581,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "stars"
     ],
-    "summary": "Remove a star (idempotent, §9.2).",
+    "summary": "Remove a star (idempotent).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -6209,6 +6756,7 @@ export const ACTIONS: readonly Action[] = [
             "maxLength": 140
           },
           "visibility": {
+            "description": "The namespace's administrators only. A token needs `org:admin`, or `agent:manage` when the body sets visibility and nothing else. `public` is refused on a retired agent (`409 agent-retired`): Restore is how a retired agent comes back. It is refused on a fork for good (`409 fork-stays-private`).",
             "type": "string",
             "enum": [
               "public",
@@ -6219,11 +6767,15 @@ export const ACTIONS: readonly Action[] = [
             "type": "boolean"
           },
           "allowForcePush": {
-            "description": "Allow non-fast-forward pushes to the default branch (§6.3). Off by default; maintain only.\n",
+            "description": "Allow non-fast-forward pushes to the default branch. Off by default; maintain only.\n",
             "type": "boolean"
           },
           "pipelineSkip": {
-            "description": "Admit submissions to this agent without a scan (plan organization-subscriptions §4, D16). Settable by the namespace's administrators on a private agent of an organization's whose subscription includes unscanned agents; refused on a public agent (`pipeline-skip-public`) and in a personal namespace (`pipeline-skip-personal`), and with `feature-not-included` where the tier lacks it. While it is set, and while a version published unscanned stands, the agent cannot be made public (`agent-unscanned`). Clearing it changes nothing already published; the next submission goes through the whole pipeline.",
+            "description": "Admit submissions to this agent without a scan. Settable by the namespace's administrators on a private agent of an organization's whose subscription includes unscanned agents; refused on a public agent (`pipeline-skip-public`) and in a personal namespace (`pipeline-skip-personal`), and with `feature-not-included` where the tier lacks it. While it is set, and while a version published unscanned stands, the agent cannot be made public (`agent-unscanned`). Clearing it changes nothing already published; the next submission goes through the whole pipeline.",
+            "type": "boolean"
+          },
+          "builtin": {
+            "description": "Mark or unmark the agent as built-in: a package the Agentry CLI embeds, published for reading, which clients label Built-in in place of its run modes. Platform staff only (403 for anyone else, the namespace's administrators included), and setting it only on an agent of a first-party namespace (`builtin-first-party`). Nothing but the label reads it.",
             "type": "boolean"
           },
           "modes": {
@@ -6236,7 +6788,7 @@ export const ACTIONS: readonly Action[] = [
             "items": {
               "title": "AgentMode",
               "type": "string",
-              "description": "A run mode a release supports (DEV-088). `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop. A release declares one or both.\n",
+              "description": "A run mode a release supports. `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop. A release declares one or both.\n",
               "enum": [
                 "autonomous",
                 "interactive"
@@ -6323,7 +6875,7 @@ export const ACTIONS: readonly Action[] = [
           },
           "ssoRequired": {
             "type": "boolean",
-            "description": "Enforce SSO for org resources (§12.4). Admin only."
+            "description": "Enforce SSO for org resources. Admin only."
           }
         }
       }
@@ -6397,7 +6949,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "users"
     ],
-    "summary": "Replace the caller's notification settings (agentry#190).",
+    "summary": "Replace the caller's notification settings.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -6439,7 +6991,7 @@ export const ACTIONS: readonly Action[] = [
               },
               "advisories": {
                 "type": "boolean",
-                "description": "An advisory naming one of the person's BriefAgents was published."
+                "description": "An advisory naming one of the person's QuickAgents was published."
               },
               "orgInvites": {
                 "type": "boolean",
@@ -6448,6 +7000,14 @@ export const ACTIONS: readonly Action[] = [
               "billing": {
                 "type": "boolean",
                 "description": "The subscription that pays for the person's work: a checkout confirmed, a payment failed, an organization restricted, seats reached, \"your organization covers you\" (the hosted product's billing mail; a registry with no billing sends none). Not required on a write: a client that predates the switch leaves it as it was rather than turning it off by omission.\n"
+              },
+              "schedules": {
+                "type": "boolean",
+                "description": "A scheduled run in Agentry failed, or one of the person's schedules paused (the hosted product's schedule mail; never a success, and a registry without hosted schedules sends none). Not required on a write: a client that predates the switch leaves it as it was rather than turning it off by omission.\n"
+              },
+              "bugReports": {
+                "type": "boolean",
+                "description": "Platform staff marked a bug report the person filed complete (\"Reported bug fixed\"; the hosted product's bug-report mail, and a registry without bug reports sends none). Not required on a write: a client that predates the switch leaves it as it was rather than turning it off by omission.\n"
               }
             }
           },
@@ -6476,13 +7036,300 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
+    "id": "updateUserReportSettings",
+    "method": "PUT",
+    "path": "/user/report-settings",
+    "tags": [
+      "users"
+    ],
+    "summary": "Replace the caller's report settings.",
+    "description": "A full replace: a body with no `design` clears the choice. The design is validated by the core's pkg/reportdesign before it is stored: a document that breaks a rule (an unknown key, a name off a closed list, a font in a role it cannot take, a colour that is not `#rrggbb` or whose contrast on white is too low, a text that is not one line, over 16 KB) is refused 422 (`validation`), the field named `design.<path>`. The answer carries the design in its canonical form. A design that carries a `logo` replaces the stored logo with the core's own re-encoding of it; one that carries none leaves a stored logo as it is (remove it with DELETE /user/report-settings/logo), so a client that does not know logos never drops one by saving. A body with no design clears the logo too.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [
+      {
+        "name": "include",
+        "in": "query",
+        "required": false,
+        "description": "`logo` answers the design with its logo, if the person has one. Without it the design comes without a `logo` key, so a client built before logos still reads it.",
+        "schema": {
+          "title": "ReportSettingsInclude",
+          "type": "string",
+          "description": "What a report settings answer carries beyond the design.",
+          "enum": [
+            "logo"
+          ],
+          "x-enum-varnames": [
+            "ReportSettingsIncludeLogo"
+          ]
+        }
+      }
+    ],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "ReportSettings",
+        "type": "object",
+        "description": "The caller's report settings, a profile setting. No `design` means the person never chose one.",
+        "properties": {
+          "design": {
+            "title": "ReportDesign",
+            "type": "object",
+            "description": "A report design, the theme document version 2. Defined by the core's pkg/reportdesign, whose JSON Schema this mirrors (a core test holds them equal). Beyond what the schema says, the accent must reach 4.5:1 contrast on white when it touches text (titleBlock `band`, headings `smallcaps` or `numbered`) and 3:1 otherwise, and `name` and `footer.text` are one line with no control or bidirectional formatting characters. The tint is derived: 12% of the accent over white. The five built-in themes are each a value of it. `logo` is optional and not counted in the 16 KB.",
+            "additionalProperties": false,
+            "required": [
+              "agentryTheme",
+              "name",
+              "basedOn",
+              "version",
+              "paper",
+              "fonts",
+              "accent",
+              "titleBlock",
+              "headings",
+              "tables",
+              "quotes",
+              "footer"
+            ],
+            "properties": {
+              "agentryTheme": {
+                "type": "integer",
+                "description": "The document version, always 2.",
+                "enum": [
+                  2
+                ],
+                "x-enum-varnames": [
+                  "ReportDesignVersion2"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "description": "The design's label, a built-in's own name or the person's.",
+                "minLength": 1,
+                "maxLength": 60
+              },
+              "basedOn": {
+                "type": "string",
+                "description": "The built-in theme the design started from.",
+                "enum": [
+                  "plain",
+                  "classic",
+                  "modern",
+                  "editorial",
+                  "technical"
+                ]
+              },
+              "version": {
+                "type": "integer",
+                "description": "The design's revision.",
+                "minimum": 1,
+                "maximum": 1000000
+              },
+              "paper": {
+                "type": "string",
+                "description": "A4, or US Letter.",
+                "enum": [
+                  "a4",
+                  "letter"
+                ]
+              },
+              "fonts": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "headings",
+                  "body",
+                  "code"
+                ],
+                "properties": {
+                  "headings": {
+                    "type": "string",
+                    "enum": [
+                      "Inter",
+                      "IBM Plex Sans",
+                      "Source Sans 3",
+                      "Work Sans",
+                      "Montserrat",
+                      "Source Serif 4",
+                      "Lora",
+                      "Merriweather",
+                      "IBM Plex Serif",
+                      "EB Garamond",
+                      "Playfair Display",
+                      "IBM Plex Mono",
+                      "JetBrains Mono",
+                      "Source Code Pro"
+                    ]
+                  },
+                  "body": {
+                    "type": "string",
+                    "enum": [
+                      "Inter",
+                      "IBM Plex Sans",
+                      "Source Sans 3",
+                      "Work Sans",
+                      "Source Serif 4",
+                      "Lora",
+                      "Merriweather",
+                      "IBM Plex Serif",
+                      "EB Garamond"
+                    ]
+                  },
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "IBM Plex Mono",
+                      "JetBrains Mono",
+                      "Source Code Pro"
+                    ]
+                  }
+                }
+              },
+              "accent": {
+                "type": "string",
+                "description": "The one colour, lower-case hex.",
+                "pattern": "^#[0-9a-f]{6}$"
+              },
+              "titleBlock": {
+                "type": "string",
+                "enum": [
+                  "band",
+                  "bar",
+                  "ruled",
+                  "none"
+                ]
+              },
+              "headings": {
+                "type": "string",
+                "enum": [
+                  "rule",
+                  "bar",
+                  "smallcaps",
+                  "numbered",
+                  "plain"
+                ]
+              },
+              "tables": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "tinted",
+                  "banded"
+                ],
+                "properties": {
+                  "tinted": {
+                    "type": "boolean"
+                  },
+                  "banded": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "quotes": {
+                "type": "string",
+                "enum": [
+                  "callout",
+                  "plain"
+                ]
+              },
+              "footer": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "pageNumbers",
+                  "text"
+                ],
+                "properties": {
+                  "pageNumbers": {
+                    "type": "string",
+                    "enum": [
+                      "none",
+                      "n",
+                      "nOfN"
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "description": "One line, set as text, never evaluated; empty for none.",
+                    "maxLength": 120
+                  }
+                }
+              },
+              "logo": {
+                "type": "object",
+                "description": "The person's logo, drawn only in the title block; absent for none. Answered only when asked for (`include=logo`).",
+                "additionalProperties": false,
+                "required": [
+                  "png"
+                ],
+                "properties": {
+                  "png": {
+                    "type": "string",
+                    "description": "A PNG in standard base64, at most 512 KB and 1024 pixels each way, as the core encoded it from the person's upload.",
+                    "minLength": 1,
+                    "maxLength": 699052
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The saved settings."
+      }
+    ]
+  },
+  {
+    "id": "updateVoiceSettings",
+    "method": "PUT",
+    "path": "/voice/settings",
+    "tags": [
+      "voice"
+    ],
+    "summary": "Set whether runs In Agentry attach the caller's live voice by default.",
+    "description": "The flag comes on when a voice first goes live; a field not sent keeps its value.",
+    "public": false,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "body": {
+      "required": true,
+      "contentType": "application/json",
+      "schema": {
+        "title": "VoiceSettingsRequest",
+        "type": "object",
+        "properties": {
+          "alwaysAttach": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "responses": [
+      {
+        "code": "200",
+        "description": "The voice."
+      },
+      {
+        "code": "404",
+        "description": "The caller keeps no voice here (`voice-not-found`)."
+      }
+    ]
+  },
+  {
     "id": "updateWebhook",
     "method": "PATCH",
     "path": "/orgs/{org}/webhooks/{id}",
     "tags": [
       "webhooks"
     ],
-    "summary": "Update a webhook endpoint (admin+, §9.3).",
+    "summary": "Update a webhook endpoint (admin+).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -6618,7 +7465,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "domains"
     ],
-    "summary": "Check the DNS TXT record and mark verified (admin+, §12.4).",
+    "summary": "Check the DNS TXT record and mark verified (admin+).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -6663,7 +7510,7 @@ export const ACTIONS: readonly Action[] = [
       "auth"
     ],
     "summary": "Confirm an email address with the mailed token.",
-    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`, DEV-057), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
+    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -6783,7 +7630,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "versions"
     ],
-    "summary": "Yank a published version (§5.5 semantics; publish permission).",
+    "summary": "Yank a published version (publish permission).",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,

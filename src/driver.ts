@@ -14,7 +14,7 @@ import { toToolResult } from "./envelope.js";
 import type { ProtocolSession } from "./session.js";
 
 /**
- * The one interactive session a server holds at a time (M5): the open one,
+ * The one interactive session a server holds at a time: the open one,
  * or a reservation while a start is between its consent and its spawn.
  */
 export interface SessionSlot {

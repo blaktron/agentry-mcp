@@ -15,6 +15,7 @@
     "revokeOtherUserSessions",
     "revokeToken",
     "revokeUserSession",
+    "sendEmailVerification",
     "totpSetup",
     "totpVerify"
   ]
