@@ -4,8 +4,8 @@
 # dependencies, the README and the licence under one top-level directory
 # agentry-mcp-<version>/. A person unpacks it anywhere and points their host at
 # dist/index.js; nothing is installed and no network is needed after the
-# download. The release workflow calls this, and so does CI on every pull
-# request, so what a tag ships is what the gate built.
+# download. A release packages with this script, and so does CI on every
+# pull request, so what a release ships is what the gate built.
 #
 #   scripts/package.sh VERSION OUT_DIR
 #

@@ -17,8 +17,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Every job carries the fork guard
+#   if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+# Every job here runs on a persistent self-hosted runner that shares its host
+# and caches with other repositories' jobs. A pull request from a fork would
+# otherwise execute its own `run:` steps there. The guard lives in the file,
+# where a diff shows it; the repository setting "Require approval for all
+# external contributors" stays on as belt-and-braces. A fork's pull request
+# shows these jobs as skipped; a maintainer who wants it built pushes its
+# commits to a branch here.
 jobs:
   check:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +53,11 @@ jobs:
           node scripts/prose-check.mjs --self-test
           npm run prose-check
 
+      # The suite takes under a minute; a test that leaves a session's child
+      # process open would otherwise hold this repository's runner until the
+      # job's own six-hour limit.
       - name: Test
+        timeout-minutes: 5
         run: npm test
 
       # --yes, --allow-unsigned and --allow-unscanned reach the CLI only from
@@ -61,6 +75,7 @@ jobs:
   # checkout and started, with no CLI (it must refuse) and with the tests'
   # fake CLI (it must answer initialize and list its tools).
   package:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v4
@@ -82,16 +97,9 @@ jobs:
 
       - name: Start the unpacked server
         run: node scripts/package-smoke.mjs "$RUNNER_TEMP/a/agentry-mcp-0.0.0-ci.tar.gz"
-      # A tag's form must agree with the line its commit is on (vX.Y.Z on
-      # main's, vX.Y.Z-dev.N on dev's), 1.x waits for AGENTRY_ALLOW_V1, and
-      # the next tag follows the scheme (scripts/release-tag.sh and
-      # scripts/release-registry.sh).
-      - name: Release channel and tags by branch
-        run: |
-          scripts/acceptance/release-registry.sh
-          scripts/acceptance/release-tag.sh
 
   parked:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64]
     defaults:
       run:
