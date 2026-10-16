@@ -35,8 +35,7 @@ npm run format     # prettier --write
 
 `scripts/package.sh <version> <out-dir>` builds the downloadable tarball and
 `node scripts/package-smoke.mjs <tarball>` unpacks it and starts the server.
-CI runs both, and `.github/workflows/release.yaml` builds and signs a release
-from a tag.
+CI runs both on every pull request.
 
 ## Register it with a coding agent
 
@@ -150,13 +149,12 @@ their values.
 
 ## Layout
 
-| Path                 | Contents                                                            |
-| -------------------- | ------------------------------------------------------------------- |
-| `src/`               | the server: CLI seam, consent, runs, sessions, tools                |
-| `test/`              | tests against a fake `agentry` CLI (`fake-agentry.sh`)              |
-| `scripts/`           | packaging, the prose gate, release tag and registry rules           |
-| `build/release.env`  | the registries a release names, chosen by the branch it is cut from |
-| `secureagentry-mcp/` | a separate registry-API server with its own build, see its README   |
+| Path                 | Contents                                                          |
+| -------------------- | ----------------------------------------------------------------- |
+| `src/`               | the server: CLI seam, consent, runs, sessions, tools              |
+| `test/`              | tests against a fake `agentry` CLI (`fake-agentry.sh`)            |
+| `scripts/`           | packaging and the prose gate                                      |
+| `secureagentry-mcp/` | a separate registry-API server with its own build, see its README |
 
 ## Licence
 
