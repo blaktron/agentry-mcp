@@ -4,9 +4,10 @@
 # every pull request: it succeeds into dev, and into main only when the head
 # is this repository's own dev branch (a fork's branch named dev is refused).
 #
-# It runs on pull_request_target, so the workflow file is the base branch's
-# copy and a pull request cannot edit the check it is judged by. That is also
-# why it may run on a persistent self-hosted runner for a fork's pull request:
+# It runs on pull_request_target, so the workflow file is always the default
+# branch's copy (dev's), whatever the pull request's base, and a pull request
+# cannot edit the check it is judged by. That is also why it may run on a
+# persistent self-hosted runner for a fork's pull request:
 # it checks out nothing, runs no code from the pull request, and its token
 # has no permissions. The branch names are chosen by whoever opens the pull
 # request, so the script reads them from the environment and never has them
