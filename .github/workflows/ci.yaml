@@ -43,7 +43,11 @@ jobs:
           node scripts/prose-check.mjs --self-test
           npm run prose-check
 
+      # The suite takes under a minute; a test that leaves a session's child
+      # process open would otherwise hold this repository's runner until the
+      # job's own six-hour limit.
       - name: Test
+        timeout-minutes: 5
         run: npm test
 
       # --yes, --allow-unsigned and --allow-unscanned reach the CLI only from

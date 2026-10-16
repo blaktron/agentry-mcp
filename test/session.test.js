@@ -6,11 +6,45 @@
 // session at a time; close returns the transcript and the receipts; the
 // screen an error quotes has its control sequences stripped while the raw
 // stream is kept; the slash commands are not turns.
+//
+// A session is a child process the server keeps open, and an open child
+// keeps the test runner alive. Every test's client is closed after it, pass
+// or fail, which closes the server and ends any session still open, so a
+// failed assertion fails the run instead of hanging it.
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { test } from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
+import { afterEach, test } from "node:test";
 
-import { connect, receivedArgv } from "./helpers.js";
+import { connect as connectServer, receivedArgv } from "./helpers.js";
+
+const clients = [];
+
+async function connect(env) {
+  const c = await connectServer(env);
+  clients.push(c.client);
+  return c;
+}
+
+afterEach(async () => {
+  while (clients.length) await clients.pop().close();
+});
+
+/**
+ * The argv the session's CLI was launched with. The start returns once the
+ * process is spawned, which can be before the CLI has recorded its argv, so
+ * this waits for that record rather than reading the file once.
+ */
+async function launchArgv(argvFile) {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const last = receivedArgv(argvFile).at(-1);
+    if (last?.includes("--session-protocol")) return last;
+    if (Date.now() > deadline)
+      assert.fail(`the session's CLI recorded no launch argv; last: ${last}`);
+    await sleep(25);
+  }
+}
 
 async function call(client, name, args) {
   return client.callTool({ name, arguments: args });
@@ -35,6 +69,7 @@ test("a two-turn session: the preview, the protocol over pipes, replies from fd 
   assert.equal(session.ref, "acme/widget@1.0.0");
   assert.equal(session.mode, "interactive");
   assert.equal(session.launched, true);
+  const started = await launchArgv(argvFile);
   const argv = receivedArgv(argvFile);
   assert.deepEqual(argv[0].slice(0, 6), [
     "run",
@@ -45,7 +80,6 @@ test("a two-turn session: the preview, the protocol over pipes, replies from fd 
     "interactive",
   ]);
   assert.ok(!argv[0].includes("--yes") && !argv[0].includes("--allow-unsigned"));
-  const started = argv.at(-1);
   assert.deepEqual(started.slice(0, 4), ["run", "acme/widget@1.0.0", "--mode", "interactive"]);
   assert.ok(started.includes("--output-format") && started.includes("--session-protocol"));
   assert.ok(started.includes("--out") && started.includes("--yes"));
@@ -118,9 +152,11 @@ test("one session at a time: a second start is refused naming the open one; send
 });
 
 test("a session the CLI ended on idle is reported closed on the next send, with the reason", async () => {
-  const { client } = await connect({ FAKE_SESSION_IDLE: "1" });
+  const { client, argvFile } = await connect({ FAKE_SESSION_IDLE: "1" });
   const { session } = await startSession(client);
-  await new Promise((r) => setTimeout(r, 1800));
+  // The idle clock starts when the CLI does, which can be after the start returns.
+  await launchArgv(argvFile);
+  await sleep(1800);
   const r = await call(client, "agentry_session_send", {
     sessionId: session.sessionId,
     text: "still there?",
@@ -172,9 +208,11 @@ test("a turn past its timeout leaves the session open; the next send waits for t
 });
 
 test("a startup failure is reported by send and close after process launch", async () => {
-  const { client } = await connect({ FAKE_SESSION_FAIL_START: "1" });
+  const { client, argvFile } = await connect({ FAKE_SESSION_FAIL_START: "1" });
   const { session } = await startSession(client);
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  // The CLI stops right after it starts, which can be after the start returns.
+  await launchArgv(argvFile);
+  await sleep(150);
   const sent = await call(client, "agentry_session_send", {
     sessionId: session.sessionId,
     text: "hello",
