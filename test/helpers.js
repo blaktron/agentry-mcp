@@ -9,6 +9,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ElicitRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 import { createServer } from "../dist/server.js";
+import { connectServer } from "../dist/toolargs.js";
 
 export const FAKE = new URL("./fake-agentry.sh", import.meta.url).pathname;
 
@@ -44,7 +45,7 @@ export async function connect(env = {}, cli = {}, elicit) {
     runTimeoutSlackMs: 500,
   });
   const [a, b] = InMemoryTransport.createLinkedPair();
-  await server.connect(a);
+  await connectServer(server, a);
   const elicitations = [];
   const client = new Client(
     { name: "test", version: "0" },

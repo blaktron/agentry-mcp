@@ -8,9 +8,11 @@ import { z } from "zod";
 
 import { guard, type Driver } from "../driver.js";
 import { DEFAULT_RUN_TIMEOUT_SECONDS, run, setup, validate } from "../run.js";
+import { registerTool } from "../toolargs.js";
 
 export function registerRunTools(d: Driver): void {
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_setup",
     {
       description:
@@ -60,7 +62,8 @@ export function registerRunTools(d: Driver): void {
     (a, extra) => guard("agentry_setup", () => setup(d, a, extra)),
   );
 
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_run",
     {
       description:
@@ -172,7 +175,8 @@ export function registerRunTools(d: Driver): void {
     (a, extra) => guard("agentry_run", () => run(d, a, extra)),
   );
 
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_validate",
     {
       description:

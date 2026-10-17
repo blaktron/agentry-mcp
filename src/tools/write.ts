@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import { install, uninstall } from "../consent.js";
 import { guard, type Driver } from "../driver.js";
+import { registerTool } from "../toolargs.js";
 
 const registry = z
   .string()
@@ -17,7 +18,8 @@ const registry = z
   .describe("Registry base URL; the CLI's configured default when omitted.");
 
 export function registerWriteTools(d: Driver): void {
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_install",
     {
       description:
@@ -84,7 +86,8 @@ export function registerWriteTools(d: Driver): void {
     (a) => guard("agentry_install", () => install(d, a)),
   );
 
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_uninstall",
     {
       description:
@@ -116,7 +119,8 @@ export function registerWriteTools(d: Driver): void {
     (a) => guard("agentry_uninstall", () => uninstall(d, a)),
   );
 
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_list_installed",
     {
       description:

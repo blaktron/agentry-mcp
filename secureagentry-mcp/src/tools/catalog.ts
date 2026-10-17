@@ -18,10 +18,12 @@ import {
   searchActions,
   summariseHit,
 } from "../catalog.js";
+import { registerTool } from "../toolargs.js";
 import { guard, render, textResult, errorResult, type ToolModule } from "./common.js";
 
 export const catalogTools: ToolModule = (server, ctx) => {
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_search_actions",
     {
       title: "Find an Agentry API operation",
@@ -74,7 +76,8 @@ export const catalogTools: ToolModule = (server, ctx) => {
       }),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_execute_action",
     {
       title: "Run an Agentry API operation",

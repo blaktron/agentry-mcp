@@ -7,6 +7,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import { createServer } from "../dist/server.js";
+import { connectServer } from "../dist/toolargs.js";
 
 const CONFIG = {
   registry: "https://registry.example",
@@ -40,7 +41,7 @@ async function connect(config = {}, fetchImpl = stubRegistry()) {
   const server = createServer({ ...CONFIG, ...config }, fetchImpl);
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test", version: "0" });
-  await Promise.all([client.connect(clientSide), server.connect(serverSide)]);
+  await Promise.all([client.connect(clientSide), connectServer(server, serverSide)]);
   return { client, fetchImpl, close: () => client.close() };
 }
 
@@ -351,6 +352,52 @@ test("execute_action runs a catalog operation", async () => {
   await close();
 });
 
+test("execute_action takes stringified path and query parameters as the maps they encode", async () => {
+  const fetchImpl = stubRegistry({ "GET /api/v1/orgs/acme/webhooks": [{ id: "w1" }] });
+  const { client, close } = await connect({}, fetchImpl);
+  const text = await callText(client, "agentry_execute_action", {
+    actionId: "listWebhooks",
+    pathParams: '{"org":"acme"}',
+    queryParams: '{"limit":5}',
+    dryRun: "false",
+  });
+  assert.match(text, /"id": "w1"/);
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.equal(fetchImpl.calls[0].key, "GET /api/v1/orgs/acme/webhooks");
+  assert.equal(fetchImpl.calls[0].searchParams.get("limit"), "5");
+  await close();
+});
+
+test("execute_action sends a body that arrives as JSON text as the object it holds", async () => {
+  const fetchImpl = stubRegistry();
+  const { client, close } = await connect({}, fetchImpl);
+  await callText(client, "agentry_execute_action", {
+    actionId: "createWebhook",
+    pathParams: { org: "acme" },
+    body: '{"url":"https://hooks.example/x","events":["agent.published"]}',
+  });
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.deepEqual(fetchImpl.calls[0].body, {
+    url: "https://hooks.example/x",
+    events: ["agent.published"],
+  });
+  await close();
+});
+
+test("a string that encodes nothing a parameter takes is refused naming it", async () => {
+  const fetchImpl = stubRegistry();
+  const { client, close } = await connect({}, fetchImpl);
+  const text = await callText(
+    client,
+    "agentry_execute_action",
+    { actionId: "listWebhooks", pathParams: { org: "acme" }, dryRun: "maybe" },
+    { expectError: true },
+  );
+  assert.match(text, /dryRun/);
+  assert.equal(fetchImpl.calls.length, 0);
+  await close();
+});
+
 test("execute_action refuses an incomplete call and shows the schema", async () => {
   const fetchImpl = stubRegistry();
   const { client, close } = await connect({}, fetchImpl);
@@ -361,6 +408,24 @@ test("execute_action refuses an incomplete call and shows the schema", async () 
     { expectError: true },
   );
   assert.match(text, /missing required input: pathParams\.org/);
+  assert.equal(fetchImpl.calls.length, 0);
+  await close();
+});
+
+test("read-only mode refuses a write whose arguments arrive as JSON text", async () => {
+  const fetchImpl = stubRegistry();
+  const { client, close } = await connect({ readOnly: true }, fetchImpl);
+  const text = await callText(
+    client,
+    "agentry_execute_action",
+    {
+      actionId: "deleteWebhook",
+      pathParams: '{"org":"acme","id":"0192b1c4-0000-7000-8000-000000000000"}',
+      dryRun: "false",
+    },
+    { expectError: true },
+  );
+  assert.match(text, /read-only/);
   assert.equal(fetchImpl.calls.length, 0);
   await close();
 });

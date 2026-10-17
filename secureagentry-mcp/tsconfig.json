@@ -14,7 +14,10 @@
     "sourceMap": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    // src/toolargs.ts links to the root server's module; its imports resolve
+    // from this package's node_modules, not from where the link points.
+    "preserveSymlinks": true
   },
   "include": ["src/**/*.ts"]
 }

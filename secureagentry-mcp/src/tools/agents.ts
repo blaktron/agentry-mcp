@@ -15,6 +15,7 @@
 
 import { z } from "zod";
 
+import { registerTool } from "../toolargs.js";
 import {
   agentNameSchema,
   agentRef,
@@ -26,7 +27,8 @@ import {
 } from "./common.js";
 
 export const agentTools: ToolModule = (server, ctx) => {
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_search_agents",
     {
       title: "Search public agents",
@@ -69,7 +71,8 @@ export const agentTools: ToolModule = (server, ctx) => {
       ),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_list_agents",
     {
       title: "List agents in a namespace",
@@ -85,7 +88,8 @@ export const agentTools: ToolModule = (server, ctx) => {
       guard(async () => render(ctx, await ctx.client.call("listAgents", { query: { namespace } }))),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_get_agent",
     {
       title: "Get an agent",
@@ -109,7 +113,8 @@ export const agentTools: ToolModule = (server, ctx) => {
       }),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_create_agent",
     {
       title: "Create an agent and its repository",
@@ -161,7 +166,8 @@ export const agentTools: ToolModule = (server, ctx) => {
       ),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_update_agent",
     {
       title: "Update agent settings",
@@ -216,7 +222,8 @@ export const agentTools: ToolModule = (server, ctx) => {
       }),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_delete_agent",
     {
       title: "Delete an unpublished agent",
@@ -240,7 +247,8 @@ export const agentTools: ToolModule = (server, ctx) => {
       ),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_list_versions",
     {
       title: "List an agent's versions",
@@ -256,7 +264,8 @@ export const agentTools: ToolModule = (server, ctx) => {
       ),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_get_version",
     {
       title: "Get one version",
@@ -280,7 +289,8 @@ export const agentTools: ToolModule = (server, ctx) => {
       }),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_yank_version",
     {
       title: "Yank a published version",
@@ -316,7 +326,8 @@ export const agentTools: ToolModule = (server, ctx) => {
       ),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_list_grants",
     {
       title: "List per-agent grants",
@@ -332,7 +343,8 @@ export const agentTools: ToolModule = (server, ctx) => {
       ),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_set_grant",
     {
       title: "Grant or revoke per-agent access",
@@ -376,7 +388,8 @@ export const agentTools: ToolModule = (server, ctx) => {
       }),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_resolve",
     {
       title: "Resolve an agent reference",
