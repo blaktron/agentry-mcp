@@ -9,8 +9,8 @@
 
 import { z } from "zod";
 
-import { guard, handleSchema, render, type ToolModule } from "./common.js";
 import { registerTool } from "../toolargs.js";
+import { guard, handleSchema, render, type ToolModule } from "./common.js";
 
 export const orgTools: ToolModule = (server, ctx) => {
   registerTool(

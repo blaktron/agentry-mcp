@@ -18,8 +18,8 @@ import {
   searchActions,
   summariseHit,
 } from "../catalog.js";
-import { guard, render, textResult, errorResult, type ToolModule } from "./common.js";
 import { registerTool } from "../toolargs.js";
+import { guard, render, textResult, errorResult, type ToolModule } from "./common.js";
 
 export const catalogTools: ToolModule = (server, ctx) => {
   registerTool(

@@ -2,9 +2,17 @@
 // taken as the value meant, in both directions, and a value that encodes
 // nothing the schema takes is still refused naming the parameter.
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -187,6 +195,54 @@ test("agentry_knowledge_build takes a stringified web choice as the choice", asy
   assert.equal(last[last.indexOf("--max-pack-mb") + 1], "5");
 });
 
+test("arguments that are one JSON string but not an object are not unwrapped", async () => {
+  const { client } = await probe();
+  for (const text of ["[1,2]", '"{}"', "not json"]) {
+    await assert.rejects(client.callTool({ name: "probe", arguments: text }), /-32602|Invalid/);
+  }
+});
+
+test("coerced consent words count only as what they say", async () => {
+  const writes = join(mkdtempSync(join(tmpdir(), "agentry-toolargs-")), "writes");
+  const { client, argvFile } = await connect({ FAKE_WRITES: writes, FAKE_ATTEST: "unsigned" });
+  const p = await client.callTool({ name: "agentry_install", arguments: { ref: "acme/widget" } });
+  const { digest } = JSON.parse(p.content[0].text);
+  const no = await client.callTool({
+    name: "agentry_install",
+    arguments: { ref: "acme/widget", confirm: digest, acceptUnsigned: "false" },
+  });
+  assert.equal(no.isError, true);
+  assert.match(no.content[0].text, /acceptUnsigned: true/);
+  for (const confirm of [12345, { digest }]) {
+    const wrong = await client.callTool({
+      name: "agentry_install",
+      arguments: { ref: "acme/widget", confirm, acceptUnsigned: true },
+    });
+    assert.equal(wrong.isError, true, `confirm ${JSON.stringify(confirm)} was accepted`);
+  }
+  assert.equal(existsSync(writes), false);
+  const yes = await client.callTool({
+    name: "agentry_install",
+    arguments: { ref: "acme/widget", confirm: digest, acceptUnsigned: "true" },
+  });
+  assert.equal(yes.isError, undefined, yes.content[0].text);
+  assert.deepEqual(receivedArgv(argvFile).at(-1), [
+    "install",
+    "acme/widget@1.0.0",
+    "--json",
+    "--yes",
+    "--allow-unsigned",
+  ]);
+});
+
+test("a number sent for a string parameter that reads as a flag is refused before the CLI", async () => {
+  const { client, argvFile } = await connect();
+  const r = await client.callTool({ name: "agentry_install", arguments: { ref: -1 } });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /must not start with "-"/);
+  assert.deepEqual(receivedArgv(argvFile), []);
+});
+
 function tsFiles(dir) {
   return readdirSync(dir).flatMap((e) => {
     const p = join(dir, e);
@@ -196,7 +252,7 @@ function tsFiles(dir) {
 }
 
 test("every tool of both servers is registered through the wrapper", () => {
-  const root = new URL("..", import.meta.url).pathname;
+  const root = fileURLToPath(new URL("..", import.meta.url));
   const offenders = [join(root, "src"), join(root, "secureagentry-mcp/src")]
     .flatMap(tsFiles)
     .filter((f) => !f.endsWith("toolargs.ts"))

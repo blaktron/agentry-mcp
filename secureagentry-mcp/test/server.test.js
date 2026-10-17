@@ -412,6 +412,24 @@ test("execute_action refuses an incomplete call and shows the schema", async () 
   await close();
 });
 
+test("read-only mode refuses a write whose arguments arrive as JSON text", async () => {
+  const fetchImpl = stubRegistry();
+  const { client, close } = await connect({ readOnly: true }, fetchImpl);
+  const text = await callText(
+    client,
+    "agentry_execute_action",
+    {
+      actionId: "deleteWebhook",
+      pathParams: '{"org":"acme","id":"0192b1c4-0000-7000-8000-000000000000"}',
+      dryRun: "false",
+    },
+    { expectError: true },
+  );
+  assert.match(text, /read-only/);
+  assert.equal(fetchImpl.calls.length, 0);
+  await close();
+});
+
 test("execute_action suggests near misses for an unknown id", async () => {
   const { client, close } = await connect();
   const text = await callText(

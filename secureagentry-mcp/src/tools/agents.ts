@@ -15,6 +15,7 @@
 
 import { z } from "zod";
 
+import { registerTool } from "../toolargs.js";
 import {
   agentNameSchema,
   agentRef,
@@ -24,7 +25,6 @@ import {
   semverSchema,
   type ToolModule,
 } from "./common.js";
-import { registerTool } from "../toolargs.js";
 
 export const agentTools: ToolModule = (server, ctx) => {
   registerTool(

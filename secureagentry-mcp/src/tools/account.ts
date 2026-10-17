@@ -12,8 +12,8 @@
 import { z } from "zod";
 
 import { ACTIONS } from "../catalog.generated.js";
-import { guard, render, textResult, uuidSchema, type ToolModule } from "./common.js";
 import { registerTool } from "../toolargs.js";
+import { guard, render, textResult, uuidSchema, type ToolModule } from "./common.js";
 
 const SESSION_NOTE =
   "Session-only: the API refuses personal access tokens here, so this needs AGENTRY_SESSION_COOKIE.";
