@@ -45,7 +45,7 @@ json.dump({
     "source": "https://github.com/blaktron/agentry/blob/main/internal/api/authz_routes.go",
     "note": "Operations the API refuses to serve to a personal access token, "
             "whatever its scopes: token minting and revocation, SSH keys, "
-            "session and 2FA management, account erasure. They need a browser "
+            "session and remembered-browser management, account erasure. They need a browser "
             "session cookie (AGENTRY_SESSION_COOKIE).",
     "operationIds": session_only,
 }, open(f"{here}/spec/session-only.json", "w"), indent=2)
