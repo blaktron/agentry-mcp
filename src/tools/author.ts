@@ -10,6 +10,7 @@ import { confirmed, isConsent, previewText, runPlan } from "../consent.js";
 import { guard, type Driver } from "../driver.js";
 import { fingerprint, localPackPaths } from "../snapshot.js";
 import { progressSink, TEARDOWN_GRACE_MS } from "../run.js";
+import { registerTool } from "../toolargs.js";
 
 const common = {
   out: z.string().describe("Output directory for this operation's report and receipts."),
@@ -102,7 +103,8 @@ async function execute(
 }
 
 export function registerAuthorTools(d: Driver): void {
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_draft",
     {
       description:
@@ -151,7 +153,8 @@ export function registerAuthorTools(d: Driver): void {
         return execute(d, "agentry_draft", a, argv, paths, extra);
       }),
   );
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_review",
     {
       description:
@@ -164,7 +167,8 @@ export function registerAuthorTools(d: Driver): void {
         execute(d, "agentry_review", a, ["review", value("dir", a.dir), "--json"], [a.dir], extra),
       ),
   );
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_knowledge_build",
     {
       description:
@@ -207,7 +211,8 @@ export function registerAuthorTools(d: Driver): void {
         return execute(d, "agentry_knowledge_build", a, argv, paths, extra);
       }),
   );
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_voice_build",
     {
       description:

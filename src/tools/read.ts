@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import { bool, flag, value } from "../argv.js";
 import { guard, type Driver } from "../driver.js";
+import { registerTool } from "../toolargs.js";
 
 const registry = z
   .string()
@@ -37,7 +38,8 @@ export function registerReadTools(d: Driver): void {
       "Read the local and account Writing Voice metadata and review with agentry voice status --json.",
     ],
   ] as const) {
-    d.server.registerTool(
+    registerTool(
+      d.server,
       name,
       { description, inputSchema: { registry }, annotations: readOnly },
       (a) =>
@@ -48,7 +50,8 @@ export function registerReadTools(d: Driver): void {
         }),
     );
   }
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_knowledge_list",
     {
       description:
@@ -65,7 +68,8 @@ export function registerReadTools(d: Driver): void {
       }),
   );
 
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_search",
     {
       description:
@@ -111,7 +115,8 @@ export function registerReadTools(d: Driver): void {
       }),
   );
 
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_info",
     {
       description:
@@ -138,7 +143,8 @@ export function registerReadTools(d: Driver): void {
       }),
   );
 
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_verify",
     {
       description:
@@ -167,7 +173,8 @@ export function registerReadTools(d: Driver): void {
       }),
   );
 
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_doctor",
     {
       description:

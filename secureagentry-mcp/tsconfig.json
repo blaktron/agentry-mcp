@@ -14,7 +14,8 @@
     "sourceMap": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "preserveSymlinks": true
   },
   "include": ["src/**/*.ts"]
 }
