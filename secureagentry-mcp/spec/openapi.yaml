@@ -49,12 +49,12 @@ tags:
   - name: auth
     description: >-
       Registration, login, sessions, 2FA; sign-in through the
-      directory service and the desktop app's one-time-code
+      deployment's OpenID provider and the desktop app's one-time-code
       exchange.
   - name: users
     description: >-
-      Current user, public profiles, personal access tokens, SSH keys,
-      browser sessions, and the account's directory-service settings.
+      Current user, public profiles, personal access tokens, SSH keys and
+      browser sessions.
   - name: orgs
     description: Organizations, members, teams.
   - name: audit
@@ -132,39 +132,12 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
-  /auth/register:
-    post:
-      operationId: register
-      tags: [auth]
-      summary: Create an individual account (email+password).
-      description: >
-        When the deployment delegates accounts to an external directory
-        (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone;
-        sign in through /auth/oidc/{provider}/start instead.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RegisterRequest"
-      responses:
-        "201":
-          description: Account created; verification email queued.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-        default:
-          $ref: "#/components/responses/Problem"
-
   /auth/verify-email:
     post:
       operationId: verifyEmail
       description: >
-        When the deployment delegates accounts to an external directory
-        (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone;
-        sign in through /auth/oidc/{provider}/start instead.
+        Activates the account whose address the mailed link was sent to
+        (POST /user/email-verification sends it).
       tags: [auth]
       summary: Confirm an email address with the mailed token.
       security: []
@@ -184,41 +157,13 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
-  /auth/login:
-    post:
-      operationId: login
-      description: >
-        When the deployment delegates accounts to an external directory
-        (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone;
-        sign in through /auth/oidc/{provider}/start instead.
-      tags: [auth]
-      summary: Password (+TOTP when enabled) login; sets the session cookie.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/LoginRequest"
-      responses:
-        "200":
-          description: Session established. The response sets the
-            `agentry_session` cookie; `csrfToken` must be echoed in the
-            `X-Agentry-CSRF` header on all cookie-authenticated mutations.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/LoginResult"
-        default:
-          $ref: "#/components/responses/Problem"
-
   /auth/logout:
     post:
       operationId: logout
       tags: [auth]
       summary: Revoke the current session.
       description: >-
-        Answers 204 for a native or OIDC session. For a session established
+        Answers 204 for a session opened through an OpenID provider. For a session established
         through an organization's SAML connection whose IdP publishes a
         Single Logout endpoint, answers 200 with the IdP logout URL the
         browser should be sent to next (SP-initiated SLO); the
@@ -232,90 +177,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LogoutResult"
-        default:
-          $ref: "#/components/responses/Problem"
-
-  /auth/2fa/totp/setup:
-    post:
-      operationId: totpSetup
-      description: >
-        When the deployment delegates accounts to an external directory
-        (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone;
-        sign in through /auth/oidc/{provider}/start instead.
-      tags: [auth]
-      summary: Begin TOTP enrollment; returns the provisioning secret.
-      responses:
-        "200":
-          description: Enrollment secret (confirm with /auth/2fa/totp/verify).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TotpSetupResult"
-        default:
-          $ref: "#/components/responses/Problem"
-
-  /auth/2fa/totp/verify:
-    post:
-      operationId: totpVerify
-      description: >
-        When the deployment delegates accounts to an external directory
-        (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone;
-        sign in through /auth/oidc/{provider}/start instead.
-      tags: [auth]
-      summary: Confirm TOTP enrollment with a current code.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code]
-              properties:
-                code:
-                  type: string
-      responses:
-        "204":
-          description: TOTP enabled.
-        default:
-          $ref: "#/components/responses/Problem"
-
-  /auth/2fa/totp/challenge:
-    post:
-      operationId: totpChallenge
-      tags: [auth]
-      summary: Complete a pending 2FA challenge and open the session.
-      description: >
-        Second leg of a login that could not carry a TOTP code inline. The
-        only such login is social login: its callback is a browser
-        redirect. The challenge is opaque and expires in five minutes; it
-        proves nothing on its own, so a valid TOTP code is still required. It
-        is single use: completing it records it as consumed in the database
-        every replica reads, so a second completion is refused
-        with 401 `totp-challenge-used`, and an expired one with 401
-        `totp-challenge-expired`. A wrong code does not consume it; attempts are
-        held to the login rate limit. When the
-        consumed record cannot be written, the challenge is refused with 503
-        and no session is opened.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [challenge, code]
-              properties:
-                challenge:
-                  type: string
-                code:
-                  type: string
-      responses:
-        "200":
-          description: Session established.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/LoginResult"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -350,14 +211,13 @@ paths:
     get:
       operationId: socialOidcStart
       tags: [auth]
-      summary: Begin social login with a configured provider.
+      summary: Begin sign-in with the deployment's OpenID provider.
       description: >
-        Individual-account login through a social identity provider
-        (`google` = OIDC proper; `github` = an OAuth2 shim, since GitHub is
-        not an OIDC issuer). Providers must be configured on the server
-        (`AGENTRY_SOCIAL_<PROVIDER>_CLIENT_ID`/`_SECRET`); unconfigured
-        providers return 404. This is individual login and never grants org
-        membership. Org SSO lives under /orgs/{org}/sso.
+        Individual-account sign-in through the OpenID provider the server is
+        configured with (`auth.oidc`: discovery, issuer pinning, PKCE and a
+        verified ID token). A provider id the server does not serve answers
+        404. This is individual sign-in and never grants org membership.
+        Org SSO lives under /orgs/{org}/sso.
       security: []
       parameters:
         - $ref: "#/components/parameters/SocialProvider"
@@ -365,8 +225,8 @@ paths:
           in: query
           description: >
             Browser mode. An in-app, path-absolute return target (e.g.
-            `/dashboard` on the site, `/ui/account` on the server's own
-            pages). When present and valid, the callback answers the
+            `/dashboard` on the site, `/ui/authorize?…` on the server's
+            own pages). When present and valid, the callback answers the
             browser with a 303 to it instead of the JSON result, and a
             failed login 303s to the sign-in page with `?error=…` (the
             site's `/login`, or `/ui/login`). Anything that is not a
@@ -384,14 +244,13 @@ paths:
     get:
       operationId: socialOidcCallback
       tags: [auth]
-      summary: "Social login redirect URI: establish a session."
+      summary: "Sign-in redirect URI: establish a session."
       description: >
         Exchanges the code, verifies the identity, then links or JIT-creates
         an individual account (`identities.provider_kind='social'`).
         Auto-linking to an existing account happens only when the provider
         asserts a verified email that matches a verified account email; otherwise the response is 409 and the accounts must be linked
-        explicitly. When the account has TOTP enabled the response is a
-        pending 2FA challenge rather than a session. A login begun with
+        explicitly. A login begun with
         `next` (browser mode) answers 303 to that in-app path once the
         session cookie is set, or to `/login?error=…` on failure; the JSON
         result is the API mode, used when `next` was absent.
@@ -408,11 +267,11 @@ paths:
             type: string
       responses:
         "200":
-          description: Session established, or a pending TOTP challenge.
+          description: Session established.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SocialLoginResult"
+                $ref: "#/components/schemas/LoginResult"
         "303":
           description: Browser mode — session cookie set, redirect to `next`.
         "409":
@@ -475,15 +334,14 @@ paths:
         agents are transferred to an organization the caller administers.
         When the account has published public versions the choice is
         explicit: omitting `publishedContent` is a 400, never a silent yank.
-        When the deployment holds credentials in a directory service and is
-        configured to reach it (`AGENTRY_IDP_ADMIN_URL`), the sign-in account
-        there is deleted in the same step; the outcome is audited as
-        `user.directory_erase` and returned in the `X-Agentry-Directory-Erasure`
-        header. A failed
-        directory attempt does not undo the registry's erasure: it is retried
-        by a job with backoff (each attempt audited) and the response says
-        `pending`; a retry budget that runs out is audited as `abandoned` and
-        raised to the operator. An account that is an organization's last
+        When the deployment holds credentials in a directory service that an
+        extension of the server reaches, the sign-in account there is
+        deleted in the same step; the outcome is audited as
+        `user.directory_erase` and returned in the
+        `X-Agentry-Directory-Erasure` header. A failed directory attempt
+        does not undo the registry's erasure: the directory retries it where
+        it can (`pending`), and one that does not complete is raised to the
+        operator. An account that is an organization's last
         admin is refused (409 last-admin) until another admin is in
         place; a transfer that would put the organization over its
         private-agent cap is refused (422 private-agent-cap) with nothing
@@ -522,10 +380,9 @@ paths:
                 operator is alerted and finishes it by hand.
                 `not-configured`: the deployment reaches no directory, so
                 erasure is registry-only. `pending`: the directory could not
-                be reached; a job retries it with backoff for about four and
-                a half hours, and the operator is alerted if it never
-                succeeds. `failed`: the retry could not be queued; the
-                operator is alerted and finishes it by hand.
+                be reached and retries it; the operator is alerted if it
+                never succeeds. `failed`: the attempt failed and is not
+                retried; the operator is alerted and finishes it by hand.
               schema:
                 type: string
                 enum: [deleted, not-found, unresolved, not-configured, pending, failed]
@@ -1101,57 +958,6 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
-  /user/directory:
-    get:
-      operationId: getUserDirectory
-      tags: [users]
-      summary: Where the caller manages password, MFA and profile when a directory service owns the account.
-      description: >
-        With auth.externalOnly, credentials live in the directory service
-        (Authentik). This answers the settings page's question "where do I
-        change my password or add an authenticator?" with the directory's
-        flow URLs, and lists the caller's enrolled authenticators when
-        the server has directory admin access (auth.idpAdminURL).
-        Without a directory, `managed` is false and the rest is absent.
-      responses:
-        "200":
-          description: Directory account links and enrolled authenticators.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserDirectory"
-        default:
-          $ref: "#/components/responses/Problem"
-  /user/directory/devices/{kind}/{deviceId}:
-    delete:
-      operationId: deleteUserDirectoryDevice
-      tags: [users]
-      summary: Remove one of the caller's own authenticators from the directory service.
-      description: >
-        With auth.externalOnly and directory admin access, removes the
-        caller's authenticator of this kind and id through the
-        directory's admin API, so the settings page manages MFA without
-        ever showing the directory's own panel. The authenticator must be
-        on the caller's own account: an id that is somebody else's answers 404
-        exactly like a missing one. 404 when the server has no directory
-        admin access; 502 when the directory did not answer.
-      parameters:
-        - name: kind
-          in: path
-          required: true
-          schema:
-            type: string
-            enum: [totp, webauthn, static, duo, sms, email]
-        - name: deviceId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "204":
-          description: Removed.
-        default:
-          $ref: "#/components/responses/Problem"
   /user/sessions:
     get:
       operationId: listUserSessions
@@ -1211,10 +1017,10 @@ paths:
       summary: Clear every remembered browser of the caller's account.
       description: >
         Revokes all of the caller's remembered browsers, this one included:
-        each is asked for the second factor at its next sign-in. Sessions and
-        authenticators are untouched. The response clears this browser's
-        remembered-browser cookie, since its record is gone. Session-only: a
-        PAT is refused (403), as on the session-revoking routes.
+        each is asked for the second factor at its next sign-in, since the
+        directory that set its cookie finds no record behind it. Sessions and
+        authenticators are untouched. Session-only: a PAT is refused (403),
+        as on the session-revoking routes.
       responses:
         "200":
           description: The number of remembered browsers cleared (0 when there were none).
@@ -2198,10 +2004,13 @@ paths:
         the origin and the published version it was taken from, for good. A
         fork is never public (`PATCH` to public answers `409
         fork-stays-private`). The fork is answered `202` with `forkState:
-        copying`: a worker then copies the origin's repository (every
-        branch and tag, objects copied rather than shared), writes one
-        commit, "Fork of ns/name@version", that renames the manifest into
-        the fork's namespace, tags it with the origin's version and submits
+        copying`: a worker then copies from the origin's repository the
+        forked release's commit and its history, when the release was
+        tagged and scanned, and nothing else (no other branch or tag;
+        objects copied rather than shared), writes one commit, "Fork of
+        ns/name@version", on top of it or, with nothing copied, from the
+        release's archive, that renames the manifest into the fork's
+        namespace, tags it with the origin's version and submits
         it through the pipeline like any submission, charged like one.
         `forkState` is then `ready`, or `failed` with `forkDetail` saying
         why. The origin must be readable, public, neither quarantined nor
@@ -2951,7 +2760,12 @@ paths:
     post:
       operationId: setFindingVerdict
       tags: [reviews]
-      summary: Confirm or dismiss a finding.
+      summary: Confirm or dismiss a finding (not on the caller's own version, unless platform staff).
+      description: >-
+        An author cannot set a verdict on a finding of their own version
+        (403), whatever their organization role, as with a review decision.
+        Platform staff may, their own versions included; the verdict's audit
+        event then carries `self_decision: true`.
       parameters:
         - name: id
           in: path
@@ -4555,7 +4369,13 @@ paths:
         the same rubric hash), so the person knows before Submit what AI
         Review will flag; and with the draft question set, which asks
         whether the draft's instruction does the task its description asks
-        for.
+        for. Beside them, with no judge, `ungranted` lists each runner tool
+        the instruction calls for that the manifest does not grant (a
+        browser tool with no `capabilities.browser`, `run_command` with no
+        exec commands, `fetch` with no egress host, a host tool with no
+        target host, a workspace file tool with no filesystem access, a
+        `<server>__<tool>` of a server not declared), which stage S6 sends to
+        a person at publish.
         A rubric question at 2 or more (the gate's medium) is a finding
         and `flagged`; so is a draft question at 2 or more. A half the
         judge could not answer for is `not_scanned`. This is not the
@@ -4922,12 +4742,14 @@ components:
       in: path
       required: true
       description: >
-        Social identity provider id. google and microsoft use their
-        built-in OIDC endpoints; openai and claude need an operator-set
-        issuer; authentik is the deployment's own directory service and also needs one; an unconfigured provider answers 404.
+        The deployment's sign-in OpenID provider, any issuer the operator
+        configures (`auth.oidc`). It is served as `oidc`, or as `authentik`
+        on a deployment that registered it under that id, whose accounts
+        are linked under it. The id it is not served under, and either id
+        while no provider is configured, answers 404.
       schema:
         type: string
-        enum: [google, github, microsoft, openai, claude, authentik]
+        enum: [authentik, oidc]
     Cursor:
       name: cursor
       in: query
@@ -4969,15 +4791,11 @@ components:
           type: object
           description: >
             Self-host feature flags: `judge`, `signing`, `redis`, `s3`,
-            `externalOnly` (accounts live in an external directory service;
-            the native register/password/TOTP surface answers 410 — clients
-            should not offer those forms) and `publicPublish2FA` (the server
-            refuses a public publish from an account it holds no second-factor
-            evidence for — an enrolled TOTP, or under `auth.requireIdpMFA` an
-            IdP sign-in whose `amr` named a factor;
-            false in dev mode and under `externalOnly` without
-            `auth.requireIdpMFA` — a client states that requirement only
-            when this is true), and `knowledge` (the store of knowledge
+            `publicPublish2FA` (the server refuses a public publish from an
+            account it holds no second-factor evidence for, an OpenID
+            provider sign-in whose `amr` named a factor; on only under
+            `auth.requireIdpMFA` and never in dev mode, so a client states
+            that requirement only when this is true), and `knowledge` (the store of knowledge
             packs is on: the registry has a knowledge sealing key or an
             extension that wraps keys, so `/knowledge/…` answers rather
             than 503).
@@ -5033,9 +4851,10 @@ components:
       required: [mode]
       description: >
         The server's own browser surface under `/ui/`. `mode` is
-        `full` (device authorize, sign-in, account, review, staff, org
-        admin), `authorize` (only the device-authorize page — a site fronts
-        this server) or `off`. `authorizeUrl` is the absolute page a CLI or
+        `full` (device authorize, plus the sign-in hand-off to the OpenID
+        provider, sign-out and the address-confirmation page), `authorize`
+        (only the device-authorize page — a site fronts this server) or
+        `off`. `authorizeUrl` is the absolute page a CLI or
         the desktop app opens for browser sign-in, when served.
       properties:
         mode:
@@ -5044,55 +4863,6 @@ components:
         authorizeUrl:
           type: string
           format: uri
-
-    RegisterRequest:
-      type: object
-      required: [handle, email, password]
-      properties:
-        handle:
-          type: string
-          pattern: "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-        email:
-          type: string
-          format: email
-        password:
-          type: string
-          minLength: 10
-          maxLength: 256
-        displayName:
-          type: string
-          maxLength: 120
-
-    LoginRequest:
-      type: object
-      required: [login, password]
-      properties:
-        login:
-          type: string
-          description: Handle or email.
-        password:
-          type: string
-        totpCode:
-          type: string
-          description: Required when the account has TOTP enabled.
-        rememberDevice:
-          type: boolean
-          description: >
-            Remember this browser as a trusted device, so a later password
-            sign-in from it skips the TOTP code. Defaults to false.
-
-
-            What it does: on a sign-in that answered the code, issues an
-            opaque httpOnly cookie recorded against the account, and later
-            password sign-ins presenting it are not asked for the code. What
-            it does not do: it is not a session, does not lengthen one, and
-            carries no scope — the password is still required on every
-            sign-in. It cannot be earned by a sign-in that skipped the code,
-            so its lifetime is absolute rather than sliding, and it expires
-            after auth.trustedDeviceTTL (30 days by default and by maximum).
-            It has no effect on an account with no TOTP factor, where no code
-            was answered, and on a deployment whose credentials are delegated
-            to an external directory, where this endpoint answers 410.
 
     LoginResult:
       type: object
@@ -5104,100 +4874,6 @@ components:
           type: string
           description: Echo in X-Agentry-CSRF on cookie-authenticated mutations.
 
-    SocialLoginResult:
-      type: object
-      description: >
-        Outcome of a social-login callback: either a session (like password
-        login) or a pending TOTP challenge to complete at
-        POST /auth/2fa/totp/challenge.
-      required: [totpRequired]
-      properties:
-        totpRequired:
-          type: boolean
-        challenge:
-          type: string
-          description: Single-use, five-minute challenge; present iff totpRequired.
-        user:
-          $ref: "#/components/schemas/User"
-        csrfToken:
-          type: string
-          description: Echo in X-Agentry-CSRF on cookie-authenticated mutations.
-
-    TotpSetupResult:
-      type: object
-      required: [secret, otpauthUrl]
-      properties:
-        secret:
-          type: string
-          description: Base32 TOTP secret (display once for authenticator apps).
-        otpauthUrl:
-          type: string
-
-    UserDirectory:
-      type: object
-      required: [managed]
-      properties:
-        managed:
-          description: True when a directory service owns credentials for this deployment.
-          type: boolean
-        accountUrl:
-          description: >
-            Deprecated and no longer set: the directory's own
-            account page is not offered; every setting lives here.
-          type: string
-          deprecated: true
-        passwordChangeUrl:
-          type: string
-        totpSetupUrl:
-          type: string
-        webauthnSetupUrl:
-          type: string
-        devices:
-          description: >
-            The caller's enrolled authenticators as the directory reports
-            them; absent when the server has no directory admin access.
-          type: array
-          items:
-            type: object
-            required: [kind, name]
-            properties:
-              id:
-                description: The directory's id for the authenticator; pass it to DELETE /user/directory/devices/{kind}/{deviceId}.
-                type: string
-              kind:
-                description: totp | webauthn | static | duo | sms | email | other
-                type: string
-              name:
-                type: string
-              createdAt:
-                type: string
-                format: date-time
-        devicesError:
-          description: Set when the authenticator lookup was attempted and failed; the links still work.
-          type: string
-        firstSocialProvider:
-          description: >
-            The social provider the caller's directory account was first
-            connected to, for the account's profile. Absent when
-            the account has none, the server has no directory admin access,
-            or the directory did not answer.
-          type: object
-          required: [id, name]
-          properties:
-            id:
-              description: The directory's slug for the provider, e.g. google.
-              type: string
-            name:
-              description: The provider's display name, e.g. Google.
-              type: string
-        hasPassword:
-          description: >
-            Whether the caller's directory account has a password:
-            false for an account a social provider created and no password was
-            added to. Absent when the directory did not answer or has not
-            recorded it yet (the account has not signed in or set a password
-            since the directory began recording it).
-          type: boolean
     EmailVerificationSent:
       type: object
       required: [sentTo, resendAfter]
@@ -5226,6 +4902,11 @@ components:
           type: boolean
         totpEnabled:
           type: boolean
+          deprecated: true
+          description: >
+            Always false: the server keeps no second factor of its own, and
+            the field goes in a later release. A sign-in's second factor is
+            the OpenID provider's.
         cookieAckAt:
           description: When this account acknowledged the cookie notice.
           type: string
@@ -6950,14 +6631,52 @@ components:
           description: The hash of the draft question set and everything that changes its verdict.
         failure:
           $ref: "#/components/schemas/DraftCheckFailure"
+    DraftUngrantedTool:
+      type: object
+      required: [tool, grant, path, line, reason]
+      properties:
+        tool:
+          type: string
+          description: >-
+            The tool as the instruction names it (`browser_click`,
+            `run_command`, `fetch`), `browser_*` or `host_*` for a whole
+            family, or `<server>__<tool>` for a declared server's tool.
+        grant:
+          type: string
+          enum: [browser, exec, egress, targetHosts, filesystem.read, filesystem.write, mcpServers]
+          description: The line of the capability contract the tool needs.
+        path:
+          type: string
+          description: The manifest path that holds the grant, such as `capabilities.browser`.
+        line:
+          type: integer
+          minimum: 1
+          description: The first line of the instruction that calls for the tool.
+        reason:
+          type: string
+          description: One sentence saying why, which quotes nothing of the instruction but the tool's name (and, for a server's tool, the server's).
     DraftCheck:
       type: object
-      required: [rubric, draft, model, usage]
+      required: [rubric, draft, ungranted, model, usage]
       properties:
         rubric:
           $ref: "#/components/schemas/DraftRubricCheck"
         draft:
           $ref: "#/components/schemas/DraftSetCheck"
+        ungranted:
+          type: array
+          description: >-
+            Each runner tool the instruction calls for that the manifest
+            does not grant, in the order the instruction first names them,
+            at most 50; empty when every tool it names is granted. A word
+            longer than 80 bytes is not read as a tool name. Any one sends the
+            version to a person at publish (`S6/ungranted-tool`). A tool
+            named only where the instruction turns it away ("not
+            `browser_pdf_save`"), and one in a paragraph that speaks of
+            another package as "a QuickAgent", is not listed. Read with no judge, so it is answered when both
+            halves are `not_scanned`.
+          items:
+            $ref: "#/components/schemas/DraftUngrantedTool"
         model:
           type: string
           description: The pinned judge model, such as `jev-1.13.0`.

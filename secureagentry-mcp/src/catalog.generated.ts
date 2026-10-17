@@ -52,7 +52,7 @@ export const API_VERSION = "0.3.0";
 export const API_BASE_PATH = "/api/v1";
 
 /** sha256 of spec/openapi.yaml, so a drifted catalog is detectable. */
-export const SPEC_SHA256 = "b84ede0adeb7fa85c2cfa7e90c6ab65a314113b76d90eb1e4164944737554a27";
+export const SPEC_SHA256 = "1a05b8b214fbd0fc4cc2c474ce9eb06c59a7d566d3775de2da087f9012302d1c";
 
 export const ACTIONS: readonly Action[] = [
   {
@@ -238,7 +238,7 @@ export const ACTIONS: readonly Action[] = [
       "model-input"
     ],
     "summary": "AI Review of a finished draft before it is submitted.",
-    "description": "Reads a finished QuickAgent draft's rendered package the two ways AI Review will: with the release rubric that stage S5 of the pipeline asks at publish (the manifest as its canonical JSON and every text file, in the same chunks, state and request shape, under the same rubric hash), so the person knows before Submit what AI Review will flag; and with the draft question set, which asks whether the draft's instruction does the task its description asks for. A rubric question at 2 or more (the gate's medium) is a finding and `flagged`; so is a draft question at 2 or more. A half the judge could not answer for is `not_scanned`. This is not the publication scan: a submitted version is scanned in full whatever this said. Nothing of the package is kept or logged. `usage` is for the record, never a price (AI Review is 1 credit for a whole draft). Callers as for `POST /model-input/scan`. 422 `draft-unreadable` for a package with no `agent.yaml`, one that does not parse, or no instruction file; 413 `draft-too-large` past 32 files or 65,536 bytes of text; 503 `model-input-unavailable` when the deployment's judge is not TypeSafe's Jev.",
+    "description": "Reads a finished QuickAgent draft's rendered package the two ways AI Review will: with the release rubric that stage S5 of the pipeline asks at publish (the manifest as its canonical JSON and every text file, in the same chunks, state and request shape, under the same rubric hash), so the person knows before Submit what AI Review will flag; and with the draft question set, which asks whether the draft's instruction does the task its description asks for. Beside them, with no judge, `ungranted` lists each runner tool the instruction calls for that the manifest does not grant (a browser tool with no `capabilities.browser`, `run_command` with no exec commands, `fetch` with no egress host, a host tool with no target host, a workspace file tool with no filesystem access, a `<server>__<tool>` of a server not declared), which stage S6 sends to a person at publish. A rubric question at 2 or more (the gate's medium) is a finding and `flagged`; so is a draft question at 2 or more. A half the judge could not answer for is `not_scanned`. This is not the publication scan: a submitted version is scanned in full whatever this said. Nothing of the package is kept or logged. `usage` is for the record, never a price (AI Review is 1 credit for a whole draft). Callers as for `POST /model-input/scan`. 422 `draft-unreadable` for a package with no `agent.yaml`, one that does not parse, or no instruction file; 413 `draft-too-large` past 32 files or 65,536 bytes of text; 503 `model-input-unavailable` when the deployment's judge is not TypeSafe's Jev.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -325,7 +325,7 @@ export const ACTIONS: readonly Action[] = [
       "users"
     ],
     "summary": "Clear every remembered browser of the caller's account.",
-    "description": "Revokes all of the caller's remembered browsers, this one included: each is asked for the second factor at its next sign-in. Sessions and authenticators are untouched. The response clears this browser's remembered-browser cookie, since its record is gone. Session-only: a PAT is refused (403), as on the session-revoking routes.",
+    "description": "Revokes all of the caller's remembered browsers, this one included: each is asked for the second factor at its next sign-in, since the directory that set its cookie finds no record behind it. Sessions and authenticators are untouched. Session-only: a PAT is refused (403), as on the session-revoking routes.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -1299,7 +1299,7 @@ export const ACTIONS: readonly Action[] = [
       "users"
     ],
     "summary": "Erase the caller's account (GDPR flow).",
-    "description": "Purges personal data and pseudonymizes the account. Published public versions are never deleted: they are either yanked, so already-installed copies keep verifying, or the personal-namespace agents are transferred to an organization the caller administers. When the account has published public versions the choice is explicit: omitting `publishedContent` is a 400, never a silent yank. When the deployment holds credentials in a directory service and is configured to reach it (`AGENTRY_IDP_ADMIN_URL`), the sign-in account there is deleted in the same step; the outcome is audited as `user.directory_erase` and returned in the `X-Agentry-Directory-Erasure` header. A failed directory attempt does not undo the registry's erasure: it is retried by a job with backoff (each attempt audited) and the response says `pending`; a retry budget that runs out is audited as `abandoned` and raised to the operator. An account that is an organization's last admin is refused (409 last-admin) until another admin is in place; a transfer that would put the organization over its private-agent cap is refused (422 private-agent-cap) with nothing erased. The erased account's memberships go with it.",
+    "description": "Purges personal data and pseudonymizes the account. Published public versions are never deleted: they are either yanked, so already-installed copies keep verifying, or the personal-namespace agents are transferred to an organization the caller administers. When the account has published public versions the choice is explicit: omitting `publishedContent` is a 400, never a silent yank. When the deployment holds credentials in a directory service that an extension of the server reaches, the sign-in account there is deleted in the same step; the outcome is audited as `user.directory_erase` and returned in the `X-Agentry-Directory-Erasure` header. A failed directory attempt does not undo the registry's erasure: the directory retries it where it can (`pending`), and one that does not complete is raised to the operator. An account that is an organization's last admin is refused (409 last-admin) until another admin is in place; a transfer that would put the organization over its private-agent cap is refused (422 private-agent-cap) with nothing erased. The erased account's memberships go with it.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -1508,51 +1508,6 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "204",
         "description": "Deleted."
-      }
-    ]
-  },
-  {
-    "id": "deleteUserDirectoryDevice",
-    "method": "DELETE",
-    "path": "/user/directory/devices/{kind}/{deviceId}",
-    "tags": [
-      "users"
-    ],
-    "summary": "Remove one of the caller's own authenticators from the directory service.",
-    "description": "With auth.externalOnly and directory admin access, removes the caller's authenticator of this kind and id through the directory's admin API, so the settings page manages MFA without ever showing the directory's own panel. The authenticator must be on the caller's own account: an id that is somebody else's answers 404 exactly like a missing one. 404 when the server has no directory admin access; 502 when the directory did not answer.",
-    "public": false,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [
-      {
-        "name": "kind",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "enum": [
-            "totp",
-            "webauthn",
-            "static",
-            "duo",
-            "sms",
-            "email"
-          ]
-        }
-      },
-      {
-        "name": "deviceId",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string"
-        }
-      }
-    ],
-    "responses": [
-      {
-        "code": "204",
-        "description": "Removed."
       }
     ]
   },
@@ -1896,7 +1851,7 @@ export const ACTIONS: readonly Action[] = [
       "agents"
     ],
     "summary": "Fork a public agent into a namespace the caller may create in.",
-    "description": "Makes a private copy of a public agent: a new agent in `namespace`, under the origin's name unless `name` gives another, that records the origin and the published version it was taken from, for good. A fork is never public (`PATCH` to public answers `409 fork-stays-private`). The fork is answered `202` with `forkState: copying`: a worker then copies the origin's repository (every branch and tag, objects copied rather than shared), writes one commit, \"Fork of ns/name@version\", that renames the manifest into the fork's namespace, tags it with the origin's version and submits it through the pipeline like any submission, charged like one. `forkState` is then `ready`, or `failed` with `forkDetail` saying why. The origin must be readable, public, neither quarantined nor blocked, and have a published version; the caller must be able to create a private agent in `namespace` (its owner, or an active member of the organization), within its agent quota and private-agent cap. A name the namespace already has answers `409 name-taken`; one a deleted agent holds, `409 name-held`.",
+    "description": "Makes a private copy of a public agent: a new agent in `namespace`, under the origin's name unless `name` gives another, that records the origin and the published version it was taken from, for good. A fork is never public (`PATCH` to public answers `409 fork-stays-private`). The fork is answered `202` with `forkState: copying`: a worker then copies from the origin's repository the forked release's commit and its history, when the release was tagged and scanned, and nothing else (no other branch or tag; objects copied rather than shared), writes one commit, \"Fork of ns/name@version\", on top of it or, with nothing copied, from the release's archive, that renames the manifest into the fork's namespace, tags it with the origin's version and submits it through the pipeline like any submission, charged like one. `forkState` is then `ready`, or `failed` with `forkDetail` saying why. The origin must be readable, public, neither quarantined nor blocked, and have a published version; the caller must be able to create a private agent in `namespace` (its owner, or an active member of the organization), within its agent quota and private-agent cap. A name the namespace already has answers `409 name-taken`; one a deleted agent holds, `409 name-held`.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -2645,26 +2600,6 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "SP metadata XML."
-      }
-    ]
-  },
-  {
-    "id": "getUserDirectory",
-    "method": "GET",
-    "path": "/user/directory",
-    "tags": [
-      "users"
-    ],
-    "summary": "Where the caller manages password, MFA and profile when a directory service owns the account.",
-    "description": "With auth.externalOnly, credentials live in the directory service (Authentik). This answers the settings page's question \"where do I change my password or add an authenticator?\" with the directory's flow URLs, and lists the caller's enrolled authenticators when the server has directory admin access (auth.idpAdminURL). Without a directory, `managed` is false and the rest is absent.",
-    "public": false,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [],
-    "responses": [
-      {
-        "code": "200",
-        "description": "Directory account links and enrolled authenticators."
       }
     ]
   },
@@ -4273,55 +4208,6 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
-    "id": "login",
-    "method": "POST",
-    "path": "/auth/login",
-    "tags": [
-      "auth"
-    ],
-    "summary": "Password (+TOTP when enabled) login; sets the session cookie.",
-    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
-    "public": true,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [],
-    "body": {
-      "required": true,
-      "contentType": "application/json",
-      "schema": {
-        "title": "LoginRequest",
-        "type": "object",
-        "required": [
-          "login",
-          "password"
-        ],
-        "properties": {
-          "login": {
-            "type": "string",
-            "description": "Handle or email."
-          },
-          "password": {
-            "type": "string"
-          },
-          "totpCode": {
-            "type": "string",
-            "description": "Required when the account has TOTP enabled."
-          },
-          "rememberDevice": {
-            "type": "boolean",
-            "description": "Remember this browser as a trusted device, so a later password sign-in from it skips the TOTP code. Defaults to false.\n\nWhat it does: on a sign-in that answered the code, issues an opaque httpOnly cookie recorded against the account, and later password sign-ins presenting it are not asked for the code. What it does not do: it is not a session, does not lengthen one, and carries no scope — the password is still required on every sign-in. It cannot be earned by a sign-in that skipped the code, so its lifetime is absolute rather than sliding, and it expires after auth.trustedDeviceTTL (30 days by default and by maximum). It has no effect on an account with no TOTP factor, where no code was answered, and on a deployment whose credentials are delegated to an external directory, where this endpoint answers 410.\n"
-          }
-        }
-      }
-    },
-    "responses": [
-      {
-        "code": "200",
-        "description": "Session established. The response sets the `agentry_session` cookie; `csrfToken` must be echoed in the `X-Agentry-CSRF` header on all cookie-authenticated mutations."
-      }
-    ]
-  },
-  {
     "id": "logout",
     "method": "POST",
     "path": "/auth/logout",
@@ -4329,7 +4215,7 @@ export const ACTIONS: readonly Action[] = [
       "auth"
     ],
     "summary": "Revoke the current session.",
-    "description": "Answers 204 for a native or OIDC session. For a session established through an organization's SAML connection whose IdP publishes a Single Logout endpoint, answers 200 with the IdP logout URL the browser should be sent to next (SP-initiated SLO); the registry session is revoked either way.",
+    "description": "Answers 204 for a session opened through an OpenID provider. For a session established through an organization's SAML connection whose IdP publishes a Single Logout endpoint, answers 200 with the IdP logout URL the browser should be sent to next (SP-initiated SLO); the registry session is revoked either way.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
@@ -4780,58 +4666,6 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "422",
         "description": "The text is not a voice (`voice-invalid`) — empty, not UTF-8, or holding a NUL."
-      }
-    ]
-  },
-  {
-    "id": "register",
-    "method": "POST",
-    "path": "/auth/register",
-    "tags": [
-      "auth"
-    ],
-    "summary": "Create an individual account (email+password).",
-    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
-    "public": true,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [],
-    "body": {
-      "required": true,
-      "contentType": "application/json",
-      "schema": {
-        "title": "RegisterRequest",
-        "type": "object",
-        "required": [
-          "handle",
-          "email",
-          "password"
-        ],
-        "properties": {
-          "handle": {
-            "type": "string",
-            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-          },
-          "email": {
-            "type": "string",
-            "format": "email"
-          },
-          "password": {
-            "type": "string",
-            "minLength": 10,
-            "maxLength": 256
-          },
-          "displayName": {
-            "type": "string",
-            "maxLength": 120
-          }
-        }
-      }
-    },
-    "responses": [
-      {
-        "code": "201",
-        "description": "Account created; verification email queued."
       }
     ]
   },
@@ -5935,7 +5769,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "reviews"
     ],
-    "summary": "Confirm or dismiss a finding.",
+    "summary": "Confirm or dismiss a finding (not on the caller's own version, unless platform staff).",
+    "description": "An author cannot set a verdict on a finding of their own version (403), whatever their organization role, as with a review decision. Platform staff may, their own versions included; the verdict's audit event then carries `self_decision: true`.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -6087,8 +5922,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "auth"
     ],
-    "summary": "Social login redirect URI: establish a session.",
-    "description": "Exchanges the code, verifies the identity, then links or JIT-creates an individual account (`identities.provider_kind='social'`). Auto-linking to an existing account happens only when the provider asserts a verified email that matches a verified account email; otherwise the response is 409 and the accounts must be linked explicitly. When the account has TOTP enabled the response is a pending 2FA challenge rather than a session. A login begun with `next` (browser mode) answers 303 to that in-app path once the session cookie is set, or to `/login?error=…` on failure; the JSON result is the API mode, used when `next` was absent.",
+    "summary": "Sign-in redirect URI: establish a session.",
+    "description": "Exchanges the code, verifies the identity, then links or JIT-creates an individual account (`identities.provider_kind='social'`). Auto-linking to an existing account happens only when the provider asserts a verified email that matches a verified account email; otherwise the response is 409 and the accounts must be linked explicitly. A login begun with `next` (browser mode) answers 303 to that in-app path once the session cookie is set, or to `/login?error=…` on failure; the JSON result is the API mode, used when `next` was absent.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -6097,16 +5932,12 @@ export const ACTIONS: readonly Action[] = [
         "name": "provider",
         "in": "path",
         "required": true,
-        "description": "Social identity provider id. google and microsoft use their built-in OIDC endpoints; openai and claude need an operator-set issuer; authentik is the deployment's own directory service and also needs one; an unconfigured provider answers 404.",
+        "description": "The deployment's sign-in OpenID provider, any issuer the operator configures (`auth.oidc`). It is served as `oidc`, or as `authentik` on a deployment that registered it under that id, whose accounts are linked under it. The id it is not served under, and either id while no provider is configured, answers 404.",
         "schema": {
           "type": "string",
           "enum": [
-            "google",
-            "github",
-            "microsoft",
-            "openai",
-            "claude",
-            "authentik"
+            "authentik",
+            "oidc"
           ]
         }
       },
@@ -6130,7 +5961,7 @@ export const ACTIONS: readonly Action[] = [
     "responses": [
       {
         "code": "200",
-        "description": "Session established, or a pending TOTP challenge."
+        "description": "Session established."
       },
       {
         "code": "303",
@@ -6149,8 +5980,8 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "auth"
     ],
-    "summary": "Begin social login with a configured provider.",
-    "description": "Individual-account login through a social identity provider (`google` = OIDC proper; `github` = an OAuth2 shim, since GitHub is not an OIDC issuer). Providers must be configured on the server (`AGENTRY_SOCIAL_<PROVIDER>_CLIENT_ID`/`_SECRET`); unconfigured providers return 404. This is individual login and never grants org membership. Org SSO lives under /orgs/{org}/sso.",
+    "summary": "Begin sign-in with the deployment's OpenID provider.",
+    "description": "Individual-account sign-in through the OpenID provider the server is configured with (`auth.oidc`: discovery, issuer pinning, PKCE and a verified ID token). A provider id the server does not serve answers 404. This is individual sign-in and never grants org membership. Org SSO lives under /orgs/{org}/sso.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -6159,16 +5990,12 @@ export const ACTIONS: readonly Action[] = [
         "name": "provider",
         "in": "path",
         "required": true,
-        "description": "Social identity provider id. google and microsoft use their built-in OIDC endpoints; openai and claude need an operator-set issuer; authentik is the deployment's own directory service and also needs one; an unconfigured provider answers 404.",
+        "description": "The deployment's sign-in OpenID provider, any issuer the operator configures (`auth.oidc`). It is served as `oidc`, or as `authentik` on a deployment that registered it under that id, whose accounts are linked under it. The id it is not served under, and either id while no provider is configured, answers 404.",
         "schema": {
           "type": "string",
           "enum": [
-            "google",
-            "github",
-            "microsoft",
-            "openai",
-            "claude",
-            "authentik"
+            "authentik",
+            "oidc"
           ]
         }
       },
@@ -6176,7 +6003,7 @@ export const ACTIONS: readonly Action[] = [
         "name": "next",
         "in": "query",
         "required": false,
-        "description": "Browser mode. An in-app, path-absolute return target (e.g. `/dashboard` on the site, `/ui/account` on the server's own pages). When present and valid, the callback answers the browser with a 303 to it instead of the JSON result, and a failed login 303s to the sign-in page with `?error=…` (the site's `/login`, or `/ui/login`). Anything that is not a single-slash path on this origin is ignored (open-redirect guard), which leaves the API behaviour unchanged.",
+        "description": "Browser mode. An in-app, path-absolute return target (e.g. `/dashboard` on the site, `/ui/authorize?…` on the server's own pages). When present and valid, the callback answers the browser with a 303 to it instead of the JSON result, and a failed login 303s to the sign-in page with `?error=…` (the site's `/login`, or `/ui/login`). Anything that is not a single-slash path on this origin is ignored (open-redirect guard), which leaves the API behaviour unchanged.",
         "schema": {
           "type": "string"
         }
@@ -6423,100 +6250,6 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Probe outcome."
-      }
-    ]
-  },
-  {
-    "id": "totpChallenge",
-    "method": "POST",
-    "path": "/auth/2fa/totp/challenge",
-    "tags": [
-      "auth"
-    ],
-    "summary": "Complete a pending 2FA challenge and open the session.",
-    "description": "Second leg of a login that could not carry a TOTP code inline. The only such login is social login: its callback is a browser redirect. The challenge is opaque and expires in five minutes; it proves nothing on its own, so a valid TOTP code is still required. It is single use: completing it records it as consumed in the database every replica reads, so a second completion is refused with 401 `totp-challenge-used`, and an expired one with 401 `totp-challenge-expired`. A wrong code does not consume it; attempts are held to the login rate limit. When the consumed record cannot be written, the challenge is refused with 503 and no session is opened.",
-    "public": true,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [],
-    "body": {
-      "required": true,
-      "contentType": "application/json",
-      "schema": {
-        "type": "object",
-        "required": [
-          "challenge",
-          "code"
-        ],
-        "properties": {
-          "challenge": {
-            "type": "string"
-          },
-          "code": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "responses": [
-      {
-        "code": "200",
-        "description": "Session established."
-      }
-    ]
-  },
-  {
-    "id": "totpSetup",
-    "method": "POST",
-    "path": "/auth/2fa/totp/setup",
-    "tags": [
-      "auth"
-    ],
-    "summary": "Begin TOTP enrollment; returns the provisioning secret.",
-    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
-    "public": false,
-    "sessionOnly": true,
-    "deprecated": false,
-    "params": [],
-    "responses": [
-      {
-        "code": "200",
-        "description": "Enrollment secret (confirm with /auth/2fa/totp/verify)."
-      }
-    ]
-  },
-  {
-    "id": "totpVerify",
-    "method": "POST",
-    "path": "/auth/2fa/totp/verify",
-    "tags": [
-      "auth"
-    ],
-    "summary": "Confirm TOTP enrollment with a current code.",
-    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
-    "public": false,
-    "sessionOnly": true,
-    "deprecated": false,
-    "params": [],
-    "body": {
-      "required": true,
-      "contentType": "application/json",
-      "schema": {
-        "type": "object",
-        "required": [
-          "code"
-        ],
-        "properties": {
-          "code": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "responses": [
-      {
-        "code": "204",
-        "description": "TOTP enabled."
       }
     ]
   },
@@ -7510,7 +7243,7 @@ export const ACTIONS: readonly Action[] = [
       "auth"
     ],
     "summary": "Confirm an email address with the mailed token.",
-    "description": "When the deployment delegates accounts to an external directory (`AGENTRY_AUTH_EXTERNAL_ONLY`), this endpoint answers 410 Gone; sign in through /auth/oidc/{provider}/start instead.",
+    "description": "Activates the account whose address the mailed link was sent to (POST /user/email-verification sends it).",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
