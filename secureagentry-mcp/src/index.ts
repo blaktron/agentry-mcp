@@ -12,12 +12,13 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { loadConfig } from "./config.js";
 import { AgentryMcpError } from "./errors.js";
 import { SERVER_NAME, SERVER_VERSION, createServer } from "./server.js";
+import { connectServer } from "./toolargs.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
   const server = createServer(config);
 
-  await server.connect(new StdioServerTransport());
+  await connectServer(server, new StdioServerTransport());
 
   process.stderr.write(
     `${SERVER_NAME} ${SERVER_VERSION} ready: ${config.registry} ` +

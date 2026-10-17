@@ -12,13 +12,15 @@
 import { z } from "zod";
 
 import { ACTIONS } from "../catalog.generated.js";
+import { registerTool } from "../toolargs.js";
 import { guard, render, textResult, uuidSchema, type ToolModule } from "./common.js";
 
 const SESSION_NOTE =
   "Session-only: the API refuses personal access tokens here, so this needs AGENTRY_SESSION_COOKIE.";
 
 export const accountTools: ToolModule = (server, ctx) => {
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_whoami",
     {
       title: "Who am I on Agentry",
@@ -51,7 +53,8 @@ export const accountTools: ToolModule = (server, ctx) => {
       }),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_update_profile",
     {
       title: "Update my Agentry profile",
@@ -72,7 +75,8 @@ export const accountTools: ToolModule = (server, ctx) => {
       ),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_list_tokens",
     {
       title: "List my personal access tokens",
@@ -85,7 +89,8 @@ export const accountTools: ToolModule = (server, ctx) => {
     async () => guard(async () => render(ctx, await ctx.client.call("listTokens"))),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_create_token",
     {
       title: "Mint a personal access token",
@@ -155,7 +160,8 @@ export const accountTools: ToolModule = (server, ctx) => {
       }),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_revoke_token",
     {
       title: "Revoke a personal access token",
@@ -178,7 +184,8 @@ export const accountTools: ToolModule = (server, ctx) => {
       ),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_list_ssh_keys",
     {
       title: "List my SSH keys",
@@ -190,7 +197,8 @@ export const accountTools: ToolModule = (server, ctx) => {
     async () => guard(async () => render(ctx, await ctx.client.call("listSshKeys"))),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_add_ssh_key",
     {
       title: "Register an SSH key",
@@ -216,7 +224,8 @@ export const accountTools: ToolModule = (server, ctx) => {
       ),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_remove_ssh_key",
     {
       title: "Remove an SSH key",
@@ -237,7 +246,8 @@ export const accountTools: ToolModule = (server, ctx) => {
       ),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_list_sessions",
     {
       title: "List my browser sessions",
@@ -249,7 +259,8 @@ export const accountTools: ToolModule = (server, ctx) => {
     async () => guard(async () => render(ctx, await ctx.client.call("listUserSessions"))),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_revoke_session",
     {
       title: "Revoke browser sessions",

@@ -9,10 +9,12 @@
 
 import { z } from "zod";
 
+import { registerTool } from "../toolargs.js";
 import { guard, handleSchema, render, type ToolModule } from "./common.js";
 
 export const orgTools: ToolModule = (server, ctx) => {
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_create_org",
     {
       title: "Create an organization",
@@ -47,7 +49,8 @@ export const orgTools: ToolModule = (server, ctx) => {
       ),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_get_org",
     {
       title: "Get an organization",
@@ -60,7 +63,8 @@ export const orgTools: ToolModule = (server, ctx) => {
       guard(async () => render(ctx, await ctx.client.call("getOrg", { path: { org } }))),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_list_org_members",
     {
       title: "List organization members",
@@ -72,7 +76,8 @@ export const orgTools: ToolModule = (server, ctx) => {
       guard(async () => render(ctx, await ctx.client.call("listOrgMembers", { path: { org } }))),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_set_org_member",
     {
       title: "Add an org member or change a role",
@@ -106,7 +111,8 @@ export const orgTools: ToolModule = (server, ctx) => {
       ),
   );
 
-  server.registerTool(
+  registerTool(
+    server,
     "agentry_remove_org_member",
     {
       title: "Remove an org member",

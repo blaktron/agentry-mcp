@@ -13,9 +13,11 @@ import {
   sessionSend,
   sessionStart,
 } from "../session.js";
+import { registerTool } from "../toolargs.js";
 
 export function registerSessionTools(d: Driver): void {
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_session_start",
     {
       description:
@@ -115,7 +117,8 @@ export function registerSessionTools(d: Driver): void {
     (a) => guard("agentry_session_start", () => sessionStart(d, a)),
   );
 
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_session_send",
     {
       description:
@@ -148,7 +151,8 @@ export function registerSessionTools(d: Driver): void {
     (a) => guard("agentry_session_send", () => sessionSend(d, a)),
   );
 
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_session_add",
     {
       description:
@@ -159,7 +163,8 @@ export function registerSessionTools(d: Driver): void {
     (a) => guard("agentry_session_add", () => sessionAdd(d, a)),
   );
 
-  d.server.registerTool(
+  registerTool(
+    d.server,
     "agentry_session_close",
     {
       description:
