@@ -1,4 +1,4 @@
-// The CLI's newer surface: the read tools for schedules, connections, model
+// The read tools for schedules, connections, model
 // sign-ins, the report design and destinations; agentry_run's destination,
 // report theme and sign-in arguments, on the run alone and in the digest,
 // secrets only by name; the default destination set in the preview and the
@@ -8,6 +8,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+
+import { ElicitRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 import { checkCli } from "../dist/cli.js";
 import { FAKE, connect, receivedArgv, scratchArgv } from "./helpers.js";
@@ -255,5 +257,83 @@ test("deliver: a result.json changed since the preview refuses the confirm; no f
     assert.equal(e.isError, true);
     assert.match(e.content[0].text, re);
   }
+  assert.ok(!receivedArgv(argvFile).some((a) => a[0] === "deliver"));
+});
+
+test("the preview and the person's question say which variable goes to which source or host", async () => {
+  const { client, elicitations } = await connect({}, {}, "accept");
+  const call = {
+    ref: "acme/widget",
+    intake: { repo: "https://git.example/acme/app" },
+    intakeTokens: { repo: "GITHUB_TOKEN" },
+    hostPasswords: { db: "DB_PW" },
+    hostKeys: { web: "/home/me/.ssh/id_ed25519" },
+  };
+  const p = await preview(client, "agentry_run", call);
+  assert.deepEqual(p.signIns, [
+    {
+      kind: "input source token",
+      id: "repo",
+      env: "GITHUB_TOKEN",
+      source: "https://git.example/acme/app",
+    },
+    { kind: "target host key file", id: "web", path: "/home/me/.ssh/id_ed25519" },
+    { kind: "target host password", id: "db", env: "DB_PW" },
+  ]);
+  await client.callTool({ name: "agentry_run", arguments: { ...call, confirm: p.digest } });
+  assert.match(
+    elicitations[0],
+    /\$GITHUB_TOKEN as the input source token for repo \(https:\/\/git\.example\/acme\/app\)/,
+  );
+  assert.match(elicitations[0], /\$DB_PW as the target host password for host db/);
+});
+
+test("a session's preview names the default destinations it delivers to at its end", async () => {
+  const file = scratchArgv() + "-dests";
+  writeFileSync(
+    file,
+    JSON.stringify({
+      destinations: [
+        { name: "n8n", kind: "webhook", where: "n8n.example:443", defaultFor: ["acme/widget"] },
+      ],
+    }),
+  );
+  const { client } = await connect({ FAKE_DESTINATIONS_FILE: file });
+  const p = await preview(client, "agentry_session_start", { ref: "acme/widget" });
+  assert.deepEqual(p.delivery.destinations, ["n8n"]);
+  assert.equal(p.delivery.saved[0].where, "n8n.example:443");
+});
+
+test("deliver: the preview shows only the named destinations and the start of the result; a result.json changed while the person was asked delivers nothing", async () => {
+  const file = scratchArgv() + "-dests";
+  writeFileSync(
+    file,
+    JSON.stringify({
+      destinations: [
+        { name: "n8n", kind: "webhook", where: "n8n.example:443", defaultFor: [] },
+        { name: "unrelated", kind: "webhook", where: "u.example:443", defaultFor: [] },
+      ],
+    }),
+  );
+  const { dir, result } = runFolderWithResult();
+  const { client, argvFile } = await connect({ FAKE_DESTINATIONS_FILE: file }, {}, "accept");
+  const call = { runFolder: dir, destinations: ["n8n"] };
+  const p = await preview(client, "agentry_deliver", call);
+  assert.deepEqual(
+    p.operation.savedDestinations.map((r) => r.name),
+    ["n8n"],
+  );
+  assert.equal(p.operation.result, "null");
+  client.setRequestHandler(ElicitRequestSchema, async () => {
+    result.status = "tampered";
+    writeFileSync(join(dir, "result.json"), JSON.stringify(result));
+    return { action: "accept", content: { proceed: true } };
+  });
+  const r = await client.callTool({
+    name: "agentry_deliver",
+    arguments: { ...call, confirm: p.digest },
+  });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /changed while the person was asked/);
   assert.ok(!receivedArgv(argvFile).some((a) => a[0] === "deliver"));
 });

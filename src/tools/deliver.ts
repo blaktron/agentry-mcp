@@ -17,6 +17,7 @@ import { z } from "zod";
 import { ArgumentError, flag, value } from "../argv.js";
 import { confirmed, isConsent, previewText, runPlan } from "../consent.js";
 import { guard, type Driver } from "../driver.js";
+import { toolText } from "../envelope.js";
 import { registerTool } from "../toolargs.js";
 
 interface DeliverArgs {
@@ -26,19 +27,30 @@ interface DeliverArgs {
   confirm?: string;
 }
 
-/** The run's result.json, read through no link: its digest and its deliverables block. */
+/** How much of the run's result the preview shows; the digest covers all of it. */
+const RESULT_PREVIEW_CHARS = 2000;
+
+/**
+ * The run's result.json, read through no link: its digest, its deliverables
+ * block, its status, and the start of the result a destination receives.
+ */
 async function runListing(
   runFolder: string,
   cwd?: string,
-): Promise<{ sha256: string; deliverables: unknown; status: unknown }> {
+): Promise<{ sha256: string; deliverables: unknown; status: unknown; result: unknown }> {
   const file = join(resolve(cwd ?? process.cwd(), runFolder), "result.json");
   const st = await lstat(file).catch(() => undefined);
   if (!st || !st.isFile())
     throw new ArgumentError(
       `${runFolder} is not a run's output folder: it has no result.json (a regular file)`,
     );
-  const bytes = await readFile(file);
-  let parsed: { deliverables?: unknown; status?: unknown };
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(file);
+  } catch (err) {
+    throw new ArgumentError(`${file} could not be read (${(err as NodeJS.ErrnoException).code})`);
+  }
+  let parsed: { deliverables?: unknown; status?: unknown; result?: unknown };
   try {
     parsed = JSON.parse(bytes.toString("utf8"));
   } catch {
@@ -48,6 +60,10 @@ async function runListing(
     sha256: createHash("sha256").update(bytes).digest("hex"),
     deliverables: parsed.deliverables ?? null,
     status: parsed.status ?? null,
+    result:
+      typeof parsed.result === "string"
+        ? parsed.result.slice(0, RESULT_PREVIEW_CHARS)
+        : JSON.stringify(parsed.result ?? null).slice(0, RESULT_PREVIEW_CHARS),
   };
 }
 
@@ -61,24 +77,35 @@ async function deliver(d: Driver, a: DeliverArgs) {
     throw new ArgumentError(
       "this agentry CLI cannot send to a destination; update the CLI to deliver to one",
     );
-  const argv = ["deliver", value("runFolder", a.runFolder), "--json"];
+  // The folder the CLI is given is the one read here.
+  const runFolder = value("runFolder", a.runFolder);
+  const argv = ["deliver", runFolder, "--json"];
   flag(argv, "to", a.to);
   for (const name of a.destinations ?? []) argv.push("--destination", value("destinations", name));
-  const listing = await runListing(a.runFolder, d.cwd);
+  const listing = await runListing(runFolder, d.cwd);
+  // The named destinations as saved (name, kind, host), never the others.
   let destinationsState: unknown = null;
   if (a.destinations?.length) {
-    const state = await runPlan<unknown>(d, tool, ["destinations", "list", "--json"]);
+    const state = await runPlan<{ destinations?: { name?: string }[] }>(d, tool, [
+      "destinations",
+      "list",
+      "--json",
+    ]);
     if (!state.ok) return state.result;
-    destinationsState = state.plan;
+    const rows = state.plan?.destinations ?? [];
+    destinationsState = a.destinations.map(
+      (n) => rows.find((r) => r.name === n) ?? { name: n, saved: false },
+    );
   }
   const facts = { tool, argv, listing, destinationsState };
   if (a.confirm === undefined)
     return previewText(
       {
         operation: {
-          runFolder: a.runFolder,
+          runFolder,
           runStatus: listing.status,
           deliverables: listing.deliverables,
+          result: listing.result,
           to: a.to ?? null,
           destinations: a.destinations ?? [],
           savedDestinations: destinationsState,
@@ -94,11 +121,18 @@ async function deliver(d: Driver, a: DeliverArgs) {
   const consent = await confirmed(d.server, tool, a.confirm, facts, {
     unsigned: false,
     ask:
-      `Deliver the run in ${a.runFolder}` +
+      `Deliver the run in ${runFolder}` +
       `${a.to !== undefined ? ` to the folder ${a.to}` : ""}` +
       `${a.destinations?.length ? `${a.to !== undefined ? " and" : ""} to ${a.destinations.join(", ")}` : ""}?`,
   });
   if (!isConsent(consent)) return consent;
+  // The person may have taken minutes to answer: the listing they agreed
+  // to must still be the one the CLI reads.
+  if ((await runListing(runFolder, d.cwd)).sha256 !== listing.sha256)
+    return toolText(
+      `${tool}: ${runFolder}/result.json changed while the person was asked; nothing was delivered. Preview again.`,
+      true,
+    );
   return d.run(tool, argv);
 }
 

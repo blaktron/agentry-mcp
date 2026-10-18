@@ -333,24 +333,30 @@ export async function runConsent(
   flag(voiceArgv, "registry", a.registry);
   const voice = await runPlan<unknown>(d, tool, voiceArgv);
   if (!voice.ok) return voice.result;
-  // Where the run sends its result: the call's destinations, else the
-  // QuickAgent's default set, which the person saved and may change
-  // between the preview and the confirm.
+  // Where the run (or the session, at its end) sends its result: the
+  // call's destinations, else the QuickAgent's default set, which the
+  // person saved and may change between the preview and the confirm.
   let destinationsState: unknown = null;
-  if (d.features.destinations && mode === "autonomous" && !a.noDestination) {
+  if (
+    d.features.destinations &&
+    !a.noDestination &&
+    (a.destinations?.length || a.local === undefined)
+  ) {
     const state = await runPlan<unknown>(d, tool, ["destinations", "list", "--json"]);
     if (!state.ok) return state.result;
     destinationsState = state.plan;
   }
+  const sends = delivery(a, plan, destinationsState);
+  const secrets = signIns(a);
   const facts = {
     ...runFacts(plan, a, timeoutSeconds, refusals),
     attachmentInputs,
     knowledgeState,
     voiceState: voice.plan,
-    destinationsState,
+    delivery: sends,
+    signIns: secrets,
   };
 
-  const sends = mode === "autonomous" ? delivery(a, plan, destinationsState) : undefined;
   if (a.confirm === undefined) {
     return previewText(
       {
@@ -359,7 +365,8 @@ export async function runConsent(
         unscanned,
         refusals,
         timeoutSeconds,
-        ...(sends ? { delivery: sends } : {}),
+        delivery: sends,
+        ...(secrets.length ? { signIns: secrets } : {}),
         log: tail(log),
         writes: false,
       },
@@ -376,7 +383,8 @@ export async function runConsent(
       `${mode === "interactive" ? "Start a session with" : "Run"} ${plan.ref} (${plan.mode}` +
       `${mode === "interactive" ? "" : `, up to ${timeoutSeconds}s`})? Contract: ${canonical(plan.contract)}. ` +
       `${a.deliverTo !== undefined ? `Copies its deliverables to ${a.deliverTo}. ` : ""}` +
-      `${sends?.destinations.length ? `Sends its result and deliverables to ${sends.destinations.join(", ")}. ` : ""}` +
+      `${sends.destinations.length ? `Sends its result and deliverables to ${sends.destinations.join(", ")}. ` : ""}` +
+      `${secrets.length ? `Signs in with: ${secrets.map(describeSignIn).join("; ")}. ` : ""}` +
       `Attestation: ${plan.attestation}.${plan.reason ? ` The CLI would ask because: ${plan.reason}.` : ""}`,
   });
   if (!isConsent(ok)) return ok;
@@ -475,23 +483,83 @@ function deliveryFlags(argv: string[], a: RunArgs): void {
   idFlags(argv, "host-sudo-password", "hostSudoPasswords", a.hostSudoPasswords, envName);
 }
 
+/** A saved destination as `destinations list --json` shows it. */
+interface SavedDestination {
+  name?: string;
+  kind?: string;
+  where?: string;
+  onMyNetwork?: boolean;
+  defaultFor?: string[];
+}
+
 /**
- * Where a run would deliver, for the preview: the folder (the call's, else
- * the CLI's deliver.folder setting) and the destinations, the call's or
- * else the default set saved for this QuickAgent.
+ * Where a run would deliver, for the preview and the digest: the folder
+ * (the call's, else the CLI's deliver.folder setting) and the destinations,
+ * the call's or else the default set saved for this QuickAgent, each as
+ * saved (name, kind, host). The list shows a destination's host, never its
+ * path or secret, so a destination saved again under the same name and
+ * host is the same destination here.
  */
 function delivery(a: RunArgs, p: RunPlan, state: unknown) {
   const folder = a.deliverTo ?? "the CLI's deliver.folder setting, if any";
-  if (a.noDestination || a.local !== undefined)
-    return { folder, destinations: a.destinations ?? [] };
-  if (a.destinations?.length) return { folder, destinations: a.destinations };
+  const rows = (state as { destinations?: SavedDestination[] } | null)?.destinations ?? [];
+  const saved = (names: string[]) =>
+    names.map((n) => {
+      const r = rows.find((row) => row.name === n);
+      return r
+        ? { name: n, kind: r.kind, where: r.where, onMyNetwork: r.onMyNetwork }
+        : { name: n, saved: false };
+    });
+  if (a.noDestination) return { folder, destinations: [] as string[] };
+  if (a.destinations?.length)
+    return { folder, destinations: a.destinations, saved: saved(a.destinations) };
+  if (a.local !== undefined) return { folder, destinations: [] as string[] };
   const agent = p.ref.split("@")[0] ?? p.ref;
-  const rows = (state as { destinations?: { name?: string; defaultFor?: string[] }[] } | null)
-    ?.destinations;
-  const names = (rows ?? []).filter((r) => r.defaultFor?.includes(agent)).map((r) => r.name);
+  const names = rows.filter((r) => r.defaultFor?.includes(agent)).map((r) => r.name ?? "");
   return names.length
-    ? { folder, destinations: names, defaultSetFor: agent }
-    : { folder, destinations: [] };
+    ? { folder, destinations: names, defaultSetFor: agent, saved: saved(names) }
+    : { folder, destinations: [] as string[] };
+}
+
+/** One secret a run would read, named for the person: what it signs in to and where it comes from. */
+interface SignIn {
+  kind: string;
+  id: string;
+  env?: string;
+  path?: string;
+  source?: string;
+}
+
+/**
+ * The secrets the call has the run read, for the preview and the person's
+ * question: a variable's value goes to the input source or target host its
+ * id names, so the person sees which variable goes where before agreeing.
+ */
+function signIns(a: RunArgs): SignIn[] {
+  const out: SignIn[] = [];
+  for (const [id, env] of Object.entries(a.intakeTokens ?? {}))
+    out.push({
+      kind: "input source token",
+      id,
+      env,
+      source: a.intake?.[id] ?? "the source's saved answer",
+    });
+  for (const [id, path] of Object.entries(a.hostKeys ?? {}))
+    out.push({ kind: "target host key file", id, path });
+  for (const [kind, m] of [
+    ["target host password", a.hostPasswords],
+    ["target host key passphrase", a.hostPassphrases],
+    ["target host sudo password", a.hostSudoPasswords],
+  ] as const)
+    for (const [id, env] of Object.entries(m ?? {})) out.push({ kind, id, env });
+  return out;
+}
+
+function describeSignIn(s: SignIn): string {
+  const from = s.env !== undefined ? `$${s.env}` : `the key file ${s.path}`;
+  return s.source !== undefined
+    ? `${from} as the ${s.kind} for ${s.id} (${s.source})`
+    : `${from} as the ${s.kind} for host ${s.id}`;
 }
 
 /**

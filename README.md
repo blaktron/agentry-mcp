@@ -141,7 +141,12 @@ run's PDFs. An input source's token and a target host's password, passphrase
 or sudo password are passed as the **name** of an environment variable
 (`intakeTokens`, `hostPasswords`, `hostPassphrases`, `hostSudoPasswords`) and
 a host key as a file path (`hostKeys`); otherwise the CLI uses what the
-person saved in the system keychain. `agentry_deliver` sends a run already
+person saved in the system keychain. The preview's `signIns` and the
+question put to the person name each variable and the source or host it
+signs in to, since its value goes there. A session's preview names its
+destinations too: a session delivers at its end. The destination list shows a
+destination's host, never its path or secret, so one saved again under the
+same name and host reads as the same destination. `agentry_deliver` sends a run already
 made to a folder or to saved destinations again, behind the same two calls.
 
 Interactive sessions launch `agentry run --mode interactive

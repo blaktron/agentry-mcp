@@ -107,7 +107,9 @@ see what is saved. `reportTheme` picks a built-in theme for the run's PDFs
 source's token or a target host's password only as the NAME of an environment
 variable the person set (`intakeTokens`, `hostPasswords`, `hostPassphrases`,
 `hostSudoPasswords`), and a host key as a file path (`hostKeys`); without them
-the CLI uses the sign-ins saved in the system keychain. `agentry_deliver`
+the CLI uses the sign-ins saved in the system keychain. Use only variable
+names the person gave you, and show the preview's `signIns`: each variable's
+value goes to the source or host named beside it. `agentry_deliver`
 copies or sends a run already made again, previewed and confirmed like a run.
 
 `agentry_schedule_list`, `agentry_connections_list` and
