@@ -4,3 +4,4 @@ dist/
 .env
 .scratch/
 dist-release/
+__pycache__/
