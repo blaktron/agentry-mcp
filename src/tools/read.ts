@@ -1,5 +1,5 @@
 /**
- * The four read-only tools: each one `agentry <cmd> --json`, the
+ * The read-only tools: each one `agentry <cmd> --json`, the
  * result the CLI's own JSON in the envelope. Their descriptions are what the
  * host's model reads before calling, so they say what the registry says —
  * scanned, N findings, signed or unsigned — and never more.
@@ -36,6 +36,40 @@ export function registerReadTools(d: Driver): void {
       "agentry_voice_status",
       ["voice", "status"],
       "Read the local and account Writing Voice metadata and review with agentry voice status --json.",
+    ],
+    [
+      "agentry_schedule_list",
+      ["schedule", "list"],
+      "List the QuickAgents scheduled to run on this computer, with their repeat, next run, output folder and " +
+        "whether each is paused, with agentry schedule list --json. Adding, editing, pausing or removing a " +
+        "schedule stays in a terminal (`agentry schedule`) or the desktop.",
+    ],
+    [
+      "agentry_connections_list",
+      ["connections", "list"],
+      "List the OAuth connections this computer keeps for QuickAgent versions' MCP servers, with agentry " +
+        "connections list --json (never a token). Signing in is `agentry connect` in a terminal, where the " +
+        "person sees the vendor's page.",
+    ],
+    [
+      "agentry_model_signins_list",
+      ["model-signins", "list"],
+      "List the model sign-ins local runs can spend (a ChatGPT, Claude or Copilot plan, or a connected key), " +
+        "with agentry model-signins list --json (never a token). Adding or removing one stays in a terminal.",
+    ],
+    [
+      "agentry_report_design_show",
+      ["report-design", "show"],
+      "Show the report design a run's PDFs would take now, and what chose it (the account's, the config's, " +
+        "or the default), with agentry report-design show --json. A run can pick a built-in theme with " +
+        "agentry_run's reportTheme.",
+    ],
+    [
+      "agentry_destinations_list",
+      ["destinations", "list"],
+      "List the saved destinations a run can send its result and deliverables to — name, kind, host (never a " +
+        "path, query or secret), whether it is on the person's network — and the QuickAgents each is a default " +
+        "for, with agentry destinations list --json. Saving, changing or removing one stays in a terminal.",
     ],
   ] as const) {
     registerTool(

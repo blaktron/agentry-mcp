@@ -24,9 +24,12 @@
 #   FAKE_REFUSAL   the install plan's refusal (default none)
 #   FAKE_WRITES    a file the fake touches on a real install/uninstall
 #   FAKE_NO_DELIVER  set to make `run --help` omit --deliver-to (a CLI from before deliverables)
+#   FAKE_NO_DESTINATION  set to make `run --help` omit --destination (a CLI from before destinations)
 #   FAKE_RUN_OUT     the run envelope's outDir (default /tmp/out)
 #   FAKE_DELIVERABLES  the run envelope's deliverables block, verbatim JSON
 #   FAKE_DELIVERIES    the run envelope's deliveries block, verbatim JSON
+#   FAKE_DESTINATIONS  what `destinations list --json` prints (default none saved)
+#   FAKE_DESTINATIONS_FILE  a file whose content, when it exists, is FAKE_DESTINATIONS
 set -u
 if [ -n "${FAKE_ARGV:-}" ]; then
   printf '%s\n' "$@" >> "$FAKE_ARGV"
@@ -39,7 +42,7 @@ if [ "${1:-}" = "install" ] && [ "${2:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_PLAN:-}" ]; then echo "Flags: --yes --allow-unsigned --target"; else echo "Flags: --plan --yes --allow-unsigned --target"; fi; exit 0
 fi
 if [ "${1:-}" = "run" ] && [ "${2:-}" = "--help" ]; then
-  if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode ${FAKE_NO_PROTOCOL:+removed} ${FAKE_NO_PROTOCOL:---session-protocol} ${FAKE_NO_DELIVER:---deliver-to}"; fi; exit 0
+  if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode ${FAKE_NO_PROTOCOL:+removed} ${FAKE_NO_PROTOCOL:---session-protocol} ${FAKE_NO_DELIVER:---deliver-to} ${FAKE_NO_DESTINATION:---destination}"; fi; exit 0
 fi
 if [ "${2:-}" = "--help" ]; then echo "Usage: agentry $1"; exit 0; fi
 echo "narration: running $1" >&2
@@ -56,6 +59,16 @@ refusal="${FAKE_REFUSAL:-}"
 [ "$attest" = unscanned ] && [ -z "$refusal" ] && refusal="unscanned — the registry admitted acme/widget@1.0.0 without a scan: no findings, no report and no attestation stand behind it; re-run with --allow-unscanned to install it anyway, accepting that nothing about its contents was checked"
 case "$1" in
   whoami) echo '{"username":"example","tier":"pro"}' ;;
+  schedule) echo '[{"id":"s1","name":"weekly","ref":"acme/widget","paused":false,"describe":"every Monday at 09:00","alarm":true}]' ;;
+  connections) echo '[{"ref":"acme/widget@1.0.0","server":"notion","issuer":"https://auth.example"}]' ;;
+  model-signins) echo '[{"vendor":"claude","account":"me@example.com"}]' ;;
+  report-design) echo '{"design":{"name":"Plain","basedOn":"plain"},"source":"default"}' ;;
+  destinations)
+    dests="${FAKE_DESTINATIONS:-}"; [ -n "${FAKE_DESTINATIONS_FILE:-}" ] && [ -f "$FAKE_DESTINATIONS_FILE" ] && dests=$(cat "$FAKE_DESTINATIONS_FILE")
+    echo "${dests:-{\"destinations\":[]\}}" ;;
+  deliver)
+    [ -n "${FAKE_WRITES:-}" ] && echo delivered >> "$FAKE_WRITES"
+    echo '{"deliveries":[{"destination":"/home/me/Documents/Agentry","kind":"folder","object":"/home/me/Documents/Agentry/widget/a.md","sha256":"00","status":"delivered"}]}' ;;
   builtins) echo '[{"ref":"agentry/drafter@1.6.0","digest":"sha256:builtin"}]' ;;
   knowledge)
     if [ "${2:-}" = list ]; then echo '{"packs":[]}'; else
