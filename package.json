@@ -26,6 +26,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prose-check": "node scripts/prose-check.mjs",
+    "workflows-check": "python3 scripts/ci/workflow_guard.py && python3 -m unittest discover -s scripts/ci",
     "check": "npm run typecheck && npm run format:check && npm run prose-check && npm test",
     "start": "node dist/index.js"
   },

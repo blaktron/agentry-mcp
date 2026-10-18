@@ -29,13 +29,14 @@ and say in the pull request what you verified and how.
 You need Node 20 or newer. The tests run against a fake `agentry` CLI, so
 they do not need the real one.
 
-| Command          | What                                                                       |
-| ---------------- | -------------------------------------------------------------------------- |
-| `npm ci`         | install the locked dependencies                                            |
-| `npm run check`  | type check, prettier, the prose gate and the tests: run it before you push |
-| `npm run build`  | compile into `dist/`                                                       |
-| `npm test`       | build, then run the tests in `test/`                                       |
-| `npm run format` | `prettier --write .`                                                       |
+| Command                   | What                                                                       |
+| ------------------------- | -------------------------------------------------------------------------- |
+| `npm ci`                  | install the locked dependencies                                            |
+| `npm run check`           | type check, prettier, the prose gate and the tests: run it before you push |
+| `npm run build`           | compile into `dist/`                                                       |
+| `npm test`                | build, then run the tests in `test/`                                       |
+| `npm run format`          | `prettier --write .`                                                       |
+| `npm run workflows-check` | the workflow fork-guard check (needs python3 with PyYAML)                  |
 
 `scripts/package.sh <version> <out-dir>` builds the downloadable tarball, and
 `node scripts/package-smoke.mjs <tarball>` unpacks it and starts the server.
