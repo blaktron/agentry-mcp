@@ -120,7 +120,9 @@ link: to the copy the run delivered with `deliverTo` (or the CLI's
 `deliver.folder` setting) when that copy still matches, else to the file in the
 run folder. Each file is read through no link and must match the size and
 SHA-256 the runner listed before it is inlined or linked; one that does not is
-withheld. The envelope's `deliverables` says what came of each file, and why
+withheld. A link names the file as it was when the server checked it; the
+envelope carries each file's SHA-256 for a reader that opens it later. The
+envelope's `deliverables` says what came of each file, and why
 one was linked rather than inlined, or withheld. `deliverTo` needs a CLI with
 `run --deliver-to`.
 

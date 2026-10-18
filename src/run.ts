@@ -331,6 +331,7 @@ export async function runConsent(
     ask:
       `${mode === "interactive" ? "Start a session with" : "Run"} ${plan.ref} (${plan.mode}` +
       `${mode === "interactive" ? "" : `, up to ${timeoutSeconds}s`})? Contract: ${canonical(plan.contract)}. ` +
+      `${a.deliverTo !== undefined ? `Copies its deliverables to ${a.deliverTo}. ` : ""}` +
       `Attestation: ${plan.attestation}.${plan.reason ? ` The CLI would ask because: ${plan.reason}.` : ""}`,
   });
   if (!isConsent(ok)) return ok;
@@ -407,7 +408,9 @@ async function decorateRun(r: CallToolResult, cwd?: string): Promise<CallToolRes
     resultFile: env.result?.resultFile,
     outDir: env.result?.outDir,
   };
-  const back = await deliverablesBack(env.result, cwd);
+  // The run's outcome is the CLI's: a deliverable that cannot be handed
+  // back never turns a finished run into a tool error.
+  const back = await deliverablesBack(env.result, cwd).catch(() => undefined);
   if (!back) return { content: [{ type: "text", text: JSON.stringify(out) }] };
   const withBack = {
     ...out,

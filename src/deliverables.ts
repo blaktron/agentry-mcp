@@ -6,7 +6,9 @@
  * files are what the agent wrote, so nothing is returned on the listing
  * alone: each file is read here, through no link, and its bytes must hash to
  * the listed digest before it is inlined or linked. A file that does not
- * match is withheld and says why.
+ * match is withheld and says why. A link names the file as it was when it
+ * was checked; the envelope carries its SHA-256 for a reader that opens it
+ * later.
  *
  * Text deliverables come back inline as embedded resources, up to
  * INLINE_EACH_BYTES each and INLINE_TOTAL_BYTES in all; every other one is a
@@ -142,7 +144,11 @@ export async function deliverablesBack(
       entry.reason = "the run named no output folder";
       continue;
     }
-    const inRun = await readChecked(runFile(outDir, f.path, cwd), f, true);
+    const textType = TEXT_TYPES[f.type];
+    // Only a text file small enough to inline is held in memory; any other
+    // is hashed as it streams.
+    const keep = textType !== undefined && f.bytes <= INLINE_EACH_BYTES;
+    const inRun = await readChecked(runFile(outDir, f.path, cwd), f, true, keep);
     if (typeof inRun === "string") {
       entry.reason = inRun;
       continue;
@@ -150,8 +156,7 @@ export async function deliverablesBack(
     const copy = await verifiedCopy(deliveries, f);
     const file = copy ?? inRun.file;
     entry.uri = pathToFileURL(file).href;
-    const textType = TEXT_TYPES[f.type];
-    const text = textType !== undefined ? utf8(inRun.bytes) : undefined;
+    const text = inRun.bytes !== undefined ? utf8(inRun.bytes) : undefined;
     if (
       text !== undefined &&
       f.bytes <= INLINE_EACH_BYTES &&
@@ -168,10 +173,10 @@ export async function deliverablesBack(
     entry.returned = "link";
     if (textType !== undefined)
       entry.reason =
-        text === undefined
-          ? "not UTF-8 text"
-          : f.bytes > INLINE_EACH_BYTES
-            ? `over ${INLINE_EACH_BYTES} bytes`
+        f.bytes > INLINE_EACH_BYTES
+          ? `over ${INLINE_EACH_BYTES} bytes`
+          : text === undefined
+            ? "not UTF-8 text"
             : `the run's inline text reached ${INLINE_TOTAL_BYTES} bytes`;
     back.content.push({
       type: "resource_link",
@@ -207,9 +212,16 @@ function listed(v: unknown): Listed | undefined {
 }
 
 /**
+ * What no segment of a deliverable's path may be on Windows: a name with a
+ * character the file system reads as syntax (a stream's colon, a drive), a
+ * device name, or one ending in a dot or space, which Windows drops.
+ */
+const WINDOWS_UNSAFE = /[:<>"|?*]|^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$|[. ]$/i;
+
+/**
  * The listed path inside the run folder, or a reason it is not one: a
  * deliverable is a file under reports/, named by a relative path with no
- * `..` or empty segment.
+ * `..` or empty segment, and none Windows would read as something else.
  */
 function runFile(
   outDir: string,
@@ -222,7 +234,8 @@ function runFile(
     rel.includes("\\") ||
     parts[0] !== "reports" ||
     parts.length < 2 ||
-    parts.some((p) => p === "" || p === "." || p === ".." || p.includes("\0"))
+    parts.some((p) => p === "" || p === "." || p === ".." || p.includes("\0")) ||
+    (process.platform === "win32" && parts.some((p) => WINDOWS_UNSAFE.test(p)))
   )
     return "not a file under reports/";
   return { root: isAbsolute(outDir) ? outDir : join(cwd ?? process.cwd(), outDir), parts };
@@ -232,13 +245,15 @@ function runFile(
  * Reads a file reached by no link and checks it against the listing: size
  * and SHA-256. inRun: the path is checked component by component beneath
  * the run folder; otherwise (a delivered copy) the file itself must not be
- * a link. Returns the bytes, or why the file is not the one listed.
+ * a link. Returns the file and, when keep is set, its bytes; or why the
+ * file is not the one listed.
  */
 async function readChecked(
   where: { root: string; parts: string[] } | string,
   f: Listed,
   inRun: boolean,
-): Promise<{ file: string; bytes: Buffer } | string> {
+  keep: boolean,
+): Promise<{ file: string; bytes?: Buffer } | string> {
   if (typeof where === "string") return where;
   let file = where.root;
   for (const [i, part] of where.parts.entries()) {
@@ -253,33 +268,53 @@ async function readChecked(
     if (st.isSymbolicLink()) return "reached through a link";
     if (i === where.parts.length - 1 && !st.isFile()) return "not a regular file";
   }
-  let bytes: Buffer;
+  const hash = createHash("sha256");
+  const chunks: Buffer[] = [];
+  let n = 0;
   try {
-    const h = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    // No link at the last step, and no wait on a file swapped for a FIFO.
+    const h = await open(
+      file,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+    );
     try {
       const st = await h.stat();
       if (!st.isFile()) return "not a regular file";
       if (st.size !== f.bytes) return "changed since the run listed it";
-      bytes = await h.readFile();
+      const buf = Buffer.alloc(64 * 1024);
+      for (;;) {
+        const { bytesRead } = await h.read(buf, 0, buf.length, null);
+        if (bytesRead === 0) break;
+        n += bytesRead;
+        if (n > f.bytes) return "changed since the run listed it";
+        hash.update(buf.subarray(0, bytesRead));
+        if (keep) chunks.push(Buffer.from(buf.subarray(0, bytesRead)));
+      }
     } finally {
       await h.close();
     }
   } catch {
     return "unreadable";
   }
-  if (bytes.length !== f.bytes || sha256(bytes) !== f.sha256)
-    return "changed since the run listed it";
-  return { file, bytes };
+  if (n !== f.bytes || hash.digest("hex") !== f.sha256) return "changed since the run listed it";
+  return keep ? { file, bytes: Buffer.concat(chunks) } : { file };
 }
 
-/** The run's own copy of f, when it made one and its bytes still match. */
+/**
+ * The run's own copy of f, when it made one and its bytes still match. A
+ * copy's name is the CLI's safe form of the file's, so it is matched by its
+ * digest; two files with the same bytes may share a copy, which is the same
+ * content either way.
+ */
 async function verifiedCopy(deliveries: Delivery[], f: Listed): Promise<string | undefined> {
   for (const d of deliveries) {
+    if (typeof d !== "object" || d === null) continue;
     if (d.kind !== "folder" || d.status !== "delivered" || d.sha256 !== f.sha256) continue;
     if (typeof d.object !== "string" || !isAbsolute(d.object)) continue;
     const got = await readChecked(
       { root: dirname(d.object), parts: [basename(d.object)] },
       f,
+      false,
       false,
     );
     if (typeof got !== "string") return d.object;
@@ -287,14 +322,11 @@ async function verifiedCopy(deliveries: Delivery[], f: Listed): Promise<string |
   return undefined;
 }
 
-function sha256(b: Buffer): string {
-  return createHash("sha256").update(b).digest("hex");
-}
-
 /** The bytes as text when they are well-formed UTF-8, else undefined. */
 function utf8(b: Buffer): string | undefined {
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(b);
+    // The bytes as they are, a byte-order mark included: what was hashed.
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(b);
   } catch {
     return undefined;
   }

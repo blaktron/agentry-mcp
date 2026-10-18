@@ -224,3 +224,46 @@ test("a run that lists no deliverables returns the envelope alone", async () => 
   assert.equal(r.content.length, 1);
   assert.equal(JSON.parse(r.content[0].text).deliverables, undefined);
 });
+
+test("a text file that is not UTF-8 is linked, saying so; a reports folder reached through a link is withheld", async () => {
+  const { out, listed } = runFolder([["notes.txt", Buffer.from([0xff, 0xfe, 0x41])]]);
+  const elsewhere = mkdtempSync(join(tmpdir(), "agentry-mcp-elsewhere-"));
+  writeFileSync(join(elsewhere, "x.md"), "behind a linked folder");
+  symlinkSync(elsewhere, join(out, "reports", "sub"));
+  const viaLink = {
+    path: "reports/sub/x.md",
+    title: "x",
+    sha256: sha(Buffer.from("behind a linked folder")),
+    bytes: 22,
+    type: "md",
+    marked: true,
+  };
+  const { r, env } = await runWith(out, { files: [listed[0], viaLink] });
+  assert.equal(env.deliverables[0].returned, "link");
+  assert.equal(env.deliverables[0].reason, "not UTF-8 text");
+  assert.equal(env.deliverables[1].returned, "withheld");
+  assert.match(env.deliverables[1].reason, /link/);
+  assert.doesNotMatch(JSON.stringify(r.content), /behind a linked folder/);
+});
+
+test("a malformed deliveries block never turns a finished run into an error", async () => {
+  const { out, listed } = runFolder([["a.md", "fine"]]);
+  const { r, env } = await runWith(
+    out,
+    { files: listed },
+    { deliveries: [null, 3, { kind: "folder" }] },
+  );
+  assert.equal(env.exitClass, "ok");
+  assert.equal(r.content[1].resource.text, "fine");
+});
+
+test("the person is asked about the folder a run copies its deliverables to", async () => {
+  const { out } = runFolder([["a.md", "x"]]);
+  const { client, elicitations } = await connect({ FAKE_RUN_OUT: out }, {}, "accept");
+  const call = { ref: "acme/widget", deliverTo: "/home/me/Documents/Agentry" };
+  const { digest } = JSON.parse(
+    (await client.callTool({ name: "agentry_run", arguments: call })).content[0].text,
+  );
+  await client.callTool({ name: "agentry_run", arguments: { ...call, confirm: digest } });
+  assert.match(elicitations[0], /Copies its deliverables to \/home\/me\/Documents\/Agentry/);
+});
