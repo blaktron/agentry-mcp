@@ -110,3 +110,13 @@ test("an untagged CLI without the pipe protocol is refused", async () => {
     delete process.env.FAKE_NO_PROTOCOL;
   }
 });
+
+test("checkCli reports whether the CLI has run --deliver-to", async () => {
+  assert.equal((await checkCli(FAKE)).features.deliverTo, true);
+  process.env.FAKE_NO_DELIVER = "1";
+  try {
+    assert.equal((await checkCli(FAKE)).features.deliverTo, false);
+  } finally {
+    delete process.env.FAKE_NO_DELIVER;
+  }
+});

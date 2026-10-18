@@ -100,11 +100,11 @@ person before the write.
 | `agentry_uninstall`      | `agentry uninstall --plan --json`, then `agentry uninstall --json`   | the preview with a `digest`, then what was removed                |
 | `agentry_list_installed` | `agentry list --json`                                                | every install record, with `present` (its directory still exists) |
 
-| Tool               | Runs                                                                                             | Returns                                                                                                           |
-| ------------------ | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `agentry_setup`    | `agentry setup --json` (with or without the image pulls)                                         | the policy as configured — provider, model, the key's variable **name** — and whether the images are ready        |
-| `agentry_run`      | `agentry run --plan --json`, then `agentry run --mode autonomous --output-format json` consented | the run plan with a `digest`, then the CLI's result envelope with `receiptsDir`, `resultFile`, `outDir` beside it |
-| `agentry_validate` | `agentry validate DIR --json`                                                                    | the rules and scan findings as data, and whether publish would pass                                               |
+| Tool               | Runs                                                                                             | Returns                                                                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agentry_setup`    | `agentry setup --json` (with or without the image pulls)                                         | the policy as configured — provider, model, the key's variable **name** — and whether the images are ready                                    |
+| `agentry_run`      | `agentry run --plan --json`, then `agentry run --mode autonomous --output-format json` consented | the run plan with a `digest`, then the CLI's result envelope with `receiptsDir`, `resultFile`, `outDir` beside it, and the run's deliverables |
+| `agentry_validate` | `agentry validate DIR --json`                                                                    | the rules and scan findings as data, and whether publish would pass                                                                           |
 
 A run's preview is the CLI's compiled run plan with the attestation verdict
 and every refusal a run would meet. A run stops at `timeoutSeconds`, or at the
@@ -112,6 +112,17 @@ runner policy's own budget when the call names none: the CLI ends it, the
 server sends SIGINT 30 s later if the process is still there, and kills it
 60 s after that. Progress streams as MCP progress notifications when the
 host asks for them.
+
+A run's deliverables, the files it was for, come back after the envelope.
+Text ones (Markdown, plain text, CSV, JSON, YAML, XML, HTML) are embedded
+resources, up to 256 KiB each and 1 MiB in all. Every other one is a resource
+link: to the copy the run delivered with `deliverTo` (or the CLI's
+`deliver.folder` setting) when that copy still matches, else to the file in the
+run folder. Each file is read through no link and must match the size and
+SHA-256 the runner listed before it is inlined or linked; one that does not is
+withheld. The envelope's `deliverables` says what came of each file, and why
+one was linked rather than inlined, or withheld. `deliverTo` needs a CLI with
+`run --deliver-to`.
 
 Interactive sessions launch `agentry run --mode interactive
 --session-protocol --output-format json`, with JSON-line commands on stdin

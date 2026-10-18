@@ -91,6 +91,12 @@ and time/tool-call/cost budgets. Choose only one of `voice`, `noVoice` or
 `reason`, the result and receipt/output paths. Inspect the generated artifacts
 before claiming the task succeeded.
 
+A finished run hands back its deliverables, the files it was for: text inline,
+the rest as links to local files, each checked against the runner's digest.
+Read those first; the envelope's `deliverables` lists each one, and a
+`withheld` entry is a file that no longer matches what the run wrote. Pass
+`deliverTo` with a folder the person chose to have a copy made there too.
+
 Sessions use `agentry_session_start`, `agentry_session_send`, and
 `agentry_session_close`. Start reports a launched process, not a ready sandbox.
 Multiline and slash-prefixed text are literal JSON data. A timed-out or opening

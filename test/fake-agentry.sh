@@ -23,6 +23,10 @@
 #   FAKE_ATTEST    the install plan's attestation (default verified; unsigned and unscanned bring their refusal)
 #   FAKE_REFUSAL   the install plan's refusal (default none)
 #   FAKE_WRITES    a file the fake touches on a real install/uninstall
+#   FAKE_NO_DELIVER  set to make `run --help` omit --deliver-to (a CLI from before deliverables)
+#   FAKE_RUN_OUT     the run envelope's outDir (default /tmp/out)
+#   FAKE_DELIVERABLES  the run envelope's deliverables block, verbatim JSON
+#   FAKE_DELIVERIES    the run envelope's deliveries block, verbatim JSON
 set -u
 if [ -n "${FAKE_ARGV:-}" ]; then
   printf '%s\n' "$@" >> "$FAKE_ARGV"
@@ -35,7 +39,7 @@ if [ "${1:-}" = "install" ] && [ "${2:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_PLAN:-}" ]; then echo "Flags: --yes --allow-unsigned --target"; else echo "Flags: --plan --yes --allow-unsigned --target"; fi; exit 0
 fi
 if [ "${1:-}" = "run" ] && [ "${2:-}" = "--help" ]; then
-  if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode ${FAKE_NO_PROTOCOL:+removed} ${FAKE_NO_PROTOCOL:---session-protocol}"; fi; exit 0
+  if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode ${FAKE_NO_PROTOCOL:+removed} ${FAKE_NO_PROTOCOL:---session-protocol} ${FAKE_NO_DELIVER:---deliver-to}"; fi; exit 0
 fi
 if [ "${2:-}" = "--help" ]; then echo "Usage: agentry $1"; exit 0; fi
 echo "narration: running $1" >&2
@@ -148,7 +152,10 @@ print(out, end="")')
         trap 'kill $SLEEPER 2>/dev/null; echo "narration: SIGINT: tearing down" >&2; echo "{\"status\":\"error\",\"exitCode\":1,\"exitClass\":\"cli\",\"error\":\"interrupted\",\"outDir\":\"/tmp/out\",\"resultFile\":\"/tmp/out/result.json\",\"receipts\":{\"dir\":\"/tmp/out/receipts\",\"runPlanSha256\":\"abc\"},\"result\":\"\"}"; exit 1' INT
         sleep "$FAKE_RUN_SLEEP" & SLEEPER=$!; wait $SLEEPER
       fi
-      echo '{"status":"ok","exitCode":0,"exitClass":"ok","runId":"r1","ref":"acme/widget@1.0.0","result":"done","outDir":"/tmp/out","resultFile":"/tmp/out/result.json","receipts":{"dir":"/tmp/out/receipts","runPlanSha256":"abc"},"usage":{"inputTokens":10}}'
+      rout="${FAKE_RUN_OUT:-/tmp/out}"; rextra=""
+      [ -n "${FAKE_DELIVERABLES:-}" ] && rextra=",\"deliverables\":$FAKE_DELIVERABLES"
+      [ -n "${FAKE_DELIVERIES:-}" ] && rextra="$rextra,\"deliveries\":$FAKE_DELIVERIES"
+      echo '{"status":"ok","exitCode":0,"exitClass":"ok","runId":"r1","ref":"acme/widget@1.0.0","result":"done","outDir":"'"$rout"'","resultFile":"'"$rout"'/result.json","receipts":{"dir":"'"$rout"'/receipts","runPlanSha256":"abc"},"usage":{"inputTokens":10}'"$rextra"'}'
     fi ;;
   *) echo "unknown command" >&2; exit 2 ;;
 esac

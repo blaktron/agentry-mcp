@@ -8,7 +8,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import type { CliOptions } from "./cli.js";
+import { ALL_FEATURES, type CliFeatures, type CliOptions } from "./cli.js";
 import { Driver } from "./driver.js";
 import { registerAuthorTools } from "./tools/author.js";
 import { registerReadTools } from "./tools/read.js";
@@ -65,6 +65,8 @@ export interface ServerOptions {
   bin: string;
   /** What `agentry --version` reported, for the instructions. */
   cliVersion: string;
+  /** What the CLI was found to support; every feature when omitted. */
+  features?: CliFeatures;
   /** Per-invocation defaults (timeouts, cwd), mostly for tests. */
   cli?: CliOptions;
   /** The server's backstop past a run's own --timeout; tests shorten it. */
@@ -76,7 +78,13 @@ export function createServer(opts: ServerOptions): { server: McpServer; driver: 
     { name: SERVER_NAME, version: SERVER_VERSION },
     { instructions: instructions(opts.bin, opts.cliVersion) },
   );
-  const driver = new Driver(server, opts.bin, opts.cli ?? {}, opts.runTimeoutSlackMs);
+  const driver = new Driver(
+    server,
+    opts.bin,
+    opts.cli ?? {},
+    opts.runTimeoutSlackMs,
+    opts.features ?? ALL_FEATURES,
+  );
   registerAuthorTools(driver);
   registerReadTools(driver);
   registerWriteTools(driver);

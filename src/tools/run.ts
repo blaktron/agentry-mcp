@@ -75,6 +75,9 @@ export function registerRunTools(d: Driver): void {
         "call again with `confirm` set to that digest: the server re-plans, refuses if anything changed, then " +
         "runs `agentry run --mode autonomous --output-format json` and returns the CLI's result envelope " +
         "(status, exitClass, result, usage, receipts) with `receiptsDir`, `resultFile` and `outDir` beside it. " +
+        "The run's deliverables, the files it was for, come back after the envelope: text ones inline (up to 256 KiB " +
+        "each and 1 MiB in all), the rest as links to the delivered copy or the file in the run folder, each only " +
+        "after its bytes match the SHA-256 the runner listed; `deliverables` in the envelope says what came of each. " +
         "The receipts are the record of what was enforced; name them when you report a run. An unsigned " +
         "release, and every local workspace, needs `acceptUnsigned: true` on the confirm; an unscanned release " +
         "(admitted without a scan) needs `acceptUnscanned: true`; pass either only if the person said so. A run stops at timeoutSeconds, or the runner policy's own budget when omitted " +
@@ -139,6 +142,13 @@ export function registerRunTools(d: Driver): void {
           .optional()
           .describe(
             "The output folder for reports and receipts; the CLI's default under ./agentry-out when omitted.",
+          ),
+        deliverTo: z
+          .string()
+          .optional()
+          .describe(
+            "Copy the run's deliverables, once it succeeds, to FOLDER/<QuickAgent>/<date time> <title>/ " +
+              "(`--deliver-to`); the CLI's deliver.folder setting, if any, when omitted. The run folder is left as it is.",
           ),
         policy: z
           .string()

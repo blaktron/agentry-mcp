@@ -16,7 +16,7 @@ import { connectServer } from "./toolargs.js";
 async function main(): Promise<void> {
   const bin = await findCli();
   const v = await checkCli(bin);
-  const { server, driver } = createServer({ bin, cliVersion: v.raw });
+  const { server, driver } = createServer({ bin, cliVersion: v.raw, features: v.features });
   installShutdown(driver);
   await connectServer(server, new StdioServerTransport());
   process.stderr.write(
