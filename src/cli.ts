@@ -20,10 +20,12 @@ export const MIN_CLI_VERSION = "0.6.63";
 export interface CliFeatures {
   /** `run --deliver-to` and the run envelope's deliverables block. */
   deliverTo: boolean;
+  /** `run --destination`, `agentry destinations` and `agentry deliver`. */
+  destinations: boolean;
 }
 
 /** The features of a CLI that has them all (the tests' fake, a current CLI). */
-export const ALL_FEATURES: CliFeatures = { deliverTo: true };
+export const ALL_FEATURES: CliFeatures = { deliverTo: true, destinations: true };
 
 /** What `agentry --version` said, parsed. */
 export interface CliVersion {
@@ -243,6 +245,9 @@ export async function checkCli(
   return {
     ...v,
     floorChecked: v.semver !== undefined,
-    features: { deliverTo: /--deliver-to\b/.test(runHelp) },
+    features: {
+      deliverTo: /--deliver-to\b/.test(runHelp),
+      destinations: /--destination\b/.test(runHelp),
+    },
   };
 }

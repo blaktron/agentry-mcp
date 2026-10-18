@@ -98,6 +98,24 @@ envelope's `deliverables` lists each one, and a
 `withheld` entry is a file that no longer matches what the run wrote. Pass
 `deliverTo` with a folder the person chose to have a copy made there too.
 
+The run preview's `delivery` names where the run sends its result: a folder
+and saved destinations, the call's `destinations` or else the default set the
+person saved for that QuickAgent. Show it with the contract; pass
+`noDestination` when the person wants none. Use `agentry_destinations_list` to
+see what is saved. `reportTheme` picks a built-in theme for the run's PDFs
+(`agentry_report_design_show` says what a run takes now). Pass an input
+source's token or a target host's password only as the NAME of an environment
+variable the person set (`intakeTokens`, `hostPasswords`, `hostPassphrases`,
+`hostSudoPasswords`), and a host key as a file path (`hostKeys`); without them
+the CLI uses the sign-ins saved in the system keychain. Use only variable
+names the person gave you, and show the preview's `signIns`: each variable's
+value goes to the source or host named beside it. `agentry_deliver`
+copies or sends a run already made again, previewed and confirmed like a run.
+
+`agentry_schedule_list`, `agentry_connections_list` and
+`agentry_model_signins_list` show the schedules, OAuth connections and model
+sign-ins on this computer, never a token.
+
 Sessions use `agentry_session_start`, `agentry_session_send`, and
 `agentry_session_close`. Start reports a launched process, not a ready sandbox.
 Multiline and slash-prefixed text are literal JSON data. A timed-out or opening
@@ -127,7 +145,10 @@ budgets; these runs may spend model, AI Review and search charges.
   a note and optional samples. This changes the local voice unless `write`
   names a VOICE.md file.
 
-Terminal-only workflows include publishing/yanking, registry administration,
+Terminal-only workflows include signing in to MCP servers (`agentry connect`)
+and model vendors (`agentry model-signins add`), adding or changing schedules,
+saving destinations and default sets, importing or resetting the report design,
+forking, publishing/yanking, registry administration,
 Knowledge import/upload/download/export/delete, Voice set/attach/delete and
 account upload/download, and `agentry files ensure` (image/signature preparation,
 which currently has no JSON result). Use `agentry <command> --help` for their

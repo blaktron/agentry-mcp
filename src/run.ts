@@ -126,6 +126,14 @@ export interface RunArgs {
   adapter?: string;
   out?: string;
   deliverTo?: string;
+  destinations?: string[];
+  noDestination?: boolean;
+  reportTheme?: string;
+  intakeTokens?: Record<string, string>;
+  hostKeys?: Record<string, string>;
+  hostPasswords?: Record<string, string>;
+  hostPassphrases?: Record<string, string>;
+  hostSudoPasswords?: Record<string, string>;
   policy?: string;
   registry?: string;
   confirm?: string;
@@ -239,6 +247,14 @@ function runFacts(p: RunPlan, a: RunArgs, timeoutSeconds: number, refusals: Plan
     inputFile: a.inputFile ?? "",
     out: a.out ?? "",
     deliverTo: a.deliverTo ?? "",
+    destinations: a.destinations ?? [],
+    noDestination: a.noDestination ?? false,
+    reportTheme: a.reportTheme ?? "",
+    intakeTokens: a.intakeTokens ?? {},
+    hostKeys: a.hostKeys ?? {},
+    hostPasswords: a.hostPasswords ?? {},
+    hostPassphrases: a.hostPassphrases ?? {},
+    hostSudoPasswords: a.hostSudoPasswords ?? {},
     timeoutSeconds,
   };
 }
@@ -275,6 +291,14 @@ export async function runConsent(
     throw new ArgumentError(
       "this agentry CLI has no run --deliver-to; update the CLI to deliver a run's files to a folder",
     );
+  if ((a.destinations?.length || a.noDestination) && !d.features.destinations)
+    throw new ArgumentError(
+      "this agentry CLI has no run --destination; update the CLI to send a run's result to a destination",
+    );
+  if (a.destinations?.length && a.noDestination)
+    throw new ArgumentError("give destinations or noDestination, not both");
+  // The flags only the run carries are checked before anything is planned.
+  deliveryFlags([], a);
   const planArgv = ["run", ...target(a), "--plan", "--json"];
   commonFlags(planArgv, a, mode);
   const planned = await runPlan<RunPlan>(d, `${tool} (plan)`, planArgv);
@@ -309,16 +333,43 @@ export async function runConsent(
   flag(voiceArgv, "registry", a.registry);
   const voice = await runPlan<unknown>(d, tool, voiceArgv);
   if (!voice.ok) return voice.result;
+  // Where the run (or the session, at its end) sends its result: the
+  // call's destinations, else the QuickAgent's default set, which the
+  // person saved and may change between the preview and the confirm.
+  let destinationsState: unknown = null;
+  if (
+    d.features.destinations &&
+    !a.noDestination &&
+    (a.destinations?.length || a.local === undefined)
+  ) {
+    const state = await runPlan<unknown>(d, tool, ["destinations", "list", "--json"]);
+    if (!state.ok) return state.result;
+    destinationsState = state.plan;
+  }
+  const sends = delivery(a, plan, destinationsState);
+  const secrets = signIns(a);
   const facts = {
     ...runFacts(plan, a, timeoutSeconds, refusals),
     attachmentInputs,
     knowledgeState,
     voiceState: voice.plan,
+    delivery: sends,
+    signIns: secrets,
   };
 
   if (a.confirm === undefined) {
     return previewText(
-      { plan, unsigned, unscanned, refusals, timeoutSeconds, log: tail(log), writes: false },
+      {
+        plan,
+        unsigned,
+        unscanned,
+        refusals,
+        timeoutSeconds,
+        delivery: sends,
+        ...(secrets.length ? { signIns: secrets } : {}),
+        log: tail(log),
+        writes: false,
+      },
       facts,
     );
   }
@@ -332,6 +383,8 @@ export async function runConsent(
       `${mode === "interactive" ? "Start a session with" : "Run"} ${plan.ref} (${plan.mode}` +
       `${mode === "interactive" ? "" : `, up to ${timeoutSeconds}s`})? Contract: ${canonical(plan.contract)}. ` +
       `${a.deliverTo !== undefined ? `Copies its deliverables to ${a.deliverTo}. ` : ""}` +
+      `${sends.destinations.length ? `Sends its result and deliverables to ${sends.destinations.join(", ")}. ` : ""}` +
+      `${secrets.length ? `Signs in with: ${secrets.map(describeSignIn).join("; ")}. ` : ""}` +
       `Attestation: ${plan.attestation}.${plan.reason ? ` The CLI would ask because: ${plan.reason}.` : ""}`,
   });
   if (!isConsent(ok)) return ok;
@@ -384,9 +437,129 @@ export function runArgv(a: RunArgs, c: RunConsent, mode: RunMode, inputPath?: st
   commonFlags(argv, a, mode);
   flag(argv, "pin", a.local === undefined ? c.plan.digest : undefined);
   flag(argv, "out", a.out);
-  flag(argv, "deliver-to", a.deliverTo);
+  deliveryFlags(argv, a);
   if (inputPath !== undefined) argv.push("--input", value("inputFile", inputPath));
   return consentedArgv(argv, c.consent);
+}
+
+/** An environment variable's name, never its value. */
+function envName(name: string, v: string): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(v))
+    throw new ArgumentError(
+      `${name} takes the NAME of an environment variable holding the secret, never the secret itself`,
+    );
+  return v;
+}
+
+/** Appends `--flag id=value` for each entry, the id an identifier. */
+function idFlags(
+  argv: string[],
+  name: string,
+  arg: string,
+  m: Record<string, string> | undefined,
+  check: (name: string, v: string) => string,
+): void {
+  for (const [id, v] of Object.entries(m ?? {})) {
+    if (!/^[A-Za-z0-9_.-]+$/.test(id))
+      throw new ArgumentError(`${arg} id ${JSON.stringify(id)} is not an identifier`);
+    argv.push(`--${name}`, `${id}=${check(`${arg}.${id}`, v)}`);
+  }
+}
+
+/**
+ * The flags only the run carries, never the plan: where it delivers, the
+ * report theme, and the sign-ins for its input sources and target hosts,
+ * each by the name of an environment variable or a key file's path.
+ */
+function deliveryFlags(argv: string[], a: RunArgs): void {
+  flag(argv, "deliver-to", a.deliverTo);
+  for (const name of a.destinations ?? []) argv.push("--destination", value("destinations", name));
+  bool(argv, "no-destination", a.noDestination);
+  flag(argv, "report-theme", a.reportTheme);
+  idFlags(argv, "intake-token", "intakeTokens", a.intakeTokens, envName);
+  idFlags(argv, "host-key", "hostKeys", a.hostKeys, value);
+  idFlags(argv, "host-password", "hostPasswords", a.hostPasswords, envName);
+  idFlags(argv, "host-passphrase", "hostPassphrases", a.hostPassphrases, envName);
+  idFlags(argv, "host-sudo-password", "hostSudoPasswords", a.hostSudoPasswords, envName);
+}
+
+/** A saved destination as `destinations list --json` shows it. */
+interface SavedDestination {
+  name?: string;
+  kind?: string;
+  where?: string;
+  onMyNetwork?: boolean;
+  defaultFor?: string[];
+}
+
+/**
+ * Where a run would deliver, for the preview and the digest: the folder
+ * (the call's, else the CLI's deliver.folder setting) and the destinations,
+ * the call's or else the default set saved for this QuickAgent, each as
+ * saved (name, kind, host). The list shows a destination's host, never its
+ * path or secret, so a destination saved again under the same name and
+ * host is the same destination here.
+ */
+function delivery(a: RunArgs, p: RunPlan, state: unknown) {
+  const folder = a.deliverTo ?? "the CLI's deliver.folder setting, if any";
+  const rows = (state as { destinations?: SavedDestination[] } | null)?.destinations ?? [];
+  const saved = (names: string[]) =>
+    names.map((n) => {
+      const r = rows.find((row) => row.name === n);
+      return r
+        ? { name: n, kind: r.kind, where: r.where, onMyNetwork: r.onMyNetwork }
+        : { name: n, saved: false };
+    });
+  if (a.noDestination) return { folder, destinations: [] as string[] };
+  if (a.destinations?.length)
+    return { folder, destinations: a.destinations, saved: saved(a.destinations) };
+  if (a.local !== undefined) return { folder, destinations: [] as string[] };
+  const agent = p.ref.split("@")[0] ?? p.ref;
+  const names = rows.filter((r) => r.defaultFor?.includes(agent)).map((r) => r.name ?? "");
+  return names.length
+    ? { folder, destinations: names, defaultSetFor: agent, saved: saved(names) }
+    : { folder, destinations: [] as string[] };
+}
+
+/** One secret a run would read, named for the person: what it signs in to and where it comes from. */
+interface SignIn {
+  kind: string;
+  id: string;
+  env?: string;
+  path?: string;
+  source?: string;
+}
+
+/**
+ * The secrets the call has the run read, for the preview and the person's
+ * question: a variable's value goes to the input source or target host its
+ * id names, so the person sees which variable goes where before agreeing.
+ */
+function signIns(a: RunArgs): SignIn[] {
+  const out: SignIn[] = [];
+  for (const [id, env] of Object.entries(a.intakeTokens ?? {}))
+    out.push({
+      kind: "input source token",
+      id,
+      env,
+      source: a.intake?.[id] ?? "the source's saved answer",
+    });
+  for (const [id, path] of Object.entries(a.hostKeys ?? {}))
+    out.push({ kind: "target host key file", id, path });
+  for (const [kind, m] of [
+    ["target host password", a.hostPasswords],
+    ["target host key passphrase", a.hostPassphrases],
+    ["target host sudo password", a.hostSudoPasswords],
+  ] as const)
+    for (const [id, env] of Object.entries(m ?? {})) out.push({ kind, id, env });
+  return out;
+}
+
+function describeSignIn(s: SignIn): string {
+  const from = s.env !== undefined ? `$${s.env}` : `the key file ${s.path}`;
+  return s.source !== undefined
+    ? `${from} as the ${s.kind} for ${s.id} (${s.source})`
+    : `${from} as the ${s.kind} for host ${s.id}`;
 }
 
 /**

@@ -78,6 +78,9 @@ export function registerRunTools(d: Driver): void {
         "The run's deliverables, the files it was for, come back after the envelope: text ones inline (up to 256 KiB " +
         "each and 1 MiB in all), the rest as links to the delivered copy or the file in the run folder, each only " +
         "after its bytes match the SHA-256 the runner listed; `deliverables` in the envelope says what came of each. " +
+        "The preview's `delivery` says where the run sends its result: the folder, and the destinations (the " +
+        "call's, else the QuickAgent's default set). Secrets for input sources and target hosts are passed as " +
+        "environment variable NAMES, never values. " +
         "The receipts are the record of what was enforced; name them when you report a run. An unsigned " +
         "release, and every local workspace, needs `acceptUnsigned: true` on the confirm; an unscanned release " +
         "(admitted without a scan) needs `acceptUnscanned: true`; pass either only if the person said so. A run stops at timeoutSeconds, or the runner policy's own budget when omitted " +
@@ -149,6 +152,60 @@ export function registerRunTools(d: Driver): void {
           .describe(
             "Copy the run's deliverables, once it succeeds, to FOLDER/<QuickAgent>/<date time> <title>/ " +
               "(`--deliver-to`); the CLI's deliver.folder setting, if any, when omitted. The run folder is left as it is.",
+          ),
+        destinations: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Send the run's result and deliverables, once it succeeds, to these saved destinations " +
+              "(`--destination`; see agentry_destinations_list). Without it, the QuickAgent's default set, which the preview names.",
+          ),
+        noDestination: z
+          .boolean()
+          .optional()
+          .describe(
+            "Send to no destination, not even the QuickAgent's default set (`--no-destination`).",
+          ),
+        reportTheme: z
+          .string()
+          .optional()
+          .describe(
+            "The built-in report theme the run's PDFs take (`--report-theme`): plain, classic, modern, editorial " +
+              "or technical; the account's report design, else the config's, when omitted.",
+          ),
+        intakeTokens: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe(
+            "For an input source that needs a token, by intake question id: the NAME of the environment variable " +
+              "holding it (`--intake-token id=ENV_NAME`), never the token. Otherwise the key saved for the source's host.",
+          ),
+        hostKeys: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe(
+            "Sign in to a target host with a private key FILE, by host id (`--host-key id=PATH`); otherwise the " +
+              "sign-in saved in the system keychain.",
+          ),
+        hostPasswords: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe(
+            "Sign in to a target host with a password, by host id: the NAME of the environment variable holding it " +
+              "(`--host-password id=ENV_NAME`), never the password.",
+          ),
+        hostPassphrases: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe(
+            "The passphrase of a target host's key, by host id: an environment variable's NAME (`--host-passphrase`).",
+          ),
+        hostSudoPasswords: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe(
+            "The sudo password of a target host's account, by host id: an environment variable's NAME " +
+              "(`--host-sudo-password`); without one, sudo works only where it asks for none.",
           ),
         policy: z
           .string()
