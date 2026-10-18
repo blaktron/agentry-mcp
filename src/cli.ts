@@ -13,6 +13,20 @@ import { delimiter, join } from "node:path";
 /** The current tool surface requires the CLI's Knowledge, Voice, built-ins and session protocol. */
 export const MIN_CLI_VERSION = "0.6.63";
 
+/**
+ * What this CLI can do beyond the floor, probed from its help at start so a
+ * call that needs a newer CLI says so instead of failing on an unknown flag.
+ */
+export interface CliFeatures {
+  /** `run --deliver-to` and the run envelope's deliverables block. */
+  deliverTo: boolean;
+  /** `run --destination`, `agentry destinations` and `agentry deliver`. */
+  destinations: boolean;
+}
+
+/** The features of a CLI that has them all (the tests' fake, a current CLI). */
+export const ALL_FEATURES: CliFeatures = { deliverTo: true, destinations: true };
+
 /** What `agentry --version` said, parsed. */
 export interface CliVersion {
   /** The raw string after `agentry version `. */
@@ -185,7 +199,7 @@ function compareSemver(a: string, b: string): number {
 export async function checkCli(
   bin: string,
   floor: string = MIN_CLI_VERSION,
-): Promise<CliVersion & { floorChecked: boolean }> {
+): Promise<CliVersion & { floorChecked: boolean; features: CliFeatures }> {
   const r = await runCli(bin, ["--version"], { timeoutMs: 10_000 });
   if (r.spawnError) {
     throw new CliUnavailableError(`${bin} could not be run: ${r.spawnError}`);
@@ -227,5 +241,13 @@ export async function checkCli(
         `${bin} has no ${command} command; update the CLI to ${floor} or newer.`,
       );
   }
-  return { ...v, floorChecked: v.semver !== undefined };
+  const runHelp = protocol.stdout + protocol.stderr;
+  return {
+    ...v,
+    floorChecked: v.semver !== undefined,
+    features: {
+      deliverTo: /--deliver-to\b/.test(runHelp),
+      destinations: /--destination\b/.test(runHelp),
+    },
+  };
 }

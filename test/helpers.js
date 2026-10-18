@@ -35,14 +35,16 @@ export function receivedArgv(path) {
  * connect wires a server driving the fake CLI to an in-memory client.
  * `elicit` — when set, the client advertises elicitation and answers every
  * request with it: "accept" | "decline" | "cancel"; the answers are recorded.
+ * `features` — what the CLI is taken to support; every feature when omitted.
  */
-export async function connect(env = {}, cli = {}, elicit) {
+export async function connect(env = {}, cli = {}, elicit, features) {
   const argvFile = scratchArgv();
   const { server } = createServer({
     bin: FAKE,
     cliVersion: "0.4.0",
     cli: { env: { FAKE_ARGV: argvFile, ...env }, timeoutMs: 10_000, ...cli },
     runTimeoutSlackMs: 500,
+    features,
   });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await connectServer(server, a);

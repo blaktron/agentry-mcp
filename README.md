@@ -72,16 +72,21 @@ Read tools run one CLI command with an argv built from typed arguments, never
 a shell string. The result is the CLI's JSON in an envelope with `exitClass`
 and the CLI's last stderr lines as `log`.
 
-| Tool                     | Runs                            | Returns                                                                                                                  |
-| ------------------------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `agentry_search`         | `agentry search --json`         | results, facets, total                                                                                                   |
-| `agentry_info`           | `agentry info --json`           | the agent, its latest published version, the capability contract, whether it carries an attestation (signed or unsigned) |
-| `agentry_verify`         | `agentry verify --json`         | the digest match and the attestation's verdict                                                                           |
-| `agentry_whoami`         | `agentry whoami --json`         | signed-in account and tier                                                                                               |
-| `agentry_builtins`       | `agentry builtins --json`       | embedded package refs and archive digests                                                                                |
-| `agentry_knowledge_list` | `agentry knowledge list --json` | local packs or an organization's shared packs                                                                            |
-| `agentry_voice_status`   | `agentry voice status --json`   | local and account Voice metadata and review                                                                              |
-| `agentry_doctor`         | `agentry doctor --json`         | machine readiness: policy, provider key **name**, docker, images, exec catalog                                           |
+| Tool                         | Runs                                | Returns                                                                                                                  |
+| ---------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `agentry_search`             | `agentry search --json`             | results, facets, total                                                                                                   |
+| `agentry_info`               | `agentry info --json`               | the agent, its latest published version, the capability contract, whether it carries an attestation (signed or unsigned) |
+| `agentry_verify`             | `agentry verify --json`             | the digest match and the attestation's verdict                                                                           |
+| `agentry_whoami`             | `agentry whoami --json`             | signed-in account and tier                                                                                               |
+| `agentry_builtins`           | `agentry builtins --json`           | embedded package refs and archive digests                                                                                |
+| `agentry_knowledge_list`     | `agentry knowledge list --json`     | local packs or an organization's shared packs                                                                            |
+| `agentry_voice_status`       | `agentry voice status --json`       | local and account Voice metadata and review                                                                              |
+| `agentry_doctor`             | `agentry doctor --json`             | machine readiness: policy, provider key **name**, docker, images, exec catalog                                           |
+| `agentry_schedule_list`      | `agentry schedule list --json`      | the schedules on this computer: repeat, next run, output folder, paused                                                  |
+| `agentry_connections_list`   | `agentry connections list --json`   | the OAuth connections kept for QuickAgent versions' MCP servers, never a token                                           |
+| `agentry_model_signins_list` | `agentry model-signins list --json` | the model sign-ins local runs can spend, never a token                                                                   |
+| `agentry_report_design_show` | `agentry report-design show --json` | the report design a run's PDFs would take, and what chose it                                                             |
+| `agentry_destinations_list`  | `agentry destinations list --json`  | the saved destinations (name, kind, host, on my network) and the QuickAgents each is a default for, never a secret       |
 
 Writing and running tools take two calls. The first, without `confirm`, runs
 the CLI's plan mode, writes nothing and returns what consent would cover plus
@@ -100,11 +105,12 @@ person before the write.
 | `agentry_uninstall`      | `agentry uninstall --plan --json`, then `agentry uninstall --json`   | the preview with a `digest`, then what was removed                |
 | `agentry_list_installed` | `agentry list --json`                                                | every install record, with `present` (its directory still exists) |
 
-| Tool               | Runs                                                                                             | Returns                                                                                                           |
-| ------------------ | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `agentry_setup`    | `agentry setup --json` (with or without the image pulls)                                         | the policy as configured — provider, model, the key's variable **name** — and whether the images are ready        |
-| `agentry_run`      | `agentry run --plan --json`, then `agentry run --mode autonomous --output-format json` consented | the run plan with a `digest`, then the CLI's result envelope with `receiptsDir`, `resultFile`, `outDir` beside it |
-| `agentry_validate` | `agentry validate DIR --json`                                                                    | the rules and scan findings as data, and whether publish would pass                                               |
+| Tool               | Runs                                                                                             | Returns                                                                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agentry_setup`    | `agentry setup --json` (with or without the image pulls)                                         | the policy as configured — provider, model, the key's variable **name** — and whether the images are ready                                    |
+| `agentry_run`      | `agentry run --plan --json`, then `agentry run --mode autonomous --output-format json` consented | the run plan with a `digest`, then the CLI's result envelope with `receiptsDir`, `resultFile`, `outDir` beside it, and the run's deliverables |
+| `agentry_deliver`  | `agentry deliver RUN-FOLDER --json` consented                                                    | a preview of the run's deliverables, the folder and the destinations with a `digest`, then the CLI's deliveries                               |
+| `agentry_validate` | `agentry validate DIR --json`                                                                    | the rules and scan findings as data, and whether publish would pass                                                                           |
 
 A run's preview is the CLI's compiled run plan with the attestation verdict
 and every refusal a run would meet. A run stops at `timeoutSeconds`, or at the
@@ -112,6 +118,36 @@ runner policy's own budget when the call names none: the CLI ends it, the
 server sends SIGINT 30 s later if the process is still there, and kills it
 60 s after that. Progress streams as MCP progress notifications when the
 host asks for them.
+
+A run's deliverables, the files it was for, come back after the envelope.
+Text ones (Markdown, plain text, CSV, JSON, YAML, XML, HTML) are embedded
+resources, up to 256 KiB each and 1 MiB in all. Every other one is a resource
+link: to the copy the run delivered with `deliverTo` (or the CLI's
+`deliver.folder` setting) when that copy still matches, else to the file in the
+run folder. Each file is read through no link and must match the size and
+SHA-256 the runner listed before it is inlined or linked; one that does not is
+withheld. A link names the file as it was when the server checked it; the
+envelope carries each file's SHA-256 for a reader that opens it later. The
+envelope's `deliverables` says what came of each file, and why
+one was linked rather than inlined, or withheld. `deliverTo` needs a CLI with
+`run --deliver-to`.
+
+The run preview's `delivery` says where the run sends its result: the folder,
+and the saved destinations, the call's `destinations` or else the default set
+the person saved for that QuickAgent (`noDestination` sends to none). The
+default set is in the digest, so one changed between the preview and the
+confirm refuses the confirm. `reportTheme` picks a built-in theme for the
+run's PDFs. An input source's token and a target host's password, passphrase
+or sudo password are passed as the **name** of an environment variable
+(`intakeTokens`, `hostPasswords`, `hostPassphrases`, `hostSudoPasswords`) and
+a host key as a file path (`hostKeys`); otherwise the CLI uses what the
+person saved in the system keychain. The preview's `signIns` and the
+question put to the person name each variable and the source or host it
+signs in to, since its value goes there. A session's preview names its
+destinations too: a session delivers at its end. The destination list shows a
+destination's host, never its path or secret, so one saved again under the
+same name and host reads as the same destination. `agentry_deliver` sends a run already
+made to a folder or to saved destinations again, behind the same two calls.
 
 Interactive sessions launch `agentry run --mode interactive
 --session-protocol --output-format json`, with JSON-line commands on stdin
@@ -139,7 +175,10 @@ search charges.
 | `agentry_knowledge_build` | `agentry knowledge create/add --output-format json`      | Creator build report and receipts                         |
 | `agentry_voice_build`     | `agentry voice create/improve/edit --output-format json` | Voice Writer build report and receipts                    |
 
-Not exposed: signing in (`agentry login`), publishing (`agentry publish`),
+Not exposed: signing in (`agentry login`, `agentry connect`, `agentry
+model-signins add`), publishing (`agentry publish`), forking and yanking,
+adding, editing, pausing or removing schedules, saving or removing
+destinations and default sets, importing or resetting the report design,
 Knowledge import/upload/download/export/delete, Voice
 set/attach/delete and account upload/download, `agentry files ensure`,
 Unsafe Mode and vulnerable-server lifts. Those stay in a terminal.
