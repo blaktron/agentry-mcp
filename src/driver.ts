@@ -9,7 +9,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { ArgumentError } from "./argv.js";
-import { runCli, type CliOptions } from "./cli.js";
+import { ALL_FEATURES, runCli, type CliFeatures, type CliOptions } from "./cli.js";
 import { toToolResult } from "./envelope.js";
 import type { ProtocolSession } from "./session.js";
 
@@ -33,6 +33,8 @@ export class Driver {
      * backstop. Tests shorten it.
      */
     readonly runTimeoutSlackMs = 30_000,
+    /** What the found CLI supports beyond the version floor. */
+    readonly features: CliFeatures = ALL_FEATURES,
   ) {}
 
   readonly sessions: SessionSlot = { reserved: false };

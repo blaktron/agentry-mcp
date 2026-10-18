@@ -27,6 +27,7 @@ import type {
   ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 
+import { deliverablesBack } from "./deliverables.js";
 import { fingerprint, localPackPaths } from "./snapshot.js";
 import { ArgumentError, bool, flag, value } from "./argv.js";
 import {
@@ -124,6 +125,7 @@ export interface RunArgs {
   timeoutSeconds?: number;
   adapter?: string;
   out?: string;
+  deliverTo?: string;
   policy?: string;
   registry?: string;
   confirm?: string;
@@ -236,6 +238,7 @@ function runFacts(p: RunPlan, a: RunArgs, timeoutSeconds: number, refusals: Plan
     registry: a.registry ?? "",
     inputFile: a.inputFile ?? "",
     out: a.out ?? "",
+    deliverTo: a.deliverTo ?? "",
     timeoutSeconds,
   };
 }
@@ -268,6 +271,10 @@ export async function runConsent(
   mode: RunMode,
   tool: string,
 ): Promise<RunConsent | CallToolResult> {
+  if (a.deliverTo !== undefined && !d.features.deliverTo)
+    throw new ArgumentError(
+      "this agentry CLI has no run --deliver-to; update the CLI to deliver a run's files to a folder",
+    );
   const planArgv = ["run", ...target(a), "--plan", "--json"];
   commonFlags(planArgv, a, mode);
   const planned = await runPlan<RunPlan>(d, `${tool} (plan)`, planArgv);
@@ -324,6 +331,7 @@ export async function runConsent(
     ask:
       `${mode === "interactive" ? "Start a session with" : "Run"} ${plan.ref} (${plan.mode}` +
       `${mode === "interactive" ? "" : `, up to ${timeoutSeconds}s`})? Contract: ${canonical(plan.contract)}. ` +
+      `${a.deliverTo !== undefined ? `Copies its deliverables to ${a.deliverTo}. ` : ""}` +
       `Attestation: ${plan.attestation}.${plan.reason ? ` The CLI would ask because: ${plan.reason}.` : ""}`,
   });
   if (!isConsent(ok)) return ok;
@@ -343,7 +351,7 @@ export async function run(d: Driver, a: RunArgs, extra: Extra): Promise<CallTool
       timeoutMs: c.timeoutSeconds * 1000 + d.runTimeoutSlackMs,
       graceMs: TEARDOWN_GRACE_MS,
     });
-    return decorateRun(r);
+    return await decorateRun(r, d.cwd);
   } finally {
     await task.done();
   }
@@ -376,12 +384,17 @@ export function runArgv(a: RunArgs, c: RunConsent, mode: RunMode, inputPath?: st
   commonFlags(argv, a, mode);
   flag(argv, "pin", a.local === undefined ? c.plan.digest : undefined);
   flag(argv, "out", a.out);
+  flag(argv, "deliver-to", a.deliverTo);
   if (inputPath !== undefined) argv.push("--input", value("inputFile", inputPath));
   return consentedArgv(argv, c.consent);
 }
 
-/** Adds receiptsDir, resultFile and outDir beside the CLI's envelope. */
-function decorateRun(r: CallToolResult): CallToolResult {
+/**
+ * Adds receiptsDir, resultFile and outDir beside the CLI's envelope, and
+ * hands back the run's deliverables: what came of each in the envelope, and
+ * after it the files themselves, text inline and the rest as links.
+ */
+async function decorateRun(r: CallToolResult, cwd?: string): Promise<CallToolResult> {
   if (r.isError) return r;
   const env = JSON.parse(textOf(r)) as {
     result?: { receipts?: { dir?: string }; resultFile?: string; outDir?: string };
@@ -395,7 +408,16 @@ function decorateRun(r: CallToolResult): CallToolResult {
     resultFile: env.result?.resultFile,
     outDir: env.result?.outDir,
   };
-  return { content: [{ type: "text", text: JSON.stringify(out) }] };
+  // The run's outcome is the CLI's: a deliverable that cannot be handed
+  // back never turns a finished run into a tool error.
+  const back = await deliverablesBack(env.result, cwd).catch(() => undefined);
+  if (!back) return { content: [{ type: "text", text: JSON.stringify(out) }] };
+  const withBack = {
+    ...out,
+    deliverables: back.deliverables,
+    ...(back.truncated ? { deliverablesTruncated: true } : {}),
+  };
+  return { content: [{ type: "text", text: JSON.stringify(withBack) }, ...back.content] };
 }
 
 export interface ValidateArgs {
