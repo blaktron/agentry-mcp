@@ -1,7 +1,7 @@
 /**
  * Organization tools: create an org, read one, and manage its membership.
  *
- * Teams, policy overlays, SSO connections, SCIM tokens, webhooks, domain claims
+ * Teams, policy overlays, webhooks, domain claims
  * and audit exports are all part of the org surface too, but they are
  * occasional administrative work rather than automation, so they stay in the
  * catalog behind agentry_search_actions instead of costing a tool schema each.

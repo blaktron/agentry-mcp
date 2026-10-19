@@ -3,7 +3,7 @@
  *
  * The hand-written tools above cover account and repository automation. This
  * pair covers everything else the contract defines — review queues, policy
- * overlays, SSO and SCIM, webhooks, domain claims, advisories, audit exports,
+ * overlays, webhooks, domain claims, advisories, audit exports,
  * platform trust-and-safety — without paying a tool schema each for endpoints
  * most sessions never touch.
  */

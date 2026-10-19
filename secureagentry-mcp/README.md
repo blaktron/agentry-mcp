@@ -31,7 +31,7 @@ tools** for everything else.
 | Everything else | `agentry_search_actions`, `agentry_execute_action`                                                                                          |
 
 The catalog behind the last two carries every operation in the vendored
-Agentry API contract — review queues, org policy, SSO and SCIM, webhooks,
+Agentry API contract — review queues, org policy, webhooks,
 domain claims, advisories, audit exports, platform trust-and-safety — so the
 long tail is reachable without a tool schema per operation in context. The model
 searches by intent, reads one operation's schema, and executes it.
