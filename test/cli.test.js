@@ -120,3 +120,19 @@ test("checkCli reports whether the CLI has run --deliver-to", async () => {
     delete process.env.FAKE_NO_DELIVER;
   }
 });
+
+test("checkCli reports whether the CLI builds from sources and takes voice addresses", async () => {
+  const f = (await checkCli(FAKE)).features;
+  assert.equal(f.buildSources, true);
+  assert.equal(f.voiceURLs, true);
+  process.env.FAKE_NO_SOURCES = "1";
+  process.env.FAKE_NO_VOICE_URL = "1";
+  try {
+    const old = (await checkCli(FAKE)).features;
+    assert.equal(old.buildSources, false);
+    assert.equal(old.voiceURLs, false);
+  } finally {
+    delete process.env.FAKE_NO_SOURCES;
+    delete process.env.FAKE_NO_VOICE_URL;
+  }
+});

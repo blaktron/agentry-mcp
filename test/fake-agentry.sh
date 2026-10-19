@@ -25,6 +25,8 @@
 #   FAKE_WRITES    a file the fake touches on a real install/uninstall
 #   FAKE_NO_DELIVER  set to make `run --help` omit --deliver-to (a CLI from before deliverables)
 #   FAKE_NO_DESTINATION  set to make `run --help` omit --destination (a CLI from before destinations)
+#   FAKE_NO_SOURCES  set to make `knowledge create --help` omit --repo and --url
+#   FAKE_NO_VOICE_URL  set to make `voice create --help` omit --url
 #   FAKE_RUN_OUT     the run envelope's outDir (default /tmp/out)
 #   FAKE_DELIVERABLES  the run envelope's deliverables block, verbatim JSON
 #   FAKE_DELIVERIES    the run envelope's deliveries block, verbatim JSON
@@ -44,6 +46,12 @@ if [ "${1:-}" = "install" ] && [ "${2:-}" = "--help" ]; then
 fi
 if [ "${1:-}" = "run" ] && [ "${2:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode ${FAKE_NO_PROTOCOL:+removed} ${FAKE_NO_PROTOCOL:---session-protocol} ${FAKE_NO_DELIVER:---deliver-to} ${FAKE_NO_DESTINATION:---destination}"; fi; exit 0
+fi
+if [ "${1:-}" = "knowledge" ] && [ "${2:-}" = "create" ] && [ "${3:-}" = "--help" ]; then
+  echo "Flags: --file --brief-file --web --no-web ${FAKE_NO_SOURCES:---repo --url}"; exit 0
+fi
+if [ "${1:-}" = "voice" ] && [ "${2:-}" = "create" ] && [ "${3:-}" = "--help" ]; then
+  echo "Flags: --file --brief --write ${FAKE_NO_VOICE_URL:---url}"; exit 0
 fi
 if [ "${2:-}" = "--help" ]; then echo "Usage: agentry $1"; exit 0; fi
 echo "narration: running $1" >&2
