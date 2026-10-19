@@ -52,7 +52,7 @@ export const API_VERSION = "0.3.0";
 export const API_BASE_PATH = "/api/v1";
 
 /** sha256 of spec/openapi.yaml, so a drifted catalog is detectable. */
-export const SPEC_SHA256 = "1a05b8b214fbd0fc4cc2c474ce9eb06c59a7d566d3775de2da087f9012302d1c";
+export const SPEC_SHA256 = "9ddb373f017c61a0a891daea8c0a9664888fbe40285a3efd16ccf8791de22775";
 
 export const ACTIONS: readonly Action[] = [
   {
@@ -179,7 +179,7 @@ export const ACTIONS: readonly Action[] = [
     "tags": [
       "orgs"
     ],
-    "summary": "Approve a pending member (admin). The seat check fires here: a person provisioned by SCIM, or folded in from the organization's domain, holds no seat until an admin approves them.",
+    "summary": "Approve a pending member (admin). The seat check fires here: a person provisioned by the organization's identity provider, or folded in from the organization's domain, holds no seat until an admin approves them.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -837,50 +837,6 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
-    "id": "createScimToken",
-    "method": "POST",
-    "path": "/orgs/{org}/scim/tokens",
-    "tags": [
-      "scim"
-    ],
-    "summary": "Mint a SCIM bearer token (admin).",
-    "description": "403 `feature-not-included` while the organization's subscription does not include directory provisioning. Tokens already issued are left alone by a subscription change and provision again the moment it includes SCIM.",
-    "public": false,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [
-      {
-        "name": "org",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-        }
-      }
-    ],
-    "body": {
-      "required": false,
-      "contentType": "application/json",
-      "schema": {
-        "type": "object",
-        "properties": {
-          "expiresInDays": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 730
-          }
-        }
-      }
-    },
-    "responses": [
-      {
-        "code": "201",
-        "description": "Token created; the token value is returned once."
-      }
-    ]
-  },
-  {
     "id": "createTeam",
     "method": "POST",
     "path": "/orgs/{org}/teams",
@@ -1429,47 +1385,6 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "204",
         "description": "Removed, or there was none."
-      }
-    ]
-  },
-  {
-    "id": "deleteSsoConnection",
-    "method": "DELETE",
-    "path": "/orgs/{org}/sso/connections/{kind}",
-    "tags": [
-      "sso"
-    ],
-    "summary": "Delete a connection (admin).",
-    "public": false,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [
-      {
-        "name": "org",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-        }
-      },
-      {
-        "name": "kind",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "enum": [
-            "saml",
-            "oidc"
-          ]
-        }
-      }
-    ],
-    "responses": [
-      {
-        "code": "204",
-        "description": "Deleted."
       }
     ]
   },
@@ -2571,35 +2486,6 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Review bundle."
-      }
-    ]
-  },
-  {
-    "id": "getSamlMetadata",
-    "method": "GET",
-    "path": "/orgs/{org}/sso/saml/metadata",
-    "tags": [
-      "sso"
-    ],
-    "summary": "SP SAML metadata for this org's connection.",
-    "public": true,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [
-      {
-        "name": "org",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-        }
-      }
-    ],
-    "responses": [
-      {
-        "code": "200",
-        "description": "SP metadata XML."
       }
     ]
   },
@@ -3787,35 +3673,6 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
-    "id": "listScimTokens",
-    "method": "GET",
-    "path": "/orgs/{org}/scim/tokens",
-    "tags": [
-      "scim"
-    ],
-    "summary": "List active SCIM provisioning tokens (admin).",
-    "public": false,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [
-      {
-        "name": "org",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-        }
-      }
-    ],
-    "responses": [
-      {
-        "code": "200",
-        "description": "SCIM tokens (secret shown only at creation)."
-      }
-    ]
-  },
-  {
     "id": "listSshKeys",
     "method": "GET",
     "path": "/user/ssh-keys",
@@ -3831,35 +3688,6 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Keys."
-      }
-    ]
-  },
-  {
-    "id": "listSsoConnections",
-    "method": "GET",
-    "path": "/orgs/{org}/sso/connections",
-    "tags": [
-      "sso"
-    ],
-    "summary": "List the org's SSO connections (admin).",
-    "public": false,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [
-      {
-        "name": "org",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-        }
-      }
-    ],
-    "responses": [
-      {
-        "code": "200",
-        "description": "Connections (secrets redacted)."
       }
     ]
   },
@@ -4215,108 +4043,14 @@ export const ACTIONS: readonly Action[] = [
       "auth"
     ],
     "summary": "Revoke the current session.",
-    "description": "Answers 204 for a session opened through an OpenID provider. For a session established through an organization's SAML connection whose IdP publishes a Single Logout endpoint, answers 200 with the IdP logout URL the browser should be sent to next (SP-initiated SLO); the registry session is revoked either way.",
     "public": false,
     "sessionOnly": true,
     "deprecated": false,
     "params": [],
     "responses": [
       {
-        "code": "200",
-        "description": "Session revoked; continue the logout at the IdP."
-      },
-      {
         "code": "204",
         "description": "Session revoked."
-      }
-    ]
-  },
-  {
-    "id": "oidcCallback",
-    "method": "GET",
-    "path": "/orgs/{org}/sso/oidc/callback",
-    "tags": [
-      "sso"
-    ],
-    "summary": "OIDC redirect URI: exchange the code and establish a session.",
-    "description": "When the start carried a `next`, this is browser mode: the session and CSRF cookies are set and the answer is a 303 to that path, and a failure is a 303 to the sign-in page carrying the reason. Otherwise the answer is the JSON below. 404 while the organization's subscription does not include SSO.",
-    "public": true,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [
-      {
-        "name": "org",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-        }
-      },
-      {
-        "name": "code",
-        "in": "query",
-        "required": false,
-        "schema": {
-          "type": "string"
-        }
-      },
-      {
-        "name": "state",
-        "in": "query",
-        "required": false,
-        "schema": {
-          "type": "string"
-        }
-      }
-    ],
-    "responses": [
-      {
-        "code": "200",
-        "description": "SSO session established."
-      },
-      {
-        "code": "303",
-        "description": "Browser mode — the session is set and the browser returns to the path `next` named, or to the sign-in page on a failure."
-      }
-    ]
-  },
-  {
-    "id": "oidcStart",
-    "method": "GET",
-    "path": "/orgs/{org}/sso/oidc/start",
-    "tags": [
-      "sso"
-    ],
-    "summary": "Begin the OIDC auth-code + PKCE flow (redirect to IdP).",
-    "description": "404 while the organization's subscription does not include SSO: the door is not there to be started. `next` puts the callback in browser mode.",
-    "public": true,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [
-      {
-        "name": "org",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-        }
-      },
-      {
-        "name": "next",
-        "in": "query",
-        "required": false,
-        "description": "Where the browser returns after a successful sign-in. A same-origin path only (leading `/`, not `//`); anything else is ignored. It is sealed into the state the callback reads, so the identity provider's round trip cannot change it.",
-        "schema": {
-          "type": "string"
-        }
-      }
-    ],
-    "responses": [
-      {
-        "code": "302",
-        "description": "Redirect to the IdP authorization endpoint."
       }
     ]
   },
@@ -4367,6 +4101,7 @@ export const ACTIONS: readonly Action[] = [
       "platform"
     ],
     "summary": "Quarantine, block, or reinstate an agent (platform staff).",
+    "description": "Quarantine and block take effect before the response. Reinstate clears the agent's flag and asks for a fresh scan of each of its blocked and quarantined versions, then returns; it publishes nothing itself. A version is published again, signed as any publication is, only when the gate's verdict on its new scan is publish, and its open review item is closed with the reinstate's reason. Every other version stays held: a blocked one becomes quarantined once its verdict exists, and each has an open platform review item for a person to decide against the new scan. A version admitted without a scan has no scan to judge and stays as it is.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -4421,8 +4156,12 @@ export const ACTIONS: readonly Action[] = [
     },
     "responses": [
       {
+        "code": "202",
+        "description": "Reinstate accepted: the agent's flag is cleared and each blocked or quarantined version has a scan queued."
+      },
+      {
         "code": "204",
-        "description": "Action applied."
+        "description": "Quarantine or block applied."
       }
     ]
   },
@@ -4525,70 +4264,6 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "The logo is set."
-      }
-    ]
-  },
-  {
-    "id": "putSsoConnection",
-    "method": "PUT",
-    "path": "/orgs/{org}/sso/connections/{kind}",
-    "tags": [
-      "sso"
-    ],
-    "summary": "Create or update a SAML/OIDC connection (admin).",
-    "description": "403 `feature-not-included` while the organization's subscription does not include single sign-on. An existing connection is left alone by a subscription change and works again the moment the subscription includes SSO.",
-    "public": false,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [
-      {
-        "name": "org",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-        }
-      },
-      {
-        "name": "kind",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "enum": [
-            "saml",
-            "oidc"
-          ]
-        }
-      }
-    ],
-    "body": {
-      "required": true,
-      "contentType": "application/json",
-      "schema": {
-        "title": "SsoConnectionInput",
-        "type": "object",
-        "required": [
-          "enabled",
-          "config"
-        ],
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "config": {
-            "type": "object",
-            "additionalProperties": true,
-            "description": "SAML (idpMetadataXml or idpEntityId+idpCertificatePem+idpSsoUrl) or OIDC (issuer, clientId, clientSecret) settings. An OIDC save that omits clientSecret keeps the stored one; to drop the secret, delete the connection."
-          }
-        }
-      }
-    },
-    "responses": [
-      {
-        "code": "200",
-        "description": "Connection stored."
       }
     ]
   },
@@ -5202,44 +4877,6 @@ export const ACTIONS: readonly Action[] = [
     ]
   },
   {
-    "id": "revokeScimToken",
-    "method": "DELETE",
-    "path": "/orgs/{org}/scim/tokens/{tokenId}",
-    "tags": [
-      "scim"
-    ],
-    "summary": "Revoke a SCIM token (admin).",
-    "public": false,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [
-      {
-        "name": "org",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-        }
-      },
-      {
-        "name": "tokenId",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "format": "uuid"
-        }
-      }
-    ],
-    "responses": [
-      {
-        "code": "204",
-        "description": "Revoked."
-      }
-    ]
-  },
-  {
     "id": "revokeToken",
     "method": "DELETE",
     "path": "/user/tokens/{tokenId}",
@@ -5295,107 +4932,6 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "204",
         "description": "Revoked."
-      }
-    ]
-  },
-  {
-    "id": "samlAcs",
-    "method": "POST",
-    "path": "/orgs/{org}/sso/saml/acs",
-    "tags": [
-      "sso"
-    ],
-    "summary": "SAML Assertion Consumer Service: consume a signed assertion.",
-    "description": "A `RelayState` form field holding a same-origin path puts this in browser mode: the session and CSRF cookies are set and the answer is a 303 to that path, and a failure is a 303 to the sign-in page carrying the reason, because a browser cannot read a problem document. Anything else in `RelayState` is ignored. Without one the answer is the JSON below. 404 while the organization's subscription does not include SSO.",
-    "public": true,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [
-      {
-        "name": "org",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-        }
-      }
-    ],
-    "responses": [
-      {
-        "code": "200",
-        "description": "SSO session established."
-      },
-      {
-        "code": "303",
-        "description": "Browser mode — the session is set and the browser returns to the path RelayState named, or to the sign-in page on a failure."
-      }
-    ]
-  },
-  {
-    "id": "samlSloPost",
-    "method": "POST",
-    "path": "/orgs/{org}/sso/saml/slo",
-    "tags": [
-      "sso"
-    ],
-    "summary": "SAML Single Logout endpoint, HTTP-POST binding.",
-    "public": true,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [
-      {
-        "name": "org",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-        }
-      }
-    ],
-    "responses": [
-      {
-        "code": "200",
-        "description": "Logged out; the IdP publishes no endpoint to answer to."
-      },
-      {
-        "code": "303",
-        "description": "Redirect to the IdP's SLO endpoint (LogoutResponse) or home."
-      }
-    ]
-  },
-  {
-    "id": "samlSloRedirect",
-    "method": "GET",
-    "path": "/orgs/{org}/sso/saml/slo",
-    "tags": [
-      "sso"
-    ],
-    "summary": "SAML Single Logout endpoint, HTTP-Redirect binding.",
-    "description": "Accepts a signed IdP-initiated LogoutRequest (revokes the sessions it names and answers the IdP with a LogoutResponse) or the IdP's LogoutResponse to an SP-initiated logout (validated, then the browser is sent home).",
-    "public": true,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [
-      {
-        "name": "org",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-        }
-      }
-    ],
-    "responses": [
-      {
-        "code": "200",
-        "description": "Logged out; the IdP publishes no endpoint to answer to."
-      },
-      {
-        "code": "303",
-        "description": "Redirect to the IdP's SLO endpoint (LogoutResponse) or home."
       }
     ]
   },
@@ -5981,7 +5517,7 @@ export const ACTIONS: readonly Action[] = [
       "auth"
     ],
     "summary": "Begin sign-in with the deployment's OpenID provider.",
-    "description": "Individual-account sign-in through the OpenID provider the server is configured with (`auth.oidc`: discovery, issuer pinning, PKCE and a verified ID token). A provider id the server does not serve answers 404. This is individual sign-in and never grants org membership. Org SSO lives under /orgs/{org}/sso.",
+    "description": "Individual-account sign-in through the OpenID provider the server is configured with (`auth.oidc`: discovery, issuer pinning, PKCE and a verified ID token). A provider id the server does not serve answers 404. This is individual sign-in and never grants org membership.",
     "public": true,
     "sessionOnly": false,
     "deprecated": false,
@@ -6208,48 +5744,6 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "The organization, now suspended."
-      }
-    ]
-  },
-  {
-    "id": "testSsoConnection",
-    "method": "POST",
-    "path": "/orgs/{org}/sso/connections/{kind}/test",
-    "tags": [
-      "sso"
-    ],
-    "summary": "Probe a stored connection without signing in (admin).",
-    "description": "OIDC: runs discovery against the stored issuer and reports the endpoints it advertises. SAML: parses the stored IdP metadata and reports entity id, sign-on URLs and signing-certificate expiry. Neither contacts the IdP's sign-in flow or uses the client secret. A failed probe is a 200 with ok=false and the reason, so the admin page can show it inline.",
-    "public": false,
-    "sessionOnly": false,
-    "deprecated": false,
-    "params": [
-      {
-        "name": "org",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "pattern": "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$"
-        }
-      },
-      {
-        "name": "kind",
-        "in": "path",
-        "required": true,
-        "schema": {
-          "type": "string",
-          "enum": [
-            "saml",
-            "oidc"
-          ]
-        }
-      }
-    ],
-    "responses": [
-      {
-        "code": "200",
-        "description": "Probe outcome."
       }
     ]
   },

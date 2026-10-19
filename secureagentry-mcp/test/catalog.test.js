@@ -93,7 +93,7 @@ test("search finds an operation from a plain description of the job", () => {
     ["list webhook deliveries", "listWebhookDeliveries"],
     ["decide a review item", "decideReviewItem"],
     ["org audit log", "listOrgAudit"],
-    ["scim provisioning tokens", "listScimTokens"],
+    ["claim a domain for an org", "createDomainClaim"],
     ["yank a version", "yankVersion"],
   ];
   for (const [query, expected] of cases) {
@@ -128,7 +128,7 @@ test("search respects its filters", () => {
 });
 
 test("a filter with no query still selects, rather than returning nothing", () => {
-  const hits = searchActions("", 50, { tag: "scim" });
+  const hits = searchActions("", 50, { tag: "domains" });
   assert.ok(hits.length > 0);
 });
 
