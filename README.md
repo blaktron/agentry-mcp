@@ -173,8 +173,19 @@ search charges.
 | ------------------------- | -------------------------------------------------------- | --------------------------------------------------------- |
 | `agentry_draft`           | `agentry draft --output-format json`                     | draft/package and receipts                                |
 | `agentry_review`          | `agentry review DIR --json`                              | Examiner report and expected or undetermined gate outcome |
-| `agentry_knowledge_build` | `agentry knowledge create/add --output-format json`      | Creator build report and receipts                         |
-| `agentry_voice_build`     | `agentry voice create/improve/edit --output-format json` | Voice Writer build report and receipts                    |
+| `agentry_knowledge_build` | `agentry knowledge create/add --output-format json`      | Creator build report, the sources it fetched, receipts    |
+| `agentry_voice_build`     | `agentry voice create/improve/edit --output-format json` | Voice Writer build report, each page's outcome, receipts  |
+
+A knowledge build takes git repositories (`repos`, https, with `@ref` for a
+branch, tag or commit) and file addresses (`urls`) beside its files, and a
+voice takes pages of the person's writing (`urls`). The CLI fetches each one
+before the run, through a proxy to its host alone, and the preview lists every
+address with the host it reaches. A voice's pages are read by AI Review with
+the person's own TypeSafe key before the Voice Writer reads them, so a voice
+with `urls` needs that key. A private repository's access token is the one
+saved for its host in the system keychain; the server never takes or passes a
+token (`--source-token` stays in a terminal). Both need a CLI that has them:
+the server checks at start and asks for an update otherwise.
 
 Not exposed: signing in (`agentry login`, `agentry connect`, `agentry
 model-signins add`), publishing (`agentry publish`), forking and yanking,
@@ -182,7 +193,8 @@ adding, editing, pausing or removing schedules, saving or removing
 destinations and default sets, importing or resetting the report design,
 Knowledge import/upload/download/export/delete, Voice
 set/attach/delete and account upload/download, `agentry files ensure`,
-Unsafe Mode and vulnerable-server lifts. Those stay in a terminal.
+Unsafe Mode and vulnerable-server lifts, and a build's source tokens. Those
+stay in a terminal.
 
 The server has no credential store. Tools take key names and never return
 their values.
