@@ -30,6 +30,7 @@
 #   FAKE_DELIVERIES    the run envelope's deliveries block, verbatim JSON
 #   FAKE_DESTINATIONS  what `destinations list --json` prints (default none saved)
 #   FAKE_DESTINATIONS_FILE  a file whose content, when it exists, is FAKE_DESTINATIONS
+#   FAKE_RUN_REFUSED_INPUTS  the run is refused for its inputs (class policy): this is its refusedInputs, verbatim JSON
 set -u
 if [ -n "${FAKE_ARGV:-}" ]; then
   printf '%s\n' "$@" >> "$FAKE_ARGV"
@@ -164,6 +165,10 @@ print(out, end="")')
         # write the envelope with error interrupted under class cli.
         trap 'kill $SLEEPER 2>/dev/null; echo "narration: SIGINT: tearing down" >&2; echo "{\"status\":\"error\",\"exitCode\":1,\"exitClass\":\"cli\",\"error\":\"interrupted\",\"outDir\":\"/tmp/out\",\"resultFile\":\"/tmp/out/result.json\",\"receipts\":{\"dir\":\"/tmp/out/receipts\",\"runPlanSha256\":\"abc\"},\"result\":\"\"}"; exit 1' INT
         sleep "$FAKE_RUN_SLEEP" & SLEEPER=$!; wait $SLEEPER
+      fi
+      if [ -n "${FAKE_RUN_REFUSED_INPUTS:-}" ]; then
+        echo '{"status":"error","exitCode":11,"exitClass":"policy","error":"the run was refused before the agent started: malware found in an input","stage":"prepare","reason":{"code":"input-refused","detail":"malware"},"refusedInputs":'"$FAKE_RUN_REFUSED_INPUTS"',"refusedInputsMore":2,"runId":"r1","ref":"acme/widget@1.0.0","outDir":"/tmp/out","resultFile":"/tmp/out/result.json","receipts":{"dir":"/tmp/out/receipts","runPlanSha256":"abc"},"result":""}'
+        exit 11
       fi
       rout="${FAKE_RUN_OUT:-/tmp/out}"; rextra=""
       [ -n "${FAKE_DELIVERABLES:-}" ] && rextra=",\"deliverables\":$FAKE_DELIVERABLES"

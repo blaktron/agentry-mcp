@@ -509,6 +509,31 @@ test("a run past its timeout gets SIGINT; the envelope the CLI's teardown wrote 
   assert.match(out.log, /SIGINT: tearing down/);
 });
 
+test("a run refused for its inputs comes back as the envelope, each refused file named in refusedInputs", async () => {
+  const refused = [
+    { path: "eicar.com", by: "clamav", signature: "Eicar-Test-Signature" },
+    {
+      path: "bundle.zip/docs/report.pdf",
+      by: "hybrid-analysis",
+      verdict: "malicious",
+      threatScore: 100,
+    },
+    { path: "notes.md", by: "ai-review", flagged: ["steers_agent"] },
+  ];
+  const { client } = await connect({ FAKE_RUN_REFUSED_INPUTS: JSON.stringify(refused) });
+  const p = await previewRun(client, { ref: "acme/widget" });
+  const r = await client.callTool({
+    name: "agentry_run",
+    arguments: { ref: "acme/widget", confirm: p.digest },
+  });
+  assert.equal(r.isError, undefined, r.content[0].text);
+  const out = JSON.parse(r.content[0].text);
+  assert.equal(out.exitClass, "policy");
+  assert.deepEqual(out.result.reason, { code: "input-refused", detail: "malware" });
+  assert.deepEqual(out.result.refusedInputs, refused);
+  assert.equal(out.result.refusedInputsMore, 2);
+});
+
 test("validate: the report comes back with exitClass cli when it failed", async () => {
   const { client, argvFile } = await connect();
   const r = await client.callTool({
