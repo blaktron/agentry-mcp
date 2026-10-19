@@ -129,3 +129,41 @@ test("a build with neither files, sources nor a brief is refused", async () => {
   });
   assert.equal(many.isError, true);
 });
+
+test("an address is held to https with no user, its host shown as the fetch reaches it, before anything runs", async () => {
+  const f = fixture();
+  const { client, argvFile } = await connect();
+  const build = (args) =>
+    client.callTool({
+      name: "agentry_knowledge_build",
+      arguments: { action: "create", name: "n", web: false, out: f.out, ...args },
+    });
+  for (const [args, want] of [
+    [{ urls: ["https://github.com@evil.example/x"] }, /must not carry a user/],
+    [{ repos: ["https://user:tok@github.com/o/r"] }, /must not carry a user/],
+    [{ urls: ["http://example.org/a.pdf"] }, /must be https/],
+    [{ urls: ["not an address"] }, /is not an address/],
+  ]) {
+    const r = await build(args);
+    assert.equal(r.isError, true, JSON.stringify(args));
+    assert.match(r.content[0].text, want);
+    assert.doesNotMatch(r.content[0].text, /:tok@/);
+  }
+  assert.equal(receivedArgv(argvFile).length, 0);
+  const p = await preview(client, "agentry_knowledge_build", {
+    action: "create",
+    name: "n",
+    web: false,
+    out: f.out,
+    repos: ["https://git.example.org:8443/team/docs@feat/x"],
+    urls: ["https://files.example.org/get?sig=SECRET"],
+  });
+  assert.deepEqual(p.operation.fetches, [
+    {
+      kind: "repository",
+      address: "https://git.example.org:8443/team/docs@feat/x",
+      host: "git.example.org:8443",
+    },
+    { kind: "url", address: "https://files.example.org/get?…", host: "files.example.org" },
+  ]);
+});

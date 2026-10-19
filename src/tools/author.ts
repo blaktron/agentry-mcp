@@ -31,27 +31,54 @@ type Common = z.infer<z.ZodObject<typeof common>>;
 /** What a build fetches before the run: each repository or address, and the one host it reaches. */
 interface Fetch {
   kind: "repository" | "url";
+  /** The address as given, its query shown as "?…" (it can carry a signed download's credential). */
   address: string;
+  /** The host the fetch reaches, with its port when one is named. */
   host: string;
 }
 
 /**
- * The fetches a build makes, for its consent facts. An address that does
- * not parse is kept with no host, and the CLI refuses it.
+ * The fetches a build makes, for its consent facts. Each is held to what the
+ * CLI takes before anything runs: https, a host, and no user information,
+ * which would be a credential in the address. A repository's ref after @
+ * is cut from its path alone; an address has none.
  */
 function fetches(repos?: string[], urls?: string[]): Fetch[] {
-  const hostOf = (raw: string): string => {
+  const parse = (kind: Fetch["kind"], raw: string): Fetch => {
+    let u: URL;
     try {
-      return new URL(raw.replace(/@[^/@]*$/, "")).hostname.toLowerCase();
+      u = new URL(raw.trim());
     } catch {
-      return "";
+      throw new ArgumentError(
+        `${kind === "repository" ? "repos" : "urls"}: ${JSON.stringify(raw)} is not an address`,
+      );
     }
+    if (u.protocol !== "https:" || !u.hostname)
+      throw new ArgumentError(
+        `${kind === "repository" ? "repos" : "urls"}: an address must be https with a host`,
+      );
+    if (u.username || u.password)
+      throw new ArgumentError(
+        `${kind === "repository" ? "repos" : "urls"}: an address must not carry a user or a password; a private repository uses the token saved for its host in a terminal`,
+      );
+    const shown = u.search ? raw.trim().slice(0, raw.trim().indexOf("?")) + "?…" : raw.trim();
+    return { kind, address: shown, host: u.host.toLowerCase() };
   };
   return [
-    ...(repos ?? []).map((r) => ({ kind: "repository" as const, address: r, host: hostOf(r) })),
-    ...(urls ?? []).map((u) => ({ kind: "url" as const, address: u, host: hostOf(u) })),
+    ...(repos ?? []).map((r) => parse("repository", r)),
+    ...(urls ?? []).map((u) => parse("url", u)),
   ];
 }
+
+/** The consent facts of what a build fetches, and the review a voice's pages get. */
+interface SourceFacts {
+  fetches?: Fetch[];
+  review?: string;
+}
+
+/** The review a voice's pages get before the Voice Writer reads them. */
+const VOICE_PAGE_REVIEW =
+  "every page is read by AI Review with the person's own TypeSafe key before the Voice Writer reads it; without the key the CLI refuses the addresses";
 
 async function execute(
   d: Driver,
@@ -60,7 +87,7 @@ async function execute(
   argv: string[],
   paths: string[],
   extra: Extra,
-  more: { fetches?: Fetch[]; review?: string } = {},
+  sourceFacts: SourceFacts = {},
 ) {
   flag(argv, "out", a.out);
   flag(argv, "policy", a.policy);
@@ -105,8 +132,8 @@ async function execute(
     builtins: builtins.plan,
     packs: packs.plan,
     voice: voice.plan,
-    ...(more.fetches?.length ? { fetches: more.fetches } : {}),
-    ...(more.review ? { review: more.review } : {}),
+    ...(sourceFacts.fetches?.length ? { fetches: sourceFacts.fetches } : {}),
+    ...(sourceFacts.review ? { review: sourceFacts.review } : {}),
   };
   if (a.confirm === undefined)
     return previewText(
@@ -119,7 +146,7 @@ async function execute(
     );
   const consent = await confirmed(d.server, tool, a.confirm, facts, {
     unsigned: false,
-    ask: `Execute ${tool}? Inputs: ${paths.join(", ") || "text in the operation"}.${more.fetches?.length ? ` Fetched first: ${more.fetches.map((f) => f.address).join(", ")}.` : ""} Output: ${a.out}. Budget: ${a.timeoutSeconds}s. Model and review/search charges may apply.`,
+    ask: `Execute ${tool}? Inputs: ${paths.join(", ") || "text in the operation"}.${sourceFacts.fetches?.length ? ` Fetched first: ${sourceFacts.fetches.map((f) => f.address).join(", ")}.` : ""} Output: ${a.out}. Budget: ${a.timeoutSeconds}s. Model and review/search charges may apply.`,
   });
   if (!isConsent(consent)) return consent;
   // These commands have no terminal capability gate and take no bypass flags.
@@ -200,7 +227,7 @@ export function registerAuthorTools(d: Driver): void {
     "agentry_knowledge_build",
     {
       description:
-        "Create or extend a Knowledge pack with agentry knowledge create/add --output-format json (the Creator). Two calls: operation preview and confirm. Sources are files, git repositories (repos, https with @ref), file addresses (urls), a brief file, or any mix; the CLI fetches each repository or address before the run, through a proxy to its host alone, and the preview lists them. The explicit web choice is shown before the model runs. Returns the build report, the sources it fetched, and receipts. A private repository's token is the one saved for its host in a terminal (agentry keychain); account upload/export/delete stay in a terminal.",
+        "Create or extend a Knowledge pack with agentry knowledge create/add --output-format json (the Creator). Two calls: operation preview and confirm. Sources are files, git repositories (repos, https with @ref), file addresses (urls), a brief file, or any mix; the CLI fetches each repository or address before the run, through a proxy to its host alone, and the preview lists them. The explicit web choice is shown before the model runs. Returns the build report, the sources it fetched, and receipts. A private repository's token is the one a terminal build saved for its host in the system keychain; the server never takes one. Account upload/export/delete stay in a terminal.",
       inputSchema: {
         ...common,
         timeoutSeconds: common.timeoutSeconds.default(3600),
@@ -306,8 +333,7 @@ export function registerAuthorTools(d: Driver): void {
           a.urls?.length
             ? {
                 fetches: fetches(undefined, a.urls),
-                review:
-                  "every page is read by AI Review with the person's own TypeSafe key before the Voice Writer reads it; without the key the CLI refuses the addresses",
+                review: VOICE_PAGE_REVIEW,
               }
             : {},
         );
