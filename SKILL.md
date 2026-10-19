@@ -146,18 +146,25 @@ budgets; these runs may spend model, AI Review and search charges.
   writes a draft/package and receipts. Inspect every part before publishing.
 - `agentry_review`: review a local package with the Examiner. Its predicted
   gate outcome may be undetermined; the registry still runs its own pipeline.
-- `agentry_knowledge_build`: create or add to a pack from documents, a brief
-  file, or both. Choose `web` explicitly. A directory pack stays in plaintext;
-  a named kept pack is sealed by the CLI.
-- `agentry_voice_build`: create/improve from writing samples, or AI-edit with
-  a note and optional samples. This changes the local voice unless `write`
-  names a VOICE.md file.
+- `agentry_knowledge_build`: create or add to a pack from documents, git
+  repositories (`repos`, https, `@ref` for a ref), file addresses (`urls`), a
+  brief file, or a mix. Choose `web` explicitly. Show the person the preview's
+  `fetches`: each repository or address and the host it reaches. A private
+  repository uses the token saved for its host in a terminal; never ask for a
+  token. A directory pack stays in plaintext; a named kept pack is sealed by
+  the CLI.
+- `agentry_voice_build`: create/improve from writing samples (`files`) and
+  pages of the person's own writing (`urls`), or AI-edit with a note and
+  optional samples. Each page is read by AI Review with the person's TypeSafe
+  key first; without the key the CLI refuses the addresses, and files still
+  work. This changes the local voice unless `write` names a VOICE.md file.
 
 Terminal-only workflows include signing in to MCP servers (`agentry connect`)
 and model vendors (`agentry model-signins add`), adding or changing schedules,
 saving destinations and default sets, importing or resetting the report design,
 forking, publishing/yanking, registry administration,
-Knowledge import/upload/download/export/delete, Voice set/attach/delete and
+Knowledge import/upload/download/export/delete, a knowledge build's source
+tokens (`--source-token`), Voice set/attach/delete and
 account upload/download, and `agentry files ensure` (image/signature preparation,
 which currently has no JSON result). Use `agentry <command> --help` for their
 installed-version arguments. Do not improvise a generic MCP command or a consent

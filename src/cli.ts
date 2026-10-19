@@ -22,10 +22,19 @@ export interface CliFeatures {
   deliverTo: boolean;
   /** `run --destination`, `agentry destinations` and `agentry deliver`. */
   destinations: boolean;
+  /** `knowledge create|add --repo` and `--url`: a build from a repository or an address. */
+  buildSources: boolean;
+  /** `voice create|improve|edit --url`: samples from web addresses. */
+  voiceURLs: boolean;
 }
 
 /** The features of a CLI that has them all (the tests' fake, a current CLI). */
-export const ALL_FEATURES: CliFeatures = { deliverTo: true, destinations: true };
+export const ALL_FEATURES: CliFeatures = {
+  deliverTo: true,
+  destinations: true,
+  buildSources: true,
+  voiceURLs: true,
+};
 
 /** What `agentry --version` said, parsed. */
 export interface CliVersion {
@@ -242,12 +251,16 @@ export async function checkCli(
       );
   }
   const runHelp = protocol.stdout + protocol.stderr;
+  const knowledgeHelp = await runCli(bin, ["knowledge", "create", "--help"], { timeoutMs: 10_000 });
+  const voiceHelp = await runCli(bin, ["voice", "create", "--help"], { timeoutMs: 10_000 });
   return {
     ...v,
     floorChecked: v.semver !== undefined,
     features: {
       deliverTo: /--deliver-to\b/.test(runHelp),
       destinations: /--destination\b/.test(runHelp),
+      buildSources: /--repo\b/.test(knowledgeHelp.stdout + knowledgeHelp.stderr),
+      voiceURLs: /--url\b/.test(voiceHelp.stdout + voiceHelp.stderr),
     },
   };
 }

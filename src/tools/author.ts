@@ -28,6 +28,58 @@ const writes = { readOnlyHint: false, destructiveHint: false, openWorldHint: tru
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 type Common = z.infer<z.ZodObject<typeof common>>;
 
+/** What a build fetches before the run: each repository or address, and the one host it reaches. */
+interface Fetch {
+  kind: "repository" | "url";
+  /** The address as given, its query shown as "?…" (it can carry a signed download's credential). */
+  address: string;
+  /** The host the fetch reaches, with its port when one is named. */
+  host: string;
+}
+
+/**
+ * The fetches a build makes, for its consent facts. Each is held to what the
+ * CLI takes before anything runs: https, a host, and no user information,
+ * which would be a credential in the address. A repository's ref after @
+ * is cut from its path alone; an address has none.
+ */
+function fetches(repos?: string[], urls?: string[]): Fetch[] {
+  const parse = (kind: Fetch["kind"], raw: string): Fetch => {
+    let u: URL;
+    try {
+      u = new URL(raw.trim());
+    } catch {
+      throw new ArgumentError(
+        `${kind === "repository" ? "repos" : "urls"}: ${JSON.stringify(raw)} is not an address`,
+      );
+    }
+    if (u.protocol !== "https:" || !u.hostname)
+      throw new ArgumentError(
+        `${kind === "repository" ? "repos" : "urls"}: an address must be https with a host`,
+      );
+    if (u.username || u.password)
+      throw new ArgumentError(
+        `${kind === "repository" ? "repos" : "urls"}: an address must not carry a user or a password; a private repository uses the token saved for its host in a terminal`,
+      );
+    const shown = u.search ? raw.trim().slice(0, raw.trim().indexOf("?")) + "?…" : raw.trim();
+    return { kind, address: shown, host: u.host.toLowerCase() };
+  };
+  return [
+    ...(repos ?? []).map((r) => parse("repository", r)),
+    ...(urls ?? []).map((u) => parse("url", u)),
+  ];
+}
+
+/** The consent facts of what a build fetches, and the review a voice's pages get. */
+interface SourceFacts {
+  fetches?: Fetch[];
+  review?: string;
+}
+
+/** The review a voice's pages get before the Voice Writer reads them. */
+const VOICE_PAGE_REVIEW =
+  "every page is read by AI Review with the person's own TypeSafe key before the Voice Writer reads it; without the key the CLI refuses the addresses";
+
 async function execute(
   d: Driver,
   tool: string,
@@ -35,6 +87,7 @@ async function execute(
   argv: string[],
   paths: string[],
   extra: Extra,
+  sourceFacts: SourceFacts = {},
 ) {
   flag(argv, "out", a.out);
   flag(argv, "policy", a.policy);
@@ -79,6 +132,8 @@ async function execute(
     builtins: builtins.plan,
     packs: packs.plan,
     voice: voice.plan,
+    ...(sourceFacts.fetches?.length ? { fetches: sourceFacts.fetches } : {}),
+    ...(sourceFacts.review ? { review: sourceFacts.review } : {}),
   };
   if (a.confirm === undefined)
     return previewText(
@@ -91,7 +146,7 @@ async function execute(
     );
   const consent = await confirmed(d.server, tool, a.confirm, facts, {
     unsigned: false,
-    ask: `Execute ${tool}? Inputs: ${paths.join(", ") || "text in the operation"}. Output: ${a.out}. Budget: ${a.timeoutSeconds}s. Model and review/search charges may apply.`,
+    ask: `Execute ${tool}? Inputs: ${paths.join(", ") || "text in the operation"}.${sourceFacts.fetches?.length ? ` Fetched first: ${sourceFacts.fetches.map((f) => f.address).join(", ")}.` : ""} Output: ${a.out}. Budget: ${a.timeoutSeconds}s. Model and review/search charges may apply.`,
   });
   if (!isConsent(consent)) return consent;
   // These commands have no terminal capability gate and take no bypass flags.
@@ -172,13 +227,15 @@ export function registerAuthorTools(d: Driver): void {
     "agentry_knowledge_build",
     {
       description:
-        "Create or extend a Knowledge pack with agentry knowledge create/add --output-format json (the Creator). Two calls: operation preview and confirm. Sources are files, a brief file, or both; the explicit web choice is shown before the model runs. Returns the build report and receipts. Account upload/export/delete stay in a terminal.",
+        "Create or extend a Knowledge pack with agentry knowledge create/add --output-format json (the Creator). Two calls: operation preview and confirm. Sources are files, git repositories (repos, https with @ref), file addresses (urls), a brief file, or any mix; the CLI fetches each repository or address before the run, through a proxy to its host alone, and the preview lists them. The explicit web choice is shown before the model runs. Returns the build report, the sources it fetched, and receipts. A private repository's token is the one a terminal build saved for its host in the system keychain; the server never takes one. Account upload/export/delete stay in a terminal.",
       inputSchema: {
         ...common,
         timeoutSeconds: common.timeoutSeconds.default(3600),
         action: z.enum(["create", "add"]),
         name: z.string(),
         files: z.array(z.string()).optional(),
+        repos: z.array(z.string()).max(10).optional(),
+        urls: z.array(z.string()).max(20).optional(),
         briefFile: z.string().optional(),
         web: z.boolean(),
         dir: z.string().optional(),
@@ -188,8 +245,12 @@ export function registerAuthorTools(d: Driver): void {
     },
     (a, extra) =>
       guard("agentry_knowledge_build", async () => {
-        if (!(a.files?.length || a.briefFile))
-          throw new ArgumentError("give files, briefFile or both");
+        if (!(a.files?.length || a.briefFile || a.repos?.length || a.urls?.length))
+          throw new ArgumentError("give files, repos, urls, briefFile, or a mix");
+        if ((a.repos?.length || a.urls?.length) && !d.features.buildSources)
+          throw new ArgumentError(
+            "this agentry CLI has no knowledge --repo or --url; update the CLI to build a pack from a repository or an address",
+          );
         if (a.action === "add" && a.dir)
           throw new ArgumentError(
             "dir is only for create; for add name the existing pack directory in name",
@@ -203,12 +264,16 @@ export function registerAuthorTools(d: Driver): void {
           a.web ? "--web" : "--no-web",
         ];
         for (const file of a.files ?? []) flag(argv, "file", file);
+        for (const repo of a.repos ?? []) flag(argv, "repo", repo);
+        for (const url of a.urls ?? []) flag(argv, "url", url);
         flag(argv, "brief-file", a.briefFile);
         flag(argv, "dir", a.dir);
         flag(argv, "max-pack-mb", a.maxPackMB);
         const paths = [...(a.files ?? []), ...(a.briefFile ? [a.briefFile] : [])];
         if (a.action === "add") paths.push(...(await localPackPaths([a.name], d.cwd)));
-        return execute(d, "agentry_knowledge_build", a, argv, paths, extra);
+        return execute(d, "agentry_knowledge_build", a, argv, paths, extra, {
+          fetches: fetches(a.repos, a.urls),
+        });
       }),
   );
   registerTool(
@@ -216,11 +281,12 @@ export function registerAuthorTools(d: Driver): void {
     "agentry_voice_build",
     {
       description:
-        "Create, improve or AI-edit a Writing Voice with agentry voice create/improve/edit --output-format json (the Voice Writer). Two calls: operation preview and confirm. Reads writing samples and an optional brief (edit uses note); returns the build and receipts. This changes this computer's voice unless write names a VOICE.md output file.",
+        "Create, improve or AI-edit a Writing Voice with agentry voice create/improve/edit --output-format json (the Voice Writer). Two calls: operation preview and confirm. Reads writing samples (files) and pages of the person's writing (urls, https), and an optional brief (edit uses note); each page is fetched first and read by AI Review with the person's own TypeSafe key, which a build with urls needs. Returns the build, what became of each page, and receipts. This changes this computer's voice unless write names a VOICE.md output file.",
       inputSchema: {
         ...common,
         action: z.enum(["create", "improve", "edit"]),
         files: z.array(z.string()).optional(),
+        urls: z.array(z.string()).max(20).optional(),
         brief: z.string().optional(),
         note: z.string().optional(),
         current: z.string().optional(),
@@ -231,9 +297,15 @@ export function registerAuthorTools(d: Driver): void {
     },
     (a, extra) =>
       guard("agentry_voice_build", async () => {
-        if (a.action === "edit" ? !a.note : !a.files?.length)
+        if (a.action === "edit" ? !a.note : !(a.files?.length || a.urls?.length))
           throw new ArgumentError(
-            a.action === "edit" ? "edit needs note" : "create/improve need writing samples",
+            a.action === "edit"
+              ? "edit needs note"
+              : "create/improve need writing samples (files or urls)",
+          );
+        if (a.urls?.length && !d.features.voiceURLs)
+          throw new ArgumentError(
+            "this agentry CLI has no voice --url; update the CLI to take samples from web addresses",
           );
         if (
           (a.action === "edit" && a.brief) ||
@@ -245,6 +317,7 @@ export function registerAuthorTools(d: Driver): void {
           );
         const argv = ["voice", a.action, "--output-format", "json"];
         for (const file of a.files ?? []) flag(argv, "file", file);
+        for (const url of a.urls ?? []) flag(argv, "url", url);
         flag(argv, "brief", a.brief);
         flag(argv, "note", a.note);
         flag(argv, "current", a.current);
@@ -257,6 +330,12 @@ export function registerAuthorTools(d: Driver): void {
           argv,
           [...(a.files ?? []), ...(a.current ? [a.current] : [])],
           extra,
+          a.urls?.length
+            ? {
+                fetches: fetches(undefined, a.urls),
+                review: VOICE_PAGE_REVIEW,
+              }
+            : {},
         );
       }),
   );
