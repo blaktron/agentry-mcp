@@ -1,0 +1,11 @@
+# Every path needs a maintainer's review before merge. The paths with a
+# higher bar, the argv builder, the argument validation and the consent
+# (CONTRIBUTING.md, "The rules that matter"), are listed explicitly so the
+# ownership is visible, not implied by the wildcard.
+*                     @blaktron
+/src/argv.ts          @blaktron
+/src/toolargs.ts      @blaktron
+/src/consent.ts       @blaktron
+/src/driver.ts        @blaktron
+/src/tools/           @blaktron
+/.github/             @blaktron

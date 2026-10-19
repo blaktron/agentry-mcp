@@ -31,6 +31,7 @@ npm run build      # tsc into dist/
 npm test           # builds, then runs the tests against a fake agentry CLI
 npm run check      # typecheck, prettier, prose gate, tests
 npm run format     # prettier --write
+npm run workflows-check  # no fork-reachable workflow job on a self-hosted runner (python3 with PyYAML)
 ```
 
 `scripts/package.sh <version> <out-dir>` builds the downloadable tarball and
@@ -192,7 +193,7 @@ their values.
 | -------------------- | ----------------------------------------------------------------- |
 | `src/`               | the server: CLI seam, consent, runs, sessions, tools              |
 | `test/`              | tests against a fake `agentry` CLI (`fake-agentry.sh`)            |
-| `scripts/`           | packaging and the prose gate                                      |
+| `scripts/`           | packaging, the prose gate and the workflow fork-guard check       |
 | `secureagentry-mcp/` | a separate registry-API server with its own build, see its README |
 
 ## Licence
