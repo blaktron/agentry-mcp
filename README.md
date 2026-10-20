@@ -188,13 +188,21 @@ token (`--source-token` stays in a terminal). Both need a CLI that has them:
 the server checks at start and asks for an update otherwise.
 
 Not exposed: signing in (`agentry login`, `agentry connect`, `agentry
-model-signins add`), publishing (`agentry publish`), forking and yanking,
+model-signins add`), publishing (`agentry publish`), shipping a Knowledge
+pack with a QuickAgent (`agentry knowledge ship`, `agentry draft --ship`, and
+the per-pack confirmation `agentry publish` asks), forking and yanking,
 adding, editing, pausing or removing schedules, saving or removing
 destinations and default sets, importing or resetting the report design,
 Knowledge import/upload/download/export/delete, Voice
 set/attach/delete and account upload/download, `agentry files ensure`,
 Unsafe Mode and vulnerable-server lifts, and a build's source tokens. Those
 stay in a terminal.
+
+Shipping a Knowledge pack publishes its contents: everyone who can download
+the release can read the pack, and it stays in that version. The person
+confirms each pack in a terminal, so `agentry_draft` takes no `ship` argument
+and no tool passes `--ship`, `--namespace` or `--yes`. A draft reads the packs
+named in `knowledge` and ships none of them.
 
 The server has no credential store. Tools take key names and never return
 their values.
