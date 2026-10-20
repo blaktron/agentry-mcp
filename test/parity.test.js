@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, existsSync, symlinkSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync, symlinkSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -233,4 +233,50 @@ test("voice selection and registry metadata are bound to the same run consent", 
   const metadata = receivedArgv(argvFile).filter((a) => a[0] === "voice");
   assert.ok(metadata.length > 0);
   for (const argv of metadata) assert.equal(argv[argv.indexOf("--registry") + 1], args.registry);
+});
+
+test("a draft reads the packs it is given and ships none, whatever the arguments say", async () => {
+  const f = fixture();
+  const { client, argvFile } = await connect();
+  const { tools } = await client.listTools();
+  for (const tool of tools) {
+    const names = Object.keys(tool.inputSchema?.properties ?? {});
+    for (const bad of ["ship", "namespace", "yes"])
+      assert.ok(!names.includes(bad), `${tool.name} takes ${bad}`);
+  }
+  const args = {
+    descriptionFile: f.file,
+    out: f.out,
+    knowledge: [f.dir],
+    ship: [f.dir],
+    namespace: "acme",
+    yes: true,
+  };
+  const p = await preview(client, "agentry_draft", args);
+  const done = await call(client, "agentry_draft", { ...args, confirm: p.digest });
+  assert.equal(done.isError, undefined, done.content[0].text);
+  const last = receivedArgv(argvFile).at(-1);
+  assert.equal(last[0], "draft");
+  assert.ok(last.includes("--knowledge"));
+  for (const flagName of ["--ship", "--namespace", "--yes", "--remove"])
+    assert.ok(!last.includes(flagName), `draft was run with ${flagName}`);
+  for (const [field, text] of [
+    ["hints", "--ship"],
+    ["knowledge", "--ship"],
+  ]) {
+    const refused = await call(client, "agentry_draft", {
+      descriptionFile: f.file,
+      out: f.out,
+      [field]: [text],
+    });
+    assert.equal(refused.isError, true, `${field} ${text} was accepted`);
+  }
+});
+
+test("the README and SKILL.md leave shipping a Knowledge pack to the terminal", () => {
+  for (const file of ["../README.md", "../SKILL.md"]) {
+    const text = readFileSync(new URL(file, import.meta.url), "utf8").replace(/\s+/g, " ");
+    for (const phrase of ["agentry knowledge ship", "agentry draft --ship", "agentry publish"])
+      assert.ok(text.includes(phrase), `${file} does not mention ${phrase}`);
+  }
 });
