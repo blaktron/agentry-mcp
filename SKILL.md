@@ -143,7 +143,7 @@ budgets; these runs may spend model, AI Review and search charges.
 
 - `agentry_draft`: provide a description file, a local revision directory, or
   an exact published `reviseRef`. Optional Knowledge is read first; the tool
-  writes a draft/package and receipts. Inspect every part before publishing.
+  writes a draft/package and receipts and ships no pack. Inspect every part before publishing.
 - `agentry_review`: review a local package with the Examiner. Its predicted
   gate outcome may be undetermined; the registry still runs its own pipeline.
 - `agentry_knowledge_build`: create or add to a pack from documents, git
@@ -162,13 +162,23 @@ budgets; these runs may spend model, AI Review and search charges.
 Terminal-only workflows include signing in to MCP servers (`agentry connect`)
 and model vendors (`agentry model-signins add`), adding or changing schedules,
 saving destinations and default sets, importing or resetting the report design,
-forking, publishing/yanking, registry administration,
+forking, publishing/yanking, shipping a Knowledge pack with a QuickAgent
+(`agentry knowledge ship`, `agentry draft --ship`, the per-pack confirmation
+`agentry publish` asks), registry administration,
 Knowledge import/upload/download/export/delete, a knowledge build's source
 tokens (`--source-token`), Voice set/attach/delete and
 account upload/download, and `agentry files ensure` (image/signature preparation,
 which currently has no JSON result). Use `agentry <command> --help` for their
 installed-version arguments. Do not improvise a generic MCP command or a consent
 bypass to expose them.
+
+Shipping a Knowledge pack publishes its contents: everyone who can download the
+release can read the pack, and it stays in that version. Only the person can
+confirm that in a terminal. `agentry_draft` reads the packs in `knowledge` for
+the draft and ships none of them; it has no `ship` argument. If the person
+wants a pack to travel with a QuickAgent, tell them to run
+`agentry knowledge ship PACK` in the QuickAgent's folder and then
+`agentry publish`, and never pass `--ship`, `--namespace` or `--yes` yourself.
 
 ## Diagnose
 
