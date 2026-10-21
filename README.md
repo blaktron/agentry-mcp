@@ -162,6 +162,25 @@ the terminal CLI because the pipe protocol is unavailable there.
 | `agentry_session_add`   | a consented JSON add command to the open chat session                                                                      | staged file submission; collect its notice or refusal with send                                 |
 | `agentry_session_close` | a JSON end command to the open chat session, then the CLI's teardown                                                       | why the session ended, the envelope's status and result, the transcript, the receipts directory |
 
+Persistent agents run in the background once started and keep their
+conversation from one start to the next: the Assistant and the Coding agent.
+Main runs only in Agentry Desktop. A start that would give the agent something
+the person has not agreed to on this computer, and every roster switch, are
+two calls like an install: the preview lists each consent sentence with a
+`digest`, and the confirm re-reads them and refuses any change. A send is one
+`agentry agent attach --json` process that leaves the agent running; another
+chat's turn in flight makes it busy. Windows uses `agentry agent chat` in a
+terminal because the pipe protocol is unavailable there.
+
+| Tool                  | Runs                                                                                 | Returns                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| `agentry_agent_list`  | `agentry agent list --json`                                                          | each agent and whether it is running, stopped, disabled or desktop only  |
+| `agentry_agent_show`  | `agentry agent show <name> --json`                                                   | its state, segment, roster, share folder, usage and the transcript's end |
+| `agentry_agent_start` | `agentry agent start <name> --json`, consented with `--yes` when agreement is needed | the running status, or what needs agreement with a `digest`              |
+| `agentry_agent_stop`  | `agentry agent stop <name> --json`                                                   | the stop's status and the segment's result file                          |
+| `agentry_agent_send`  | `agentry agent attach <name> --json`, one turn over the session protocol             | the agent's reply, the tools it called and the usage, or busy            |
+| `agentry_agent_grant` | `agentry agent show <name> --json`, then `agentry agent grant` consented             | the entry and its sentence with a `digest`, then the changed roster      |
+
 Authoring tools use operation previews, since the CLI offers no compiled plan
 mode for them. The preview names the command, input fingerprints, output, web
 choice, budgets, policy digest, embedded-package digests and current
@@ -194,7 +213,9 @@ the per-pack confirmation `agentry publish` asks), forking and yanking,
 adding, editing, pausing or removing schedules, saving or removing
 destinations and default sets, importing or resetting the report design,
 Knowledge import/upload/download/export/delete, Voice
-set/attach/delete and account upload/download, `agentry files ensure`,
+set/attach/delete and account upload/download, enabling, configuring and
+resetting a persistent agent (`agentry agent enable`, `configure`, `reset`),
+`agentry files ensure`,
 Unsafe Mode and vulnerable-server lifts, and a build's source tokens. Those
 stay in a terminal.
 

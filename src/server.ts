@@ -10,6 +10,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { ALL_FEATURES, type CliFeatures, type CliOptions } from "./cli.js";
 import { Driver } from "./driver.js";
+import { registerAgentTools } from "./tools/agents.js";
 import { registerAuthorTools } from "./tools/author.js";
 import { registerDeliverTools } from "./tools/deliver.js";
 import { registerReadTools } from "./tools/read.js";
@@ -18,7 +19,7 @@ import { registerSessionTools } from "./tools/session.js";
 import { registerWriteTools } from "./tools/write.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.6.18";
+export const SERVER_VERSION = "0.6.19";
 
 export function instructions(bin: string, cliVersion: string): string {
   return [
@@ -54,6 +55,13 @@ export function instructions(bin: string, cliVersion: string): string {
       "session through the CLI's JSON-line protocol; agentry_session_send is one turn in and the reply out, as the " +
       "run's own events receipt recorded it; agentry_session_close ends it and names the transcript and " +
       "receipts. One session at a time.",
+    "",
+    "Persistent agents run in the background once started and keep their conversation: " +
+      "agentry_agent_list and agentry_agent_show read them, agentry_agent_start and agentry_agent_stop start and " +
+      "stop one, agentry_agent_send is one turn in and the answer out, and agentry_agent_grant switches a roster " +
+      "entry. Starting one that would be given something new, and every switch, is the same two calls: show the " +
+      "person each consent sentence and confirm only once they agree. Main runs only in Agentry Desktop; enabling, " +
+      "configuring and resetting an agent stay with the person.",
     "",
     "Authoring: agentry_draft, agentry_review, agentry_knowledge_build and agentry_voice_build use " +
       "two-call operation previews (not compiled plans). They fingerprint inputs, policy and built-in identities " +
@@ -99,5 +107,6 @@ export function createServer(opts: ServerOptions): { server: McpServer; driver: 
   registerRunTools(driver);
   registerSessionTools(driver);
   registerDeliverTools(driver);
+  registerAgentTools(driver);
   return { server, driver };
 }
