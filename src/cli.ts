@@ -26,6 +26,8 @@ export interface CliFeatures {
   buildSources: boolean;
   /** `voice create|improve|edit --url`: samples from web addresses. */
   voiceURLs: boolean;
+  /** `agent attach --json` and JSON from `agent start|stop`: persistent agents for a program. */
+  agents: boolean;
 }
 
 /** The features of a CLI that has them all (the tests' fake, a current CLI). */
@@ -34,6 +36,7 @@ export const ALL_FEATURES: CliFeatures = {
   destinations: true,
   buildSources: true,
   voiceURLs: true,
+  agents: true,
 };
 
 /** What `agentry --version` said, parsed. */
@@ -253,6 +256,9 @@ export async function checkCli(
   const runHelp = protocol.stdout + protocol.stderr;
   const knowledgeHelp = await runCli(bin, ["knowledge", "create", "--help"], { timeoutMs: 10_000 });
   const voiceHelp = await runCli(bin, ["voice", "create", "--help"], { timeoutMs: 10_000 });
+  // A CLI without the subcommand prints the parent's help, so the probe
+  // looks for attach's own usage line.
+  const attachHelp = await runCli(bin, ["agent", "attach", "--help"], { timeoutMs: 10_000 });
   return {
     ...v,
     floorChecked: v.semver !== undefined,
@@ -261,6 +267,7 @@ export async function checkCli(
       destinations: /--destination\b/.test(runHelp),
       buildSources: /--repo\b/.test(knowledgeHelp.stdout + knowledgeHelp.stderr),
       voiceURLs: /--url\b/.test(voiceHelp.stdout + voiceHelp.stderr),
+      agents: /attach <name> --json/.test(attachHelp.stdout + attachHelp.stderr),
     },
   };
 }
