@@ -163,7 +163,9 @@ export function registerAgentTools(d: Driver): void {
         name,
         entry: z
           .string()
-          .describe("The roster entry's id: `share`, `knowledge:<pack>` or `server:<id>`."),
+          .describe(
+            "The roster entry's id, as agentry_agent_show lists it: `share`, `knowledge:<pack>`, `server:<id>`, and the Coding agent's `commands`, `egress`, `browser`, `devhost` and `port:<name>`.",
+          ),
         on: z.boolean().describe("true switches it on, false off."),
         confirm: z
           .string()
