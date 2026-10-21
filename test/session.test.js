@@ -16,7 +16,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, test } from "node:test";
 
-import { connect as connectServer, receivedArgv } from "./helpers.js";
+import { connect as connectServer, receivedArgv, scratchArgv } from "./helpers.js";
 
 const clients = [];
 
@@ -44,6 +44,37 @@ async function launchArgv(argvFile) {
       assert.fail(`the session's CLI recorded no launch argv; last: ${last}`);
     await sleep(25);
   }
+}
+
+/**
+ * Waits until the fake CLI process, whose id it recorded in pidFile, has
+ * exited, then gives the server's event loop (this one: the server runs in
+ * the test process) time to read what the process left in its pipes and to
+ * see it exit. Neither the idle clock nor the start-up of a loaded host is a
+ * duration a test can sleep through.
+ */
+async function processExited(pidFile) {
+  const deadline = Date.now() + 15_000;
+  let pid;
+  for (;;) {
+    if (pid === undefined) {
+      try {
+        pid = Number(readFileSync(pidFile, "utf8")) || undefined;
+      } catch {
+        // not written yet
+      }
+    }
+    if (pid !== undefined) {
+      try {
+        process.kill(pid, 0);
+      } catch (err) {
+        if (err.code === "ESRCH") break;
+      }
+    }
+    if (Date.now() > deadline) assert.fail(`the session's CLI did not exit; pid ${pid}`);
+    await sleep(25);
+  }
+  await sleep(100);
 }
 
 async function call(client, name, args) {
@@ -152,11 +183,12 @@ test("one session at a time: a second start is refused naming the open one; send
 });
 
 test("a session the CLI ended on idle is reported closed on the next send, with the reason", async () => {
-  const { client, argvFile } = await connect({ FAKE_SESSION_IDLE: "1" });
+  const pidFile = scratchArgv();
+  const { client } = await connect({ FAKE_SESSION_IDLE: "1", FAKE_SESSION_PID: pidFile });
   const { session } = await startSession(client);
-  // The idle clock starts when the CLI does, which can be after the start returns.
-  await launchArgv(argvFile);
-  await sleep(1800);
+  // The idle clock starts when the CLI does, which can be well after the
+  // start returns on a loaded host: wait for the CLI to have ended.
+  await processExited(pidFile);
   const r = await call(client, "agentry_session_send", {
     sessionId: session.sessionId,
     text: "still there?",
@@ -208,11 +240,12 @@ test("a turn past its timeout leaves the session open; the next send waits for t
 });
 
 test("a startup failure is reported by send and close after process launch", async () => {
-  const { client, argvFile } = await connect({ FAKE_SESSION_FAIL_START: "1" });
+  const pidFile = scratchArgv();
+  const { client } = await connect({ FAKE_SESSION_FAIL_START: "1", FAKE_SESSION_PID: pidFile });
   const { session } = await startSession(client);
-  // The CLI stops right after it starts, which can be after the start returns.
-  await launchArgv(argvFile);
-  await sleep(150);
+  // The CLI stops right after it starts, which can be well after the start
+  // returns on a loaded host: wait for the CLI to have exited.
+  await processExited(pidFile);
   const sent = await call(client, "agentry_session_send", {
     sessionId: session.sessionId,
     text: "hello",
@@ -294,6 +327,6 @@ test("no session result carries a secret value from the server's environment", a
 test("the tool list includes the updated surface", async () => {
   const { client } = await connect();
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 28);
+  assert.equal(tools.length, 34);
   assert.ok(tools.find((t) => t.name === "agentry_session_start"));
 });

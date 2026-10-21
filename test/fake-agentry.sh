@@ -18,6 +18,7 @@
 #   FAKE_INTAKE_REQUIRED  the run (not the plan) fails on a missing --intake, as the CLI does
 #   FAKE_SESSION_IDLE     seconds an interactive session waits for a turn before ending on idle_timeout
 #   FAKE_SESSION_FAIL_START  the interactive run stops (exit 13, colour on the screen) before any receipt
+#   FAKE_SESSION_PID      a file the interactive run writes its process id to, so a test can tell when it has exited
 #   FAKE_TURN_DELAY       seconds a session takes to answer a turn
 #   FAKE_CONTRACT  the install plan's contract (JSON; default a workspace read)
 #   FAKE_ATTEST    the install plan's attestation (default verified; unsigned and unscanned bring their refusal)
@@ -33,6 +34,13 @@
 #   FAKE_DESTINATIONS  what `destinations list --json` prints (default none saved)
 #   FAKE_DESTINATIONS_FILE  a file whose content, when it exists, is FAKE_DESTINATIONS
 #   FAKE_RUN_REFUSED_INPUTS  the run is refused for its inputs (class policy): this is its refusedInputs, verbatim JSON
+#   FAKE_NO_AGENTS     set to make `agent attach --help` print the parent's help (a CLI without attach)
+#   FAKE_AGENT_STATE   what `agent show` says the assistant is (default stopped)
+#   FAKE_AGENT_LINE_FILE  a file whose content, when it exists, is the share entry's consent sentence
+#   FAKE_AGENT_AGREED  set to make `agent start` without --yes start (nothing new to agree to)
+#   FAKE_AGENT_NEEDS_FILE  a file whose content, when it exists, is the line `agent start` needs agreement to
+#   FAKE_AGENT_BUSY    an attached send is refused busy
+#   FAKE_AGENT_STALE   an attached send first sees the end of another chat's turn
 set -u
 if [ -n "${FAKE_ARGV:-}" ]; then
   printf '%s\n' "$@" >> "$FAKE_ARGV"
@@ -53,6 +61,9 @@ fi
 if [ "${1:-}" = "voice" ] && [ "${2:-}" = "create" ] && [ "${3:-}" = "--help" ]; then
   echo "Flags: --file --brief --write ${FAKE_NO_VOICE_URL:---url}"; exit 0
 fi
+if [ "${1:-}" = "agent" ] && [ "${2:-}" = "attach" ] && [ "${3:-}" = "--help" ]; then
+  if [ -n "${FAKE_NO_AGENTS:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent attach <name> --json [flags]"; fi; exit 0
+fi
 if [ "${2:-}" = "--help" ]; then echo "Usage: agentry $1"; exit 0; fi
 echo "narration: running $1" >&2
 if [ -n "${FAKE_SLEEP:-}" ]; then sleep "$FAKE_SLEEP"; fi
@@ -66,6 +77,29 @@ signed=false; [ "$attest" = verified ] && signed=true
 refusal="${FAKE_REFUSAL:-}"
 [ "$attest" = unsigned ] && [ -z "$refusal" ] && refusal="unsigned — registry offers no attestation; re-run with --allow-unsigned to install it anyway"
 [ "$attest" = unscanned ] && [ -z "$refusal" ] && refusal="unscanned — the registry admitted acme/widget@1.0.0 without a scan: no findings, no report and no attestation stand behind it; re-run with --allow-unscanned to install it anyway, accepting that nothing about its contents was checked"
+if [ "$1" = "agent" ]; then
+  share_line="the folder /home/me/agentry/assistantshare, read and write"
+  [ -n "${FAKE_AGENT_LINE_FILE:-}" ] && [ -f "$FAKE_AGENT_LINE_FILE" ] && share_line=$(cat "$FAKE_AGENT_LINE_FILE")
+  case "$2" in
+    list) echo '[{"agent":"main","displayName":"Agentry Helper","state":"desktop only","desktopOnly":true},{"agent":"assistant","displayName":"Assistant","state":"stopped"}]' ;;
+    show)
+      [ "$3" = main ] && { echo '{"agent":"main","displayName":"Agentry Helper","state":"desktop only","desktopOnly":true}'; exit 0; }
+      printf '{"agent":"%s","displayName":"Assistant","state":"%s","roster":[{"id":"data","kind":"folder","name":"its own files","grantedBy":"agent","state":"on","on":true,"line":"its own files","fixed":true},{"id":"share","kind":"folder","name":"share","grantedBy":"person","state":"off","on":false,"line":"%s"}],"config":{"enabled":true,"consented":{}}}\n' "$3" "${FAKE_AGENT_STATE:-stopped}" "$share_line" ;;
+    start)
+      if has --yes || [ -n "${FAKE_AGENT_AGREED:-}" ]; then
+        echo '{"segment":1,"state":"running","client":"cli","adapter":"docker-agent","model":"test"}'
+      else
+        need="$share_line"; [ -n "${FAKE_AGENT_NEEDS_FILE:-}" ] && [ -f "$FAKE_AGENT_NEEDS_FILE" ] && need=$(cat "$FAKE_AGENT_NEEDS_FILE")
+        printf '{"agent":"%s","needsAgreement":[{"id":"share","line":"%s"}]}\n' "$3" "$need"
+        echo "this needs the person's agreement" >&2; exit 11
+      fi ;;
+    stop) echo '{"status":"ok","resultFile":"/home/me/.agentry/runner/agents/assistant/result.json"}' ;;
+    grant) printf '[{"id":"share","on":%s}]\n' "$( [ "$5" = on ] && echo true || echo false )" ;;
+    attach) exec python3 "$(dirname "$0")/fake-agent-attach.py" "$@" ;;
+    *) echo "fake: agent $2" >&2; exit 2 ;;
+  esac
+  exit 0
+fi
 case "$1" in
   whoami) echo '{"username":"example","tier":"pro"}' ;;
   schedule) echo '[{"id":"s1","name":"weekly","ref":"acme/widget","paused":false,"describe":"every Monday at 09:00","alarm":true}]' ;;

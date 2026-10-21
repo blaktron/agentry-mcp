@@ -133,6 +133,28 @@ then stages it read-only; collect its notice/refusal with send. Close with
 `finish: true` for a final result, or false to quit. One session per server.
 The CLI's pipe protocol is unavailable on Windows; use a terminal session there.
 
+## Persistent agents
+
+The Assistant and the Coding agent run in the background once started and
+keep their conversation. Main runs only in Agentry Desktop. Read them with
+`agentry_agent_list` and `agentry_agent_show`. `agentry_agent_start` starts at
+once when there is nothing new to agree to; otherwise it returns
+`needsAgreement` and a digest. Show the person every line and confirm only once
+they agree. `agentry_agent_grant` switches a roster entry (`share`,
+`knowledge:<pack>`, `server:<id>`, and the Coding agent's `commands`, `egress`,
+`browser`, `devhost` and `port:<name>`) in the same two calls, always. Show the
+entry's sentence, and say that a running agent restarts with the change at its
+next turn.
+
+`agentry_agent_send` is one turn and its answer; other chats may share the
+agent, and busy means one of theirs is answering, so send again later. Past the
+limit the agent finishes on its own: read the answer with `agentry_agent_show`
+and `transcript`. Stop an agent only when the person asks. A persistent agent
+takes no files through its chat; the person puts them in its share folder.
+Enabling, configuring (name, personality, share folder, servers, packs, the
+Coding agent's dev server and published ports) and resetting stay with the person, in a terminal or
+the desktop. The pipe protocol is unavailable on Windows.
+
 ## Knowledge, Voice and authoring
 
 Inspect `agentry_builtins`, `agentry_knowledge_list` and `agentry_voice_status`.
