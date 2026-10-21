@@ -18,6 +18,7 @@
 #   FAKE_INTAKE_REQUIRED  the run (not the plan) fails on a missing --intake, as the CLI does
 #   FAKE_SESSION_IDLE     seconds an interactive session waits for a turn before ending on idle_timeout
 #   FAKE_SESSION_FAIL_START  the interactive run stops (exit 13, colour on the screen) before any receipt
+#   FAKE_SESSION_PID      a file the interactive run writes its process id to, so a test can tell when it has exited
 #   FAKE_TURN_DELAY       seconds a session takes to answer a turn
 #   FAKE_CONTRACT  the install plan's contract (JSON; default a workspace read)
 #   FAKE_ATTEST    the install plan's attestation (default verified; unsigned and unscanned bring their refusal)
