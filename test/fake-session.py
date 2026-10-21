@@ -8,6 +8,11 @@ from pathlib import Path
 
 args = sys.argv[1:]
 out = Path(args[args.index('--out') + 1])
+pid_file = os.getenv('FAKE_SESSION_PID')
+if pid_file:
+    # Written whole before it is visible, so a reader never sees half a pid.
+    Path(pid_file + '.tmp').write_text(str(os.getpid()))
+    os.replace(pid_file + '.tmp', pid_file)
 if os.getenv('FAKE_SESSION_FAIL_START'):
     print('agentry: gateway image not present', file=sys.stderr)
     sys.exit(13)
