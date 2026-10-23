@@ -189,6 +189,7 @@ test("a CLI without agent attach is told to update, and nothing runs", async () 
     buildSources: true,
     voiceURLs: true,
     agents: false,
+    tasks: false,
   });
   for (const [name, args] of [
     ["agentry_agent_list", {}],
@@ -207,5 +208,49 @@ test("a name that looks like a flag is refused before the CLI", async () => {
   const r = await call(client, "agentry_agent_stop", { name: "--yes" });
   assert.equal(r.isError, true);
   assert.match(r.content[0].text, /must not start with "-"/);
+  assert.deepEqual(receivedArgv(argvFile), []);
+});
+
+test("tasks are listed through the CLI's JSON, and one is paused or resumed by its id", async () => {
+  const { client, argvFile } = await connect();
+  const list = envelope(await call(client, "agentry_agent_tasks", { name: "assistant" }));
+  assert.equal(list.json.exitClass, "ok");
+  assert.equal(list.json.result.tasks[0].name, "Morning summary");
+  const paused = envelope(
+    await call(client, "agentry_agent_tasks", { name: "assistant", task: "t1", op: "pause" }),
+  );
+  assert.equal(paused.json.result.tasks[0].state, "paused");
+  assert.deepEqual(receivedArgv(argvFile), [
+    ["agent", "tasks", "assistant", "--json"],
+    ["agent", "tasks", "assistant", "pause", "t1", "--json"],
+  ]);
+});
+
+test("a task op needs its task and is pause or resume alone; remove and add never reach the CLI", async () => {
+  const { client, argvFile } = await connect();
+  for (const args of [
+    { name: "assistant", task: "t1" },
+    { name: "assistant", op: "pause" },
+    { name: "assistant", task: "t1", op: "remove" },
+    { name: "assistant", task: "--yes", op: "pause" },
+  ]) {
+    const r = await call(client, "agentry_agent_tasks", args);
+    assert.equal(r.isError, true, JSON.stringify(args));
+  }
+  assert.deepEqual(receivedArgv(argvFile), []);
+});
+
+test("a CLI without agent tasks is told to update, and nothing runs", async () => {
+  const { client, argvFile } = await connect({}, {}, undefined, {
+    deliverTo: true,
+    destinations: true,
+    buildSources: true,
+    voiceURLs: true,
+    agents: true,
+    tasks: false,
+  });
+  const r = await call(client, "agentry_agent_tasks", { name: "assistant" });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /Update the CLI/);
   assert.deepEqual(receivedArgv(argvFile), []);
 });
