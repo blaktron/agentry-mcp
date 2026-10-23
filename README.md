@@ -170,7 +170,12 @@ two calls like an install: the preview lists each consent sentence with a
 `digest`, and the confirm re-reads them and refuses any change. A send is one
 `agentry agent attach --json` process that leaves the agent running; another
 chat's turn in flight makes it busy. Windows uses `agentry agent chat` in a
-terminal because the pipe protocol is unavailable there.
+terminal because the pipe protocol is unavailable there. The roster names the
+agent's skills, stored secrets (by name, never a value), git host accounts,
+heartbeat and offered servers, and a grant switches any of them. Adding a
+skill, storing a secret, giving an account, the Google sign-in, exporting the
+memory and removing a task stay in a terminal or the desktop: each takes a
+file, a value or a sign-in that belongs on the person's own screen.
 
 | Tool                  | Runs                                                                                 | Returns                                                                  |
 | --------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
@@ -180,6 +185,7 @@ terminal because the pipe protocol is unavailable there.
 | `agentry_agent_stop`  | `agentry agent stop <name> --json`                                                   | the stop's status and the segment's result file                          |
 | `agentry_agent_send`  | `agentry agent attach <name> --json`, one turn over the session protocol             | the agent's reply, the tools it called and the usage, or busy            |
 | `agentry_agent_grant` | `agentry agent show <name> --json`, then `agentry agent grant` consented             | the entry and its sentence with a `digest`, then the changed roster      |
+| `agentry_agent_tasks` | `agentry agent tasks <name> [pause\|resume <task>] --json`                           | each task's schedule, state, next and last fire, or the changed tasks    |
 
 Authoring tools use operation previews, since the CLI offers no compiled plan
 mode for them. The preview names the command, input fingerprints, output, web

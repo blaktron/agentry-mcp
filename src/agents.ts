@@ -455,3 +455,43 @@ export async function agentSend(d: Driver, a: AgentSendArgs): Promise<CallToolRe
     true,
   );
 }
+
+/** The task operations a program may ask for: pause and resume. Removing a
+ *  task stays in a terminal and the desktop. */
+export const TASK_OPS = ["pause", "resume"] as const;
+
+export interface AgentTasksArgs {
+  name: string;
+  task?: string;
+  op?: (typeof TASK_OPS)[number];
+}
+
+/**
+ * agentry_agent_tasks: an agent's tasks, each with its schedule, zone, state,
+ * next and last fire and that answer's first line; or one paused or resumed
+ * by its id. Pausing narrows what the agent does and resuming re-arms a task
+ * the agent registered, which widens nothing it was given, so neither asks
+ * first, as the CLI does not.
+ */
+export async function agentTasks(d: Driver, a: AgentTasksArgs): Promise<CallToolResult> {
+  const refused = needsAgents(d, "agentry_agent_tasks");
+  if (refused) return refused;
+  if (!d.features.tasks)
+    return text(
+      "agentry_agent_tasks: this agentry CLI has no `agent tasks`. " +
+        "Update the CLI (https://secureagentry.net/download); the server never updates it for you.",
+      true,
+    );
+  const argv = ["agent", "tasks", agentName(a.name)];
+  if ((a.task === undefined) !== (a.op === undefined))
+    throw new ArgumentError(
+      "agentry_agent_tasks: `task` and `op` go together: name the task and pause or resume it",
+    );
+  if (a.task !== undefined && a.op !== undefined) {
+    if (!TASK_OPS.includes(a.op))
+      throw new ArgumentError(`agentry_agent_tasks: op is pause or resume, not ${String(a.op)}`);
+    argv.push(a.op, value("task", a.task));
+  }
+  argv.push("--json");
+  return d.run("agentry_agent_tasks", argv);
+}

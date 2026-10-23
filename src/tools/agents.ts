@@ -14,7 +14,9 @@ import {
   agentShow,
   agentStart,
   agentStop,
+  agentTasks,
   DEFAULT_AGENT_TURN_SECONDS,
+  TASK_OPS,
 } from "../agents.js";
 import { guard, type Driver } from "../driver.js";
 import { registerTool } from "../toolargs.js";
@@ -44,7 +46,9 @@ export function registerAgentTools(d: Driver): void {
     {
       description:
         "Show one persistent agent (`agentry agent show <name> --json`): its state, its running segment, its " +
-        "roster (each entry's id, what it gives the agent, whether it is on), its share folder, its usage and, " +
+        "roster (each entry's id, kind, what it gives the agent, whether it is on, and what it waits for: its " +
+        "folders, memory, heartbeat, skills, stored secrets by name (never a value), git host accounts, the " +
+        "servers it is offered and the person's own), the servers it suggests, its share folder, its usage and, " +
         "with `transcript`, the end of its transcript, where the answer to a turn that outlasted " +
         "agentry_agent_send's limit is found.",
       inputSchema: {
@@ -157,14 +161,14 @@ export function registerAgentTools(d: Driver): void {
         "says what it gives the agent), whether it is on now, and a `digest`; nothing changes. Show the person " +
         "the sentence and only when they agree call again with `confirm` set to that digest. A running agent " +
         "takes the change at its next turn and continues the conversation. agentry_agent_show lists the " +
-        "entries; adding a server or a knowledge pack, or moving the share folder, stays in a terminal or the " +
-        "desktop.",
+        "entries. Adding a server, a knowledge pack or a skill, storing a secret, giving an account, the " +
+        "Google sign-in, exporting the memory and moving the share folder stay in a terminal or the desktop.",
       inputSchema: {
         name,
         entry: z
           .string()
           .describe(
-            "The roster entry's id, as agentry_agent_show lists it: `share`, `knowledge:<pack>`, `server:<id>`, and the Coding agent's `commands`, `egress`, `browser`, `devhost` and `port:<name>`.",
+            "The roster entry's id, as agentry_agent_show lists it: `share`, `knowledge:<pack>`, `server:<id>` (the person's or an offered one) and an offered server's `server:<id>:writes`, `skill:<name>`, `secret:<NAME>`, the Assistant's `heartbeat`, and the Coding agent's `account:<host>`, `commands`, `egress`, `browser`, `dependency-scan`, `devhost` and `port:<name>`.",
           ),
         on: z.boolean().describe("true switches it on, false off."),
         confirm: z
@@ -180,5 +184,30 @@ export function registerAgentTools(d: Driver): void {
       },
     },
     (a) => guard("agentry_agent_grant", () => agentGrant(d, a)),
+  );
+
+  registerTool(
+    d.server,
+    "agentry_agent_tasks",
+    {
+      description:
+        "A persistent agent's tasks (`agentry agent tasks <name> --json`): each task's id, name, cron and zone, " +
+        "what it asks, whether it is on or paused, who made it, its next fire, and its last fire with the first " +
+        "line of that answer. With `task` and `op`, pause or resume that task and return the tasks as they now " +
+        "are. A task is added or changed by asking the agent with agentry_agent_send; removing one stays in a " +
+        "terminal or the desktop. Its heartbeat (the `heartbeat` entry, agentry_agent_grant) runs them while it runs.",
+      inputSchema: {
+        name,
+        task: z.string().optional().describe("The task's id, as the list gives it; with `op`."),
+        op: z.enum(TASK_OPS).optional().describe("pause or resume the task; with `task`."),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    (a) => guard("agentry_agent_tasks", () => agentTasks(d, a)),
   );
 }
