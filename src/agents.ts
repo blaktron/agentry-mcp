@@ -470,7 +470,7 @@ export interface AgentTasksArgs {
  * agentry_agent_tasks: an agent's tasks, each with its schedule, zone, state,
  * next and last fire and that answer's first line; or one paused or resumed
  * by its id. Pausing narrows what the agent does and resuming re-arms a task
- * the agent registered, which widens nothing it was given, so neither asks
+ * the agent already has, which widens nothing it was given, so neither asks
  * first, as the CLI does not.
  */
 export async function agentTasks(d: Driver, a: AgentTasksArgs): Promise<CallToolResult> {
