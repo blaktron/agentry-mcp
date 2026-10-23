@@ -64,6 +64,9 @@ fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "attach" ] && [ "${3:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_AGENTS:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent attach <name> --json [flags]"; fi; exit 0
 fi
+if [ "${1:-}" = "agent" ] && [ "${2:-}" = "tasks" ] && [ "${3:-}" = "--help" ]; then
+  if [ -n "${FAKE_NO_TASKS:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent tasks <name> [pause|resume|remove <task>] [flags]"; fi; exit 0
+fi
 if [ "${2:-}" = "--help" ]; then echo "Usage: agentry $1"; exit 0; fi
 echo "narration: running $1" >&2
 if [ -n "${FAKE_SLEEP:-}" ]; then sleep "$FAKE_SLEEP"; fi
@@ -96,6 +99,9 @@ if [ "$1" = "agent" ]; then
     stop) echo '{"status":"ok","resultFile":"/home/me/.agentry/runner/agents/assistant/result.json"}' ;;
     grant) printf '[{"id":"share","on":%s}]\n' "$( [ "$5" = on ] && echo true || echo false )" ;;
     attach) exec python3 "$(dirname "$0")/fake-agent-attach.py" "$@" ;;
+    tasks)
+      st=on; [ "${4:-}" = pause ] && st=paused
+      printf '{"agent":"%s","tasks":[{"id":"t1","name":"Morning summary","cron":"0 8 * * 1-5","zone":"Europe/Oslo","instruction":"Summarise my day.","state":"%s","madeBy":"agent","lastResult":"Three meetings today."}]}\n' "$3" "$st" ;;
     *) echo "fake: agent $2" >&2; exit 2 ;;
   esac
   exit 0

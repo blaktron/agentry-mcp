@@ -28,6 +28,8 @@ export interface CliFeatures {
   voiceURLs: boolean;
   /** `agent attach --json` and JSON from `agent start|stop`: persistent agents for a program. */
   agents: boolean;
+  /** `agent tasks <name> [pause|resume|remove <task>] --json`: an agent's tasks. */
+  tasks: boolean;
 }
 
 /** The features of a CLI that has them all (the tests' fake, a current CLI). */
@@ -37,6 +39,7 @@ export const ALL_FEATURES: CliFeatures = {
   buildSources: true,
   voiceURLs: true,
   agents: true,
+  tasks: true,
 };
 
 /** What `agentry --version` said, parsed. */
@@ -259,6 +262,7 @@ export async function checkCli(
   // A CLI without the subcommand prints the parent's help, so the probe
   // looks for attach's own usage line.
   const attachHelp = await runCli(bin, ["agent", "attach", "--help"], { timeoutMs: 10_000 });
+  const tasksHelp = await runCli(bin, ["agent", "tasks", "--help"], { timeoutMs: 10_000 });
   return {
     ...v,
     floorChecked: v.semver !== undefined,
@@ -268,6 +272,7 @@ export async function checkCli(
       buildSources: /--repo\b/.test(knowledgeHelp.stdout + knowledgeHelp.stderr),
       voiceURLs: /--url\b/.test(voiceHelp.stdout + voiceHelp.stderr),
       agents: /attach <name> --json/.test(attachHelp.stdout + attachHelp.stderr),
+      tasks: /tasks <name> \[pause\|resume/.test(tasksHelp.stdout + tasksHelp.stderr),
     },
   };
 }
