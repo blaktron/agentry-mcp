@@ -146,8 +146,11 @@ they agree. `agentry_agent_grant` switches a roster entry (`share`,
 agent's `account:<host>`, `commands`, `egress`, `browser`, `dependency-scan`,
 `devhost` and `port:<name>`) in the same two calls, always. Show the entry's
 sentence, and say that a running agent restarts with the change at its next
-turn. An entry that reads `needs-set-up` waits for a secret or an account the
-person gives in a terminal or the desktop.
+turn. An entry that reads `needs-set-up` waits for a secret, an account or a
+sign-in the person gives in a terminal or the desktop. The Assistant's mail
+servers (Google Workspace, `server:gog`) are on its roster only while their mail
+provider is enabled; a grant of one that is not names the command the person
+runs.
 
 `agentry_agent_tasks` lists the Assistant's tasks and pauses or resumes one by
 its id (it needs CLI v0.6.168 or later). A task is added or changed by asking
@@ -162,8 +165,13 @@ and `transcript`. Stop an agent only when the person asks. A persistent agent
 takes no files through its chat; the person puts them in its share folder.
 Enabling, configuring (name, personality, share folder, servers, packs, the
 Coding agent's dev server and published ports), adding a skill, storing a
-secret, giving an account, the Google sign-in, exporting the memory, removing a
-task and resetting stay with the person, in a terminal or the desktop. The pipe protocol is unavailable on Windows.
+secret, giving an account, choosing the Assistant's mail providers
+(`agentry agent configure assistant --mail-provider` and `--no-mail-provider`),
+each provider's sign-in, exporting the memory, removing a task and resetting
+(the Assistant's Reset history, Reset agent and Reset all: `agentry agent reset
+assistant --history`, `--keep-credentials` and plain `reset`) stay with the
+person, in a terminal or the desktop: they sign in to accounts or remove what
+the person set up. The pipe protocol is unavailable on Windows.
 
 ## Knowledge, Voice and authoring
 

@@ -172,10 +172,15 @@ two calls like an install: the preview lists each consent sentence with a
 chat's turn in flight makes it busy. Windows uses `agentry agent chat` in a
 terminal because the pipe protocol is unavailable there. The roster names the
 agent's skills, stored secrets (by name, never a value), git host accounts,
-heartbeat and offered servers, and a grant switches any of them. Adding a
-skill, storing a secret, giving an account, the Google sign-in, exporting the
-memory and removing a task stay in a terminal or the desktop: each takes a
-file, a value or a sign-in that belongs on the person's own screen.
+heartbeat and offered servers, and a grant switches any of them. The
+Assistant's mail servers (Google Workspace, `server:gog`) are on its roster only
+while their mail provider is enabled. Adding a skill, storing a secret, giving
+an account, choosing the Assistant's mail providers (`agentry agent configure
+assistant --mail-provider`), each provider's sign-in, exporting the memory,
+removing a task and the Assistant's three resets (`agentry agent reset
+assistant --history`, `--keep-credentials`, and plain `reset`) stay in a
+terminal or the desktop: each takes a file, a value or a sign-in that belongs on
+the person's own screen, or removes what the person set up.
 
 | Tool                  | Runs                                                                                 | Returns                                                                  |
 | --------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
@@ -220,7 +225,8 @@ adding, editing, pausing or removing schedules, saving or removing
 destinations and default sets, importing or resetting the report design,
 Knowledge import/upload/download/export/delete, Voice
 set/attach/delete and account upload/download, enabling, configuring and
-resetting a persistent agent (`agentry agent enable`, `configure`, `reset`),
+resetting a persistent agent (`agentry agent enable`, `configure`, `reset`;
+the Assistant's mail providers and its three resets among them),
 `agentry files ensure`,
 Unsafe Mode and vulnerable-server lifts, and a build's source tokens. Those
 stay in a terminal.
