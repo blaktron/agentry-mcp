@@ -173,10 +173,10 @@ chat's turn in flight makes it busy. Windows uses `agentry agent chat` in a
 terminal because the pipe protocol is unavailable there. The roster names the
 agent's skills, stored secrets (by name, never a value), git host accounts,
 heartbeat and offered servers, and a grant switches any of them. The
-Assistant's mail servers (Google Workspace, `server:gog`) are on its roster only
+Assistant's mail servers (Google Workspace, `server:gog`; Microsoft 365 and Outlook.com, `server:ms365`) are on its roster only
 while their mail provider is enabled. Adding a skill, storing a secret, giving
 an account, choosing the Assistant's mail providers (`agentry agent configure
-assistant --mail-provider`), each provider's sign-in, exporting the memory,
+assistant --mail-provider`), each provider's sign-in (`--google-client`, `--google-sign-in`, `--microsoft-client`, `--microsoft-sign-in`), exporting the memory,
 removing a task and the Assistant's three resets (`agentry agent reset
 assistant --history`, `--keep-credentials`, and plain `reset`) stay in a
 terminal or the desktop: each takes a file, a value or a sign-in that belongs on
