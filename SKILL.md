@@ -148,7 +148,7 @@ agent's `account:<host>`, `commands`, `egress`, `browser`, `dependency-scan`,
 sentence, and say that a running agent restarts with the change at its next
 turn. An entry that reads `needs-set-up` waits for a secret, an account or a
 sign-in the person gives in a terminal or the desktop. The Assistant's mail
-servers (Google Workspace, `server:gog`; Microsoft 365 and Outlook.com, `server:ms365`) are on its roster only while their mail
+servers (Google Workspace, `server:gog`; Microsoft 365 and Outlook.com, `server:ms365`; Fastmail, `server:url-api-fastmail-com-mcp`) are on its roster only while their mail
 provider is enabled; a grant of one that is not names the command the person
 runs.
 
@@ -167,7 +167,7 @@ Enabling, configuring (name, personality, share folder, servers, packs, the
 Coding agent's dev server and published ports), adding a skill, storing a
 secret, giving an account, choosing the Assistant's mail providers
 (`agentry agent configure assistant --mail-provider` and `--no-mail-provider`),
-each provider's sign-in (`--google-client`, `--google-sign-in`, `--microsoft-client`, `--microsoft-sign-in`), exporting the memory, removing a task and resetting
+each provider's sign-in (`--google-client`, `--google-sign-in`, `--microsoft-client`, `--microsoft-sign-in`, and Fastmail's token, `--fastmail-token` and `--no-fastmail`), exporting the memory, removing a task and resetting
 (the Assistant's Reset history, Reset agent and Reset all: `agentry agent reset
 assistant --history`, `--keep-credentials` and plain `reset`) stay with the
 person, in a terminal or the desktop: they sign in to accounts or remove what
