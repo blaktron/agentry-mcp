@@ -1,5 +1,6 @@
 /**
- * The persistent-agent tools: list, show, start, stop, send and grant. The
+ * The persistent-agent tools: list, show, start, stop, send, grant, tasks
+ * and compact. The
  * Assistant and the Coding agent run in the background once started; Main
  * runs only in Agentry Desktop. Enabling, configuring and resetting an
  * agent stay with the person, in a terminal or the desktop.
@@ -8,6 +9,7 @@
 import { z } from "zod";
 
 import {
+  agentCompact,
   agentGrant,
   agentList,
   agentSend,
@@ -50,7 +52,9 @@ export function registerAgentTools(d: Driver): void {
         "folders, memory, heartbeat, skills, stored secrets by name (never a value), git host accounts, the " +
         "servers it is offered and the person's own), the servers it suggests, its share folder, its usage and, " +
         "with `transcript`, the end of its transcript, where the answer to a turn that outlasted " +
-        "agentry_agent_send's limit is found.",
+        "agentry_agent_send's limit is found. For the Assistant, `lastCompaction` and `lastConsolidation` are its " +
+        "memory upkeep's newest records: when, why, whether a fresh conversation started, and the memory's fact " +
+        "lines before and after.",
       inputSchema: {
         name,
         transcript: z
@@ -209,5 +213,35 @@ export function registerAgentTools(d: Driver): void {
       },
     },
     (a) => guard("agentry_agent_tasks", () => agentTasks(d, a)),
+  );
+
+  registerTool(
+    d.server,
+    "agentry_agent_compact",
+    {
+      description:
+        "Compact a running persistent agent's conversation now (`agentry agent compact <name> --json`), in two " +
+        "calls: the Assistant saves what the conversation produced to its memory and writes a short handoff, then " +
+        "goes on in a fresh conversation that opens with it. It also does this on its own when its conversation " +
+        "grows large. Without `confirm`: what it does and spends (one upkeep turn on the person's model plan, " +
+        "within its 12 a day) and a `digest`; nothing runs. Show the person, and only when they agree call again " +
+        "with `confirm` set to that digest. It can take a few minutes; the result says whether a fresh " +
+        "conversation started and the memory's fact lines before and after, and agentry_agent_show's " +
+        "`lastCompaction` keeps it.",
+      inputSchema: {
+        name,
+        confirm: z
+          .string()
+          .optional()
+          .describe("The `digest` a preview of this exact call returned. Omit to preview."),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    (a) => guard("agentry_agent_compact", () => agentCompact(d, a)),
   );
 }
