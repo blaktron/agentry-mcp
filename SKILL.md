@@ -153,7 +153,7 @@ servers (Google Workspace, `server:gog`; Microsoft 365 and Outlook.com, `server:
 provider is enabled; a grant of one that is not names the command the person
 runs.
 
-The Assistant's `meetings` entry, "Can set up meeting recordings" (CLI v0.6.194
+The Assistant's `meetings` entry, "Can set up meeting recordings" (CLI v0.6.195
 or later), lets it ask Agentry Desktop to record the calls of meetings on the
 person's calendar that they asked it to record. It is off until the person
 agrees, and it needs the `heartbeat` on first: switch that on before it. Each
