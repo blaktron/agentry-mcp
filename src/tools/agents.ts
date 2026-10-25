@@ -168,7 +168,7 @@ export function registerAgentTools(d: Driver): void {
         entry: z
           .string()
           .describe(
-            "The roster entry's id, as agentry_agent_show lists it: `share`, `knowledge:<pack>`, `server:<id>` (the person's or an offered one) and an offered server's `server:<id>:writes`, `skill:<name>`, `secret:<NAME>`, the Assistant's `heartbeat`, and the Coding agent's `account:<host>`, `commands`, `egress`, `browser`, `dependency-scan`, `devhost` and `port:<name>`.",
+            "The roster entry's id, as agentry_agent_show lists it: `share`, `knowledge:<pack>`, `server:<id>` (the person's or an offered one) and an offered server's `server:<id>:writes`, `skill:<name>`, `secret:<NAME>`, the Assistant's `heartbeat` and `meetings` (which needs `heartbeat` on first), and the Coding agent's `account:<host>`, `commands`, `egress`, `browser`, `dependency-scan`, `devhost` and `port:<name>`.",
           ),
         on: z.boolean().describe("true switches it on, false off."),
         confirm: z
