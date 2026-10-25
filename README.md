@@ -172,7 +172,11 @@ two calls like an install: the preview lists each consent sentence with a
 chat's turn in flight makes it busy. Windows uses `agentry agent chat` in a
 terminal because the pipe protocol is unavailable there. The roster names the
 agent's skills, stored secrets (by name, never a value), git host accounts,
-heartbeat and offered servers, and a grant switches any of them. The
+heartbeat, the Assistant's `meetings` switch (CLI v0.6.194 or later: with
+the heartbeat on, it lets the Assistant ask Agentry Desktop to record the
+meetings on the person's calendar that they asked it to record, each armed
+window shown and cancelled in the desktop) and offered servers, and a grant
+switches any of them. The
 Assistant's mail servers (Google Workspace, `server:gog`; Microsoft 365 and Outlook.com, `server:ms365`; Fastmail, `server:url-api-fastmail-com-mcp`) are on its roster only
 while their mail provider is enabled. Adding a skill, storing a secret, giving
 an account, choosing the Assistant's mail providers (`agentry agent configure
