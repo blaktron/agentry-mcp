@@ -142,15 +142,24 @@ once when there is nothing new to agree to; otherwise it returns
 `needsAgreement` and a digest. Show the person every line and confirm only once
 they agree. `agentry_agent_grant` switches a roster entry (`share`,
 `knowledge:<pack>`, `server:<id>` and an offered server's `server:<id>:writes`,
-`skill:<name>`, `secret:<NAME>`, the Assistant's `heartbeat`, and the Coding
-agent's `account:<host>`, `commands`, `egress`, `browser`, `dependency-scan`,
-`devhost` and `port:<name>`) in the same two calls, always. Show the entry's
-sentence, and say that a running agent restarts with the change at its next
-turn. An entry that reads `needs-set-up` waits for a secret, an account or a
+`skill:<name>`, `secret:<NAME>`, the Assistant's `heartbeat` and `meetings`,
+and the Coding agent's `account:<host>`, `commands`, `egress`, `browser`,
+`dependency-scan`, `devhost` and `port:<name>`) in the same two calls, always.
+Show the entry's sentence, and say that a running agent restarts with the
+change at its next turn; the Assistant's `heartbeat` and `meetings` take
+effect at once and restart nothing. An entry that reads `needs-set-up` waits for a secret, an account or a
 sign-in the person gives in a terminal or the desktop. The Assistant's mail
 servers (Google Workspace, `server:gog`; Microsoft 365 and Outlook.com, `server:ms365`; Fastmail, `server:url-api-fastmail-com-mcp`) are on its roster only while their mail
 provider is enabled; a grant of one that is not names the command the person
 runs.
+
+The Assistant's `meetings` entry, "Can set up meeting recordings" (CLI v0.6.195
+or later), lets it ask Agentry Desktop to record the calls of meetings on the
+person's calendar that they asked it to record. It is off until the person
+agrees, and it needs the `heartbeat` on first: switch that on before it. Each
+armed recording window is Agentry Desktop's, shown and cancelled there; the
+Assistant arms one only within the hour before its meeting, and from the CLI
+alone nothing is recorded.
 
 `agentry_agent_tasks` lists the Assistant's tasks and pauses or resumes one by
 its id (it needs CLI v0.6.168 or later). A task is added or changed by asking
