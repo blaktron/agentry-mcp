@@ -30,6 +30,8 @@ export interface CliFeatures {
   agents: boolean;
   /** `agent tasks <name> [pause|resume|remove <task>] --json`: an agent's tasks. */
   tasks: boolean;
+  /** `agent compact <name> --json`: memory upkeep and a fresh conversation. */
+  compact: boolean;
 }
 
 /** The features of a CLI that has them all (the tests' fake, a current CLI). */
@@ -40,6 +42,7 @@ export const ALL_FEATURES: CliFeatures = {
   voiceURLs: true,
   agents: true,
   tasks: true,
+  compact: true,
 };
 
 /** What `agentry --version` said, parsed. */
@@ -263,6 +266,7 @@ export async function checkCli(
   // looks for attach's own usage line.
   const attachHelp = await runCli(bin, ["agent", "attach", "--help"], { timeoutMs: 10_000 });
   const tasksHelp = await runCli(bin, ["agent", "tasks", "--help"], { timeoutMs: 10_000 });
+  const compactHelp = await runCli(bin, ["agent", "compact", "--help"], { timeoutMs: 10_000 });
   return {
     ...v,
     floorChecked: v.semver !== undefined,
@@ -273,6 +277,7 @@ export async function checkCli(
       voiceURLs: /--url\b/.test(voiceHelp.stdout + voiceHelp.stderr),
       agents: /attach <name> --json/.test(attachHelp.stdout + attachHelp.stderr),
       tasks: /tasks <name> \[pause\|resume/.test(tasksHelp.stdout + tasksHelp.stderr),
+      compact: /compact <name>/.test(compactHelp.stdout + compactHelp.stderr),
     },
   };
 }

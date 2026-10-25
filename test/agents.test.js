@@ -254,3 +254,49 @@ test("a CLI without agent tasks is told to update, and nothing runs", async () =
   assert.match(r.content[0].text, /Update the CLI/);
   assert.deepEqual(receivedArgv(argvFile), []);
 });
+
+test("a compaction previews what it spends, and the confirm runs agent compact", async () => {
+  const { client, argvFile } = await connect({ FAKE_AGENT_STATE: "running" });
+  const p = envelope(await call(client, "agentry_agent_compact", { name: "assistant" }));
+  assert.equal(p.json.writes, true);
+  assert.match(p.json.spends, /model plan for one upkeep turn/);
+  assert.match(p.json.digest, /^sha256:[0-9a-f]{64}$/);
+  assert.deepEqual(receivedArgv(argvFile), [["agent", "show", "assistant", "--json"]]);
+  const r = envelope(
+    await call(client, "agentry_agent_compact", { name: "assistant", confirm: p.json.digest }),
+  );
+  assert.equal(r.json.exitClass, "ok");
+  assert.equal(r.json.result.compacted.swapped, true);
+  assert.deepEqual(receivedArgv(argvFile).at(-1), ["agent", "compact", "assistant", "--json"]);
+});
+
+test("a compaction with a digest it was not given, or of a stopped agent, runs nothing", async () => {
+  const { client, argvFile } = await connect({ FAKE_AGENT_STATE: "running" });
+  const bad = await call(client, "agentry_agent_compact", {
+    name: "assistant",
+    confirm: "sha256:" + "0".repeat(64),
+  });
+  assert.equal(bad.isError, true);
+  const stopped = await connect();
+  const r = await call(stopped.client, "agentry_agent_compact", { name: "assistant" });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /needs it running/);
+  for (const argv of [...receivedArgv(argvFile), ...receivedArgv(stopped.argvFile)])
+    assert.notEqual(argv[1], "compact");
+});
+
+test("a CLI without agent compact is told to update, and nothing runs", async () => {
+  const { client, argvFile } = await connect({}, {}, undefined, {
+    deliverTo: true,
+    destinations: true,
+    buildSources: true,
+    voiceURLs: true,
+    agents: true,
+    tasks: true,
+    compact: false,
+  });
+  const r = await call(client, "agentry_agent_compact", { name: "assistant" });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /Update the CLI/);
+  assert.deepEqual(receivedArgv(argvFile), []);
+});

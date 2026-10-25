@@ -67,6 +67,9 @@ fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "tasks" ] && [ "${3:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_TASKS:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent tasks <name> [pause|resume|remove <task>] [flags]"; fi; exit 0
 fi
+if [ "${1:-}" = "agent" ] && [ "${2:-}" = "compact" ] && [ "${3:-}" = "--help" ]; then
+  if [ -n "${FAKE_NO_COMPACT:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent compact <name> [flags]"; fi; exit 0
+fi
 if [ "${2:-}" = "--help" ]; then echo "Usage: agentry $1"; exit 0; fi
 echo "narration: running $1" >&2
 if [ -n "${FAKE_SLEEP:-}" ]; then sleep "$FAKE_SLEEP"; fi
@@ -97,6 +100,7 @@ if [ "$1" = "agent" ]; then
         echo "this needs the person's agreement" >&2; exit 11
       fi ;;
     stop) echo '{"status":"ok","resultFile":"/home/me/.agentry/runner/agents/assistant/result.json"}' ;;
+    compact) printf '{"agent":"%s","compacted":{"trigger":"manual","swapped":true,"factsBefore":6,"factsAfter":14,"handoffBytes":1326,"swap":"in-segment","swapMillis":30}}\n' "$3" ;;
     grant) printf '[{"id":"share","on":%s}]\n' "$( [ "$5" = on ] && echo true || echo false )" ;;
     attach) exec python3 "$(dirname "$0")/fake-agent-attach.py" "$@" ;;
     tasks)

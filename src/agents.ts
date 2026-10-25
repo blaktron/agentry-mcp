@@ -495,3 +495,69 @@ export async function agentTasks(d: Driver, a: AgentTasksArgs): Promise<CallTool
   argv.push("--json");
   return d.run("agentry_agent_tasks", argv);
 }
+
+/** How long a compaction may take: the CLI's own bound, and a margin. */
+const COMPACT_TIMEOUT_MS = 11 * 60_000;
+
+export interface AgentCompactArgs {
+  name: string;
+  confirm?: string;
+}
+
+/**
+ * agentry_agent_compact, in two calls. The preview reads the agent's state
+ * and says what a compaction does and spends: one upkeep turn on the
+ * person's model plan, within the agent's daily cap. The confirm, with the
+ * digest, runs `agent compact`, which asks nothing more on a terminal.
+ */
+export async function agentCompact(d: Driver, a: AgentCompactArgs): Promise<CallToolResult> {
+  const refused = needsAgents(d, "agentry_agent_compact");
+  if (refused) return refused;
+  if (!d.features.compact)
+    return text(
+      "agentry_agent_compact: this agentry CLI has no `agent compact`. " +
+        "Update the CLI (https://secureagentry.net/download); the server never updates it for you.",
+      true,
+    );
+  const name = agentName(a.name);
+  const shown = await d.run("agentry_agent_compact (show)", ["agent", "show", name, "--json"]);
+  const env = envelopeOf<AgentState>(shown);
+  if (!env || env.exitClass !== "ok") return { ...shown, isError: true };
+  const st = env.result;
+  if (st.desktopOnly)
+    return text(`agentry_agent_compact: the ${name} agent runs only in Agentry Desktop.`, true);
+  if (st.state !== "running")
+    return text(
+      `agentry_agent_compact: the ${name} agent is ${st.state}; a compaction needs it running (agentry_agent_start).`,
+      true,
+    );
+  const facts = { tool: "agentry_agent_compact", agent: st.agent, spends: COMPACT_SPENDS };
+  if (a.confirm === undefined) {
+    return previewText(
+      {
+        agent: st.agent,
+        running: true,
+        writes: true,
+        spends: COMPACT_SPENDS,
+        note:
+          "A compaction sends the agent one upkeep turn: it saves what this conversation produced to its memory " +
+          "and writes a short handoff, and the agent goes on in a fresh conversation that opens with it. " +
+          "A message sent meanwhile waits for it. Show the person this; confirm with this digest only once they agree.",
+      },
+      facts,
+    );
+  }
+  const ok = await confirmed(d.server, "agentry_agent_compact", a.confirm, facts, {
+    unsigned: false,
+    ask: `Compact the ${st.agent} agent's conversation now? ${COMPACT_SPENDS}`,
+  });
+  if (!isConsent(ok)) return ok;
+  return d.run("agentry_agent_compact", ["agent", "compact", name, "--json"], {
+    timeoutMs: COMPACT_TIMEOUT_MS,
+  });
+}
+
+/** What a compaction spends, as the person is told it. */
+const COMPACT_SPENDS =
+  "It uses the person's model plan for one upkeep turn (the agent runs at most 12 upkeep turns a day), " +
+  "which can take a few minutes on a long conversation.";

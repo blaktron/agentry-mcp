@@ -186,15 +186,16 @@ assistant --history`, `--keep-credentials`, and plain `reset`) stay in a
 terminal or the desktop: each takes a file, a value or a sign-in that belongs on
 the person's own screen, or removes what the person set up.
 
-| Tool                  | Runs                                                                                 | Returns                                                                  |
-| --------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| `agentry_agent_list`  | `agentry agent list --json`                                                          | each agent and whether it is running, stopped, disabled or desktop only  |
-| `agentry_agent_show`  | `agentry agent show <name> --json`                                                   | its state, segment, roster, share folder, usage and the transcript's end |
-| `agentry_agent_start` | `agentry agent start <name> --json`, consented with `--yes` when agreement is needed | the running status, or what needs agreement with a `digest`              |
-| `agentry_agent_stop`  | `agentry agent stop <name> --json`                                                   | the stop's status and the segment's result file                          |
-| `agentry_agent_send`  | `agentry agent attach <name> --json`, one turn over the session protocol             | the agent's reply, the tools it called and the usage, or busy            |
-| `agentry_agent_grant` | `agentry agent show <name> --json`, then `agentry agent grant` consented             | the entry and its sentence with a `digest`, then the changed roster      |
-| `agentry_agent_tasks` | `agentry agent tasks <name> [pause\|resume <task>] --json`                           | each task's schedule, state, next and last fire, or the changed tasks    |
+| Tool                    | Runs                                                                                 | Returns                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `agentry_agent_list`    | `agentry agent list --json`                                                          | each agent and whether it is running, stopped, disabled or desktop only            |
+| `agentry_agent_show`    | `agentry agent show <name> --json`                                                   | its state, segment, roster, share folder, usage and the transcript's end           |
+| `agentry_agent_start`   | `agentry agent start <name> --json`, consented with `--yes` when agreement is needed | the running status, or what needs agreement with a `digest`                        |
+| `agentry_agent_stop`    | `agentry agent stop <name> --json`                                                   | the stop's status and the segment's result file                                    |
+| `agentry_agent_send`    | `agentry agent attach <name> --json`, one turn over the session protocol             | the agent's reply, the tools it called and the usage, or busy                      |
+| `agentry_agent_grant`   | `agentry agent show <name> --json`, then `agentry agent grant` consented             | the entry and its sentence with a `digest`, then the changed roster                |
+| `agentry_agent_tasks`   | `agentry agent tasks <name> [pause\|resume <task>] --json`                           | each task's schedule, state, next and last fire, or the changed tasks              |
+| `agentry_agent_compact` | `agentry agent show <name> --json`, then `agentry agent compact <name> --json`       | what it does and spends with a `digest`, then whether a fresh conversation started |
 
 Authoring tools use operation previews, since the CLI offers no compiled plan
 mode for them. The preview names the command, input fingerprints, output, web
