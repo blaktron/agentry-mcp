@@ -175,12 +175,16 @@ agent's skills, stored secrets (by name, never a value), git host accounts,
 heartbeat, the Assistant's `meetings` switch (CLI v0.6.195 or later: with
 the heartbeat on, it lets the Assistant ask Agentry Desktop to record the
 meetings on the person's calendar that they asked it to record, each armed
-window shown and cancelled in the desktop) and offered servers, and a grant
+window shown and cancelled in the desktop), calendar feeds (`calendar:<name>`)
+and offered servers, and a grant
 switches any of them. The
 Assistant's mail servers (Google Workspace, `server:gog`; Microsoft 365 and Outlook.com, `server:ms365`; Fastmail, `server:url-api-fastmail-com-mcp`) are on its roster only
 while their mail provider is enabled. Adding a skill, storing a secret, giving
 an account, choosing the Assistant's mail providers (`agentry agent configure
-assistant --mail-provider`), each provider's sign-in (`--google-client`, `--google-sign-in`, `--microsoft-client`, `--microsoft-sign-in`, and Fastmail's token, `--fastmail-token` and `--no-fastmail`), exporting the memory,
+assistant --mail-provider`), each provider's sign-in (`--google-client`, `--google-sign-in`, `--microsoft-client`, `--microsoft-sign-in`, and Fastmail's token, `--fastmail-token` and `--no-fastmail`), the Assistant's calendar feeds
+(`agentry agent configure assistant --calendar-feed <name>` and
+`--no-calendar-feed <name>`, which take a calendar's secret iCal address;
+needs CLI v0.6.205 or later), exporting the memory,
 removing a task and the Assistant's three resets (`agentry agent reset
 assistant --history`, `--keep-credentials`, and plain `reset`) stay in a
 terminal or the desktop: each takes a file, a value or a sign-in that belongs on

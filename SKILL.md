@@ -142,7 +142,7 @@ once when there is nothing new to agree to; otherwise it returns
 `needsAgreement` and a digest. Show the person every line and confirm only once
 they agree. `agentry_agent_grant` switches a roster entry (`share`,
 `knowledge:<pack>`, `server:<id>` and an offered server's `server:<id>:writes`,
-`skill:<name>`, `secret:<NAME>`, the Assistant's `heartbeat` and `meetings`,
+`skill:<name>`, `secret:<NAME>`, the Assistant's `heartbeat`, `meetings` and `calendar:<name>` (a calendar feed, CLI v0.6.205 or later),
 and the Coding agent's `account:<host>`, `commands`, `egress`, `browser`,
 `dependency-scan`, `devhost` and `port:<name>`) in the same two calls, always.
 Show the entry's sentence, and say that a running agent restarts with the
@@ -184,7 +184,10 @@ Enabling, configuring (name, personality, share folder, servers, packs, the
 Coding agent's dev server and published ports), adding a skill, storing a
 secret, giving an account, choosing the Assistant's mail providers
 (`agentry agent configure assistant --mail-provider` and `--no-mail-provider`),
-each provider's sign-in (`--google-client`, `--google-sign-in`, `--microsoft-client`, `--microsoft-sign-in`, and Fastmail's token, `--fastmail-token` and `--no-fastmail`), exporting the memory, removing a task and resetting
+each provider's sign-in (`--google-client`, `--google-sign-in`, `--microsoft-client`, `--microsoft-sign-in`, and Fastmail's token, `--fastmail-token` and `--no-fastmail`), the Assistant's calendar feeds
+(`--calendar-feed <name>` and `--no-calendar-feed <name>`, which take a
+calendar's secret iCal address: never ask for one in the chat), exporting the
+memory, removing a task and resetting
 (the Assistant's Reset history, Reset agent and Reset all: `agentry agent reset
 assistant --history`, `--keep-credentials` and plain `reset`) stay with the
 person, in a terminal or the desktop: they sign in to accounts or remove what
