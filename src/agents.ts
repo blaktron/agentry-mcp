@@ -540,8 +540,9 @@ export async function agentCompact(d: Driver, a: AgentCompactArgs): Promise<Call
         writes: true,
         spends: COMPACT_SPENDS,
         note:
-          "A compaction sends the agent one upkeep turn: it saves what this conversation produced to its memory " +
-          "and writes a short handoff, and the agent goes on in a fresh conversation that opens with it. " +
+          "A compaction sends the agent one upkeep turn: it writes a short handoff (the Assistant first saves " +
+          "what this conversation produced to its memory), and the agent goes on in a fresh conversation that " +
+          "opens with it. " +
           "A message sent meanwhile waits for it. Show the person this; confirm with this digest only once they agree.",
       },
       facts,

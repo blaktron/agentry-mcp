@@ -30,7 +30,7 @@ export interface CliFeatures {
   agents: boolean;
   /** `agent tasks <name> [pause|resume|remove <task>] --json`: an agent's tasks. */
   tasks: boolean;
-  /** `agent compact <name> --json`: memory upkeep and a fresh conversation. */
+  /** `agent compact <name> --json`: an upkeep turn and a fresh conversation. */
   compact: boolean;
 }
 

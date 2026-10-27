@@ -270,6 +270,20 @@ test("a compaction previews what it spends, and the confirm runs agent compact",
   assert.deepEqual(receivedArgv(argvFile).at(-1), ["agent", "compact", "assistant", "--json"]);
 });
 
+test("the Coding agent is compacted the same way, and the preview names no memory of its own", async () => {
+  const { client, argvFile } = await connect({ FAKE_AGENT_STATE: "running" });
+  const p = envelope(await call(client, "agentry_agent_compact", { name: "coder" }));
+  assert.equal(p.json.writes, true);
+  assert.match(p.json.note, /writes a short handoff/);
+  assert.match(p.json.note, /the Assistant first saves/);
+  assert.deepEqual(receivedArgv(argvFile), [["agent", "show", "coder", "--json"]]);
+  const r = envelope(
+    await call(client, "agentry_agent_compact", { name: "coder", confirm: p.json.digest }),
+  );
+  assert.equal(r.json.exitClass, "ok");
+  assert.deepEqual(receivedArgv(argvFile).at(-1), ["agent", "compact", "coder", "--json"]);
+});
+
 test("a compaction with a digest it was not given, or of a stopped agent, runs nothing", async () => {
   const { client, argvFile } = await connect({ FAKE_AGENT_STATE: "running" });
   const bad = await call(client, "agentry_agent_compact", {
