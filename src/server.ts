@@ -19,7 +19,7 @@ import { registerSessionTools } from "./tools/session.js";
 import { registerWriteTools } from "./tools/write.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.6.23";
+export const SERVER_VERSION = "0.6.24";
 
 export function instructions(bin: string, cliVersion: string): string {
   return [
@@ -59,7 +59,7 @@ export function instructions(bin: string, cliVersion: string): string {
     "Persistent agents run in the background once started and keep their conversation: " +
       "agentry_agent_list and agentry_agent_show read them, agentry_agent_start and agentry_agent_stop start and " +
       "stop one, agentry_agent_send is one turn in and the answer out, agentry_agent_grant switches a roster " +
-      "entry, and agentry_agent_compact has the Assistant save its conversation to memory and start a fresh one. " +
+      "entry, and agentry_agent_compact has an agent write a handoff and start a fresh conversation. " +
       "Starting one that would be given something new, every switch and a compaction are the same two calls: show the " +
       "person each consent sentence and confirm only once they agree. Main runs only in Agentry Desktop; enabling, " +
       "configuring and resetting an agent stay with the person.",

@@ -52,9 +52,9 @@ export function registerAgentTools(d: Driver): void {
         "folders, memory, heartbeat, skills, stored secrets by name (never a value), git host accounts, the " +
         "servers it is offered and the person's own), the servers it suggests, its share folder, its usage and, " +
         "with `transcript`, the end of its transcript, where the answer to a turn that outlasted " +
-        "agentry_agent_send's limit is found. For the Assistant, `lastCompaction` and `lastConsolidation` are its " +
-        "memory upkeep's newest records: when, why, whether a fresh conversation started, and the memory's fact " +
-        "lines before and after.",
+        "agentry_agent_send's limit is found. `lastCompaction` is its newest compaction's record: when, why, " +
+        "whether a fresh conversation started and, for the Assistant, the memory's fact lines before and after " +
+        "(-1 when not counted); the Assistant's `lastConsolidation` is its memory's newest daily tidy.",
       inputSchema: {
         name,
         transcript: z
@@ -222,13 +222,13 @@ export function registerAgentTools(d: Driver): void {
     {
       description:
         "Compact a running persistent agent's conversation now (`agentry agent compact <name> --json`), in two " +
-        "calls: the Assistant saves what the conversation produced to its memory and writes a short handoff, then " +
-        "goes on in a fresh conversation that opens with it. It also does this on its own when its conversation " +
-        "grows large. Without `confirm`: what it does and spends (one upkeep turn on the person's model plan, " +
+        "calls: the agent writes a short handoff, then goes on in a fresh conversation that opens with it; the " +
+        "Assistant first saves what the conversation produced to its memory. Every agent also does this on its " +
+        "own when its conversation grows large. Without `confirm`: what it does and spends (one upkeep turn on the person's model plan, " +
         "within its 12 a day) and a `digest`; nothing runs. Show the person, and only when they agree call again " +
         "with `confirm` set to that digest. It can take a few minutes; the result says whether a fresh " +
-        "conversation started and the memory's fact lines before and after, and agentry_agent_show's " +
-        "`lastCompaction` keeps it.",
+        "conversation started and, for the Assistant, the memory's fact lines before and after, and " +
+        "agentry_agent_show's `lastCompaction` keeps it.",
       inputSchema: {
         name,
         confirm: z
