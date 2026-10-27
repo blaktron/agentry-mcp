@@ -166,13 +166,14 @@ export function registerAgentTools(d: Driver): void {
         "the sentence and only when they agree call again with `confirm` set to that digest. A running agent " +
         "takes the change at its next turn and continues the conversation. agentry_agent_show lists the " +
         "entries. Adding a server, a knowledge pack or a skill, storing a secret, giving an account, the " +
-        "Google sign-in, exporting the memory and moving the share folder stay in a terminal or the desktop.",
+        "Google sign-in, giving or removing a calendar feed, exporting the memory and moving the share folder " +
+        "stay in a terminal or the desktop.",
       inputSchema: {
         name,
         entry: z
           .string()
           .describe(
-            "The roster entry's id, as agentry_agent_show lists it: `share`, `knowledge:<pack>`, `server:<id>` (the person's or an offered one) and an offered server's `server:<id>:writes`, `skill:<name>`, `secret:<NAME>`, the Assistant's `heartbeat` and `meetings` (which needs `heartbeat` on first), and the Coding agent's `account:<host>`, `commands`, `egress`, `browser`, `dependency-scan`, `devhost` and `port:<name>`.",
+            "The roster entry's id, as agentry_agent_show lists it: `share`, `knowledge:<pack>`, `server:<id>` (the person's or an offered one) and an offered server's `server:<id>:writes`, `skill:<name>`, `secret:<NAME>`, the Assistant's `heartbeat`, `meetings` (which needs `heartbeat` on first) and `calendar:<name>` (a calendar feed), and the Coding agent's `account:<host>`, `commands`, `egress`, `browser`, `dependency-scan`, `devhost` and `port:<name>`.",
           ),
         on: z.boolean().describe("true switches it on, false off."),
         confirm: z
