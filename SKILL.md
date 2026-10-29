@@ -63,7 +63,12 @@ Sign-in is a terminal workflow: `agentry login --registry <REGISTRY_URL>`.
 The server reuses the CLI's login. Never request a token or model key in chat
 or pass a secret as a tool argument. `agentry_setup` takes the key's environment
 variable **name**; the actual key must be available to the CLI process through
-the person's existing environment or CLI-managed key storage.
+the person's existing environment or CLI-managed key storage. Its providers
+are `anthropic`, `openai`, `google`, `vultr` (Vultr Serverless Inference,
+`VULTR_INFERENCE_API_KEY`), `openrouter`, `poe`, `huggingface` and `custom`
+(with `baseUrl`). Signing in with a provider's own account (_Connect your
+account_) is done in a terminal with `agentry setup` or in the desktop, never
+through a tool.
 
 ## Find, install and run
 
