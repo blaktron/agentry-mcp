@@ -92,6 +92,35 @@ test("setup: vultr and the other key-paid named providers pass through as --prov
   );
 });
 
+test("setup: agentry pays with credits through the CLI's sign-in, so it passes no key variable, base URL or model", async () => {
+  const { client, argvFile } = await connect();
+  const r = await client.callTool({
+    name: "agentry_setup",
+    arguments: { provider: "agentry", skipImages: true },
+  });
+  assert.equal(r.isError, undefined, r.content[0].text);
+  assert.deepEqual(receivedArgv(argvFile)[0], [
+    "setup",
+    "--json",
+    "--provider",
+    "agentry",
+    "--skip-images",
+  ]);
+  for (const extra of [
+    { apiKeyEnv: "SOME_KEY" },
+    { baseUrl: "https://x.example/v1" },
+    { model: "m" },
+  ]) {
+    const bad = await client.callTool({
+      name: "agentry_setup",
+      arguments: { provider: "agentry", ...extra },
+    });
+    assert.equal(bad.isError, true, JSON.stringify(extra));
+    assert.match(bad.content[0].text, /pays with your Agentry credits/);
+  }
+  assert.equal(receivedArgv(argvFile).length, 1, "a refused call never reached the CLI");
+});
+
 test("run preview: `run --plan --json`, the compiled plan and a digest, no run, nothing lifted", async () => {
   const writes = writesFile();
   const { client, argvFile } = await connect({ FAKE_WRITES: writes });
