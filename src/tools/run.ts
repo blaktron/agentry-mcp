@@ -24,9 +24,24 @@ export function registerRunTools(d: Driver): void {
         "what is missing.",
       inputSchema: {
         provider: z
-          .enum(["anthropic", "openai", "google", "custom"])
+          .enum([
+            "anthropic",
+            "openai",
+            "google",
+            "vultr",
+            "openrouter",
+            "poe",
+            "huggingface",
+            "custom",
+          ])
           .optional()
-          .describe("The model provider; the policy's current one when omitted."),
+          .describe(
+            "The model provider; the policy's current one when omitted. vultr is Vultr Serverless Inference " +
+              "(key variable VULTR_INFERENCE_API_KEY by default; needs CLI v0.6.1000 or later); openrouter, poe " +
+              "and huggingface default to OPENROUTER_API_KEY, POE_API_KEY and HF_TOKEN. Each is paid by a key " +
+              "variable here; signing in with the provider's own account (Connect your account) is done in a " +
+              "terminal (`agentry setup`) or the desktop, never through this tool.",
+          ),
         model: z
           .string()
           .optional()
