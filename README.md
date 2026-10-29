@@ -113,6 +113,13 @@ person before the write.
 | `agentry_deliver`  | `agentry deliver RUN-FOLDER --json` consented                                                    | a preview of the run's deliverables, the folder and the destinations with a `digest`, then the CLI's deliveries                               |
 | `agentry_validate` | `agentry validate DIR --json`                                                                    | the rules and scan findings as data, and whether publish would pass                                                                           |
 
+`agentry_setup`'s `provider` is one of `anthropic`, `openai`, `google`,
+`vultr` (Vultr Serverless Inference, key variable `VULTR_INFERENCE_API_KEY`;
+CLI v0.6.1000 or later), `openrouter`, `poe`, `huggingface` or `custom` (with
+`baseUrl`), each paid by a key whose variable **name** the call gives. Signing
+in with a provider's own account (_Connect your account_) stays in a terminal
+(`agentry setup`) or the desktop.
+
 A run's preview is the CLI's compiled run plan with the attestation verdict
 and every refusal a run would meet. A run stops at `timeoutSeconds`, or at the
 runner policy's own budget when the call names none: the CLI ends it, the

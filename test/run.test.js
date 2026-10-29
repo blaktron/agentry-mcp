@@ -55,6 +55,43 @@ test("setup: argv from typed arguments (no consent flag: the CLI has no terminal
   ]);
 });
 
+test("setup: vultr and the other key-paid named providers pass through as --provider, with the key variable NAME", async () => {
+  const { client, argvFile } = await connect({ VULTR_INFERENCE_API_KEY: "vultr-secret-value" });
+  const r = await client.callTool({
+    name: "agentry_setup",
+    arguments: { provider: "vultr", apiKeyEnv: "VULTR_INFERENCE_API_KEY", skipImages: true },
+  });
+  assert.equal(r.isError, undefined, r.content[0].text);
+  assert.doesNotMatch(r.content[0].text, /vultr-secret-value/);
+  assert.deepEqual(receivedArgv(argvFile)[0], [
+    "setup",
+    "--json",
+    "--provider",
+    "vultr",
+    "--api-key-env",
+    "VULTR_INFERENCE_API_KEY",
+    "--skip-images",
+  ]);
+  for (const provider of ["openrouter", "poe", "huggingface"]) {
+    const rr = await client.callTool({
+      name: "agentry_setup",
+      arguments: { provider, skipImages: true },
+    });
+    assert.equal(rr.isError, undefined, rr.content[0].text);
+  }
+  const argvs = receivedArgv(argvFile);
+  assert.deepEqual(
+    argvs.slice(1).map((a) => a[a.indexOf("--provider") + 1]),
+    ["openrouter", "poe", "huggingface"],
+  );
+  const bad = await client.callTool({ name: "agentry_setup", arguments: { provider: "bedrock" } });
+  assert.equal(
+    bad.isError,
+    true,
+    "a provider the CLI does not name is refused before the CLI runs",
+  );
+});
+
 test("run preview: `run --plan --json`, the compiled plan and a digest, no run, nothing lifted", async () => {
   const writes = writesFile();
   const { client, argvFile } = await connect({ FAKE_WRITES: writes });
