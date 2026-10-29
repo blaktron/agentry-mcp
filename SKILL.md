@@ -65,8 +65,11 @@ or pass a secret as a tool argument. `agentry_setup` takes the key's environment
 variable **name**; the actual key must be available to the CLI process through
 the person's existing environment or CLI-managed key storage. Its providers
 are `anthropic`, `openai`, `google`, `vultr` (Vultr Serverless Inference,
-`VULTR_INFERENCE_API_KEY`), `openrouter`, `poe`, `huggingface` and `custom`
-(with `baseUrl`). Signing in with a provider's own account (_Connect your
+`VULTR_INFERENCE_API_KEY`), `openrouter`, `poe`, `huggingface`, `custom`
+(with `baseUrl`) and `agentry`, which pays with the Agentry credits of the
+account the CLI is signed in to and takes no `apiKeyEnv`, `baseUrl` or
+`model`; if the person is not signed in, tell them to run `agentry login` in
+a terminal. Signing in with a provider's own account (_Connect your
 account_) is done in a terminal with `agentry setup` or in the desktop, never
 through a tool.
 
