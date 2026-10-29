@@ -116,7 +116,9 @@ person before the write.
 `agentry_setup`'s `provider` is one of `anthropic`, `openai`, `google`,
 `vultr` (Vultr Serverless Inference, key variable `VULTR_INFERENCE_API_KEY`;
 CLI v0.6.1000 or later), `openrouter`, `poe`, `huggingface` or `custom` (with
-`baseUrl`), each paid by a key whose variable **name** the call gives. Signing
+`baseUrl`), each paid by a key whose variable **name** the call gives, or
+`agentry` (CLI v0.6.1005 or later), paid with the Agentry credits of the
+account the CLI is signed in to, which takes no key variable, base URL or model. Signing
 in with a provider's own account (_Connect your account_) stays in a terminal
 (`agentry setup`) or the desktop.
 

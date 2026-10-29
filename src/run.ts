@@ -92,6 +92,11 @@ export interface SetupArgs {
  * asking, so no consent flag is needed; the key NAME only ever crosses.
  */
 export async function setup(d: Driver, a: SetupArgs, extra: Extra): Promise<CallToolResult> {
+  if (a.provider === "agentry" && (a.apiKeyEnv || a.baseUrl || a.model)) {
+    throw new ArgumentError(
+      "provider agentry pays with your Agentry credits through the registry the CLI is signed in to: give no apiKeyEnv, baseUrl or model",
+    );
+  }
   const argv = ["setup", "--json"];
   flag(argv, "provider", a.provider);
   flag(argv, "model", a.model);

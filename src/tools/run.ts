@@ -32,6 +32,7 @@ export function registerRunTools(d: Driver): void {
             "openrouter",
             "poe",
             "huggingface",
+            "agentry",
             "custom",
           ])
           .optional()
@@ -40,12 +41,18 @@ export function registerRunTools(d: Driver): void {
               "(key variable VULTR_INFERENCE_API_KEY by default; needs CLI v0.6.1000 or later); openrouter, poe " +
               "and huggingface default to OPENROUTER_API_KEY, POE_API_KEY and HF_TOKEN. Each is paid by a key " +
               "variable here; signing in with the provider's own account (Connect your account) is done in a " +
-              "terminal (`agentry setup`) or the desktop, never through this tool.",
+              "terminal (`agentry setup`) or the desktop, never through this tool. agentry pays with the Agentry " +
+              "credits of the account the CLI is signed in to (`agentry login`, in a terminal) and takes no apiKeyEnv, " +
+              "baseUrl or model: each run opens a credits session with that sign-in, and the registry picks the model " +
+              "(needs CLI v0.6.1005 or later).",
           ),
         model: z
           .string()
           .optional()
-          .describe("The model name; the provider's default when omitted."),
+          .describe(
+            "The model name; the provider's default when omitted. vultr, openrouter, poe and huggingface have no " +
+              "default: name one. agentry takes none.",
+          ),
         apiKeyEnv: z
           .string()
           .optional()
