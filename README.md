@@ -14,7 +14,7 @@ CLI's.
 
 ## Prerequisites
 
-- Node 26 or newer.
+- Node 24 or newer.
 - The `agentry` CLI on the machine, found through `AGENTRY_BIN` or `PATH`
   (see the [CLI documentation](https://docs.secureagentry.net/runner/)). The
   server runs `agentry --version` at start and refuses to start below
