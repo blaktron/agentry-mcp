@@ -137,7 +137,7 @@ case "$1" in
     [ -n "${FAKE_WRITES:-}" ] && echo built >> "$FAKE_WRITES"
     echo '{"status":"ok","report":"report.json","reason":"example"}' ;;
   search) echo '{"results":[{"namespace":"acme","name":"widget","modes":["autonomous"],"summary":"x","installs30d":2,"quarantineState":"none"}],"facets":{},"total":1}' ;;
-  info) echo '{"agent":{"namespace":"acme","name":"widget"},"latest":{"version":"1.0.0","capabilities":{"network":{"egress":"none"}}}}' ;;
+  info) echo '{"agent":{"namespace":"acme","name":"widget"},"latest":{"version":"1.0.0","capabilities":{"network":{"egress":"none"}}},"run":{"intake":[{"id":"repo","type":"repository","required":false,"prompt":"The repository","personsOwn":false,"answer":"The repository'"'"'s https address"}],"takes":["code"],"inputView":"original","secrets":[],"modes":["autonomous"],"guide":{"overview":"Audits a repository."}}}' ;;
   verify) echo '{"ref":"acme/widget@1.0.0","digestMatch":true,"attestation":{"state":"verified"}}' ;;
   doctor) echo '{"checks":[{"name":"docker","status":"ok"}],"ok":true}' ;;
   list) echo '{"path":"/home/me/.config/agentry/installed.yaml","records":[{"registry":"r","namespace":"acme","name":"widget","target":"claude-skill","dir":"/home/me/.claude/skills/widget","version":"1.0.0","present":true},{"registry":"runner","namespace":"acme","name":"gone","target":"runner","dir":"/tmp/gone","version":"1.0.0","present":false}]}' ;;
