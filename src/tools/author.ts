@@ -11,7 +11,7 @@ import { guard, type Driver } from "../driver.js";
 import { runOutcome } from "../envelope.js";
 import { isReadiness, readiness, readinessWords, type Readiness } from "../readiness.js";
 import { fingerprint, localPackPaths } from "../snapshot.js";
-import { progressSink, TEARDOWN_GRACE_MS } from "../run.js";
+import { budgetWords, progressSink, TEARDOWN_GRACE_MS } from "../run.js";
 import { registerTool } from "../toolargs.js";
 
 const common = {
@@ -72,9 +72,11 @@ function fetches(repos?: string[], urls?: string[]): Fetch[] {
   ];
 }
 
-/** The consent facts of what a build fetches, and the review a voice's pages get. */
+/** The consent facts of what a build fetches, its web choice, and the review a voice's pages get. */
 interface SourceFacts {
   fetches?: Fetch[];
+  /** The knowledge build's explicit web choice: the Creator's web tools on or off. */
+  web?: boolean;
   review?: string;
 }
 
@@ -191,21 +193,22 @@ function operationSummary(
   sourceFacts: SourceFacts,
   ready: Readiness,
 ): string {
-  const budget = [
-    `up to ${a.timeoutSeconds} s`,
-    a.maxCost ? `at most $${a.maxCost}` : "",
-    a.maxTurns ? `at most ${a.maxTurns} tool calls` : "",
-  ].filter(Boolean);
+  const web =
+    sourceFacts.web === undefined
+      ? "the built-in's own web tools follow the runner policy"
+      : sourceFacts.web
+        ? "the web is on for the build (web: true)"
+        : "the web is off for the build (web: false)";
   const lines = [
-    `${BUILTIN[tool] ?? tool}, ${budget.join(", ")}.`,
+    `${BUILTIN[tool] ?? tool}, ${budgetWords(a.timeoutSeconds, a.maxCost, a.maxTurns)}.`,
     `Reads: ${paths.length ? paths.join(", ") : "the text in the operation"}.`,
     `Network: ${
       sourceFacts.fetches?.length
         ? `fetches ${sourceFacts.fetches.map((f) => `${f.address} (${f.host})`).join(", ")} before the run`
         : "no fetch before the run"
-    }; the built-in's own web tools follow its web choice and the runner policy.`,
+    }; ${web}.`,
     `Writes: its report and receipts under ${a.out}.`,
-    `Cost: the person's model key, and review or search charges where the built-in uses them.`,
+    "Cost: the model key the runner policy names, and AI Review (the person's TypeSafe key) or search charges where the built-in uses them.",
     ...(sourceFacts.review ? [`Review: ${sourceFacts.review}.`] : []),
     ...readinessWords(ready),
   ];
@@ -328,6 +331,7 @@ export function registerAuthorTools(d: Driver): void {
         if (a.action === "add") paths.push(...(await localPackPaths([a.name], d.cwd)));
         return execute(d, "agentry_knowledge_build", a, argv, paths, extra, {
           fetches: fetches(a.repos, a.urls),
+          web: a.web,
         });
       }),
   );

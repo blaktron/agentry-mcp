@@ -31,7 +31,7 @@ test("a run preview carries readiness from `doctor <resolved ref> --json` and a 
     p.summary,
     /^Run acme\/widget@1\.0\.0 \(autonomous; attestation verified, signed\), up to 900 s, at most \$2\./m,
   );
-  assert.match(p.summary, /^Model: the runner policy's model, paid with your own provider key\./m);
+  assert.match(p.summary, /^Model: as the runner policy sets it\./m);
   assert.match(p.summary, /^Network: no network\./m);
   assert.match(
     p.summary,
@@ -39,7 +39,7 @@ test("a run preview carries readiness from `doctor <resolved ref> --json` and a 
   );
   assert.match(p.summary, /^Tools served: write_report\./m);
   assert.match(p.summary, /^Delivers to: .*no destination\./m);
-  assert.match(p.summary, /^Ready to start: yes/m);
+  assert.match(p.summary, /^Ready to start: yes — no check failed/m);
   assert.match(
     p.summary,
     /^ {2}model key: ok: anthropic\/claude-sonnet-5-5 \(key from \$ANTHROPIC_API_KEY\)/m,
@@ -50,7 +50,7 @@ test("a run preview carries readiness from `doctor <resolved ref> --json` and a 
   assert.match(p.summary, /^ {2}secrets: ok: all 1 declared secret\(s\) resolve/m);
   assert.match(p.summary, /^ {2}install: warning: not installed yet/m);
   assert.doesNotMatch(p.summary, /planSha256|"capabilities"/, "the summary is words, not the plan");
-  // The plan is still there, under its field, whole.
+  // The plan is under its field, whole.
   assert.equal(p.plan.planSha256, "abc");
   assert.deepEqual(p.plan.plan.capabilities, { egressMode: "none", fsReadMode: "workspace" });
   assert.equal(Object.keys(p)[0], "summary", "the summary comes first");
@@ -91,7 +91,7 @@ test("the digest covers readiness and the summary: a readiness changed between t
   const { client } = await connect({ FAKE_DOCTOR_FILE: file });
   const ready = await preview(client, "agentry_run", { ref: "acme/widget" });
   assert.equal(ready.readiness.ready, true);
-  // The key vanished (the file now holds a failing model check).
+  // The key vanished: the file holds a failing model check.
   writeFileSync(
     file,
     JSON.stringify([
@@ -218,11 +218,57 @@ test("an authoring preview carries readiness from `doctor --json` and a summary;
   assert.equal(out.result.error, "the gateway did not start");
 });
 
-test("a doctor report the server cannot read is never taken as ready", async () => {
-  const { client } = await connect({ FAKE_DOCTOR: '[{"name":"model","status":"fine"}]' });
+test("a doctor report the server cannot read, one that lists no checks, or a cli exit with no failing check, is never taken as ready", async () => {
+  for (const [checks, said] of [
+    ['[{"name":"model","status":"fine"}]', /carries checks this server cannot read/],
+    ["[]", /lists no checks/],
+  ]) {
+    const { client } = await connect({ FAKE_DOCTOR: checks });
+    const r = await client.callTool({ name: "agentry_run", arguments: { ref: "acme/widget" } });
+    assert.equal(r.isError, true, checks);
+    assert.match(r.content[0].text, said);
+  }
+  // Doctor exited 1 (class cli) with every check ok: not a report to trust.
+  const { client } = await connect({ FAKE_DOCTOR_EXIT: "1" });
   const r = await client.callTool({ name: "agentry_run", arguments: { ref: "acme/widget" } });
   assert.equal(r.isError, true);
-  assert.match(r.content[0].text, /doctor report carries checks this server cannot read/);
+  assert.match(r.content[0].text, /exited in the cli class with no failing check/);
+  // A report without the model or the engine check is not ready, and says why.
+  const partial = await connect({
+    FAKE_DOCTOR: '[{"name":"registry","status":"ok","detail":"r reachable"}]',
+  });
+  const p = await partial.client.callTool({
+    name: "agentry_run",
+    arguments: { ref: "acme/widget" },
+  });
+  assert.equal(p.isError, undefined, p.content[0].text);
+  const preview = JSON.parse(p.content[0].text);
+  assert.equal(preview.readiness.ready, false);
+  assert.match(
+    preview.summary,
+    /^Ready to start: unknown — doctor did not check the model key or the engine/m,
+  );
+  assert.match(preview.summary, /model key: not checked/);
+});
+
+test("a knowledge build's summary names its web choice", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "agentry-readiness-web-"));
+  const file = join(dir, "sample.md");
+  writeFileSync(file, "A sample.");
+  const { client } = await connect();
+  for (const web of [true, false]) {
+    const p = await preview(client, "agentry_knowledge_build", {
+      action: "create",
+      name: "notes",
+      files: [file],
+      web,
+      out: join(dir, "out"),
+    });
+    assert.match(
+      p.summary,
+      new RegExp(`the web is ${web ? "on" : "off"} for the build \\(web: ${web}\\)`),
+    );
+  }
 });
 
 test("readiness lines: one per facet, the failing checks first, then every other check that is not ok", () => {

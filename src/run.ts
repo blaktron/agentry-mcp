@@ -169,8 +169,6 @@ export interface CompiledPlan {
     webRender?: boolean;
     targetHosts?: string[];
     browser?: unknown;
-    scratch?: boolean;
-    pdf?: boolean;
   };
   tools?: string[];
   harness?: {
@@ -261,14 +259,37 @@ function listed(items: string[] | undefined, none: string): string {
   return items?.length ? items.join(", ") : none;
 }
 
-/** How the run's model is paid for, from the compiled plan. */
-function costClass(p: RunPlan): string {
+/**
+ * The model and how it is paid for, from the compiled plan's harness: a
+ * credits session token means Agentry credits, a model sign-in the person's
+ * plan, otherwise the key the policy names. A plan without a harness block
+ * says only what it says.
+ */
+function modelWords(p: RunPlan): string {
   const h = p.plan.harness;
-  const credits = [...(h?.agent?.env ?? []), ...(h?.host?.env ?? [])].some((e) => e.fromInference);
-  if (credits) return "paid with your Agentry credits";
-  if (h?.modelSignIn)
-    return `spends your ${h.modelSignIn.provider ?? "model"} plan through its sign-in`;
-  return "paid with your own provider key";
+  if (!h?.model) return "Model: as the runner policy sets it.";
+  const credits = [...(h.agent?.env ?? []), ...(h.host?.env ?? [])].some((e) => e.fromInference);
+  const paid = credits
+    ? "paid with your Agentry credits"
+    : h.modelSignIn
+      ? `spends your ${h.modelSignIn.provider ?? "model"} plan through its sign-in`
+      : "paid with the provider key the runner policy names";
+  return `Model: ${h.model}, ${paid}.`;
+}
+
+/** A run's budget in words: the wall clock, the cost cap and the tool-call cap, each when set. */
+export function budgetWords(
+  seconds: number | undefined,
+  maxCost?: number,
+  maxTurns?: number,
+): string {
+  return [
+    seconds ? `up to ${seconds} s` : "",
+    maxCost ? `at most $${maxCost}` : "",
+    maxTurns ? `at most ${maxTurns} tool calls` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
 
 /**
@@ -314,17 +335,15 @@ export function runSummary(
     cap.fsWriteMode === "none" || cap.fsWriteMode === undefined
       ? "only its report under the output folder"
       : `${cap.fsWriteMode}${cap.fsWritePaths?.length ? ` (${cap.fsWritePaths.join(", ")})` : ""}, and its report`;
-  const maxCost = a.maxCost ?? budgets.maxCostUsd;
-  const maxTurns = a.maxTurns ?? budgets.maxTurns;
-  const budget = [
-    mode === "interactive" ? "" : `up to ${timeoutSeconds} s`,
-    maxCost ? `at most $${maxCost}` : "",
-    maxTurns ? `at most ${maxTurns} tool calls` : "",
-  ].filter(Boolean);
+  const budget = budgetWords(
+    mode === "interactive" ? undefined : timeoutSeconds,
+    a.maxCost ?? budgets.maxCostUsd,
+    a.maxTurns ?? budgets.maxTurns,
+  );
   const lines = [
     `${verb} ${p.ref} (${p.mode}; attestation ${p.attestation}${p.signed ? ", signed" : ""})` +
-      `${budget.length ? `, ${budget.join(", ")}` : ""}.`,
-    `Model: ${p.plan.harness?.model ?? "the runner policy's model"}, ${costClass(p)}.`,
+      `${budget ? `, ${budget}` : ""}.`,
+    modelWords(p),
     `Network: ${network}${extras.length ? `; also ${extras.join("; ")}` : ""}.`,
     `Reads: ${reads}. Writes: ${writes}.` +
       `${cap.execCommands?.length ? ` Runs the commands: ${cap.execCommands.join(", ")}.` : ""}` +

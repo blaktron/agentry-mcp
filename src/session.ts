@@ -584,7 +584,9 @@ export async function sessionClose(d: Driver, a: SessionCloseArgs): Promise<Call
   } catch {
     // No envelope: the CLI stopped before writing one; the exit code and the CLI log say what happened.
   }
-  return json({
+  // A session whose envelope ended in a failure class is a tool error
+  // carrying the same record, so a host never reads it as a finished run.
+  const record = json({
     sessionId: s.id,
     ref: s.ref,
     reason,
@@ -601,4 +603,7 @@ export async function sessionClose(d: Driver, a: SessionCloseArgs): Promise<Call
     resultFile: join(s.outDir, "result.json"),
     cliLog: s.cliLog,
   });
+  return envelope?.exitClass !== undefined && envelope.exitClass !== "ok"
+    ? { ...record, isError: true }
+    : record;
 }

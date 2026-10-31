@@ -37,6 +37,7 @@
 #   FAKE_DOCTOR        the checks `doctor --json` prints, verbatim JSON (default: every check ok)
 #   FAKE_DOCTOR_FILE   a file whose content, when it exists, is FAKE_DOCTOR (so a test can change it between calls)
 #   FAKE_DOCTOR_KEY_UNSET  the model check fails: the key's variable is not set (doctor exits 1)
+#   FAKE_DOCTOR_EXIT   doctor exits with this code whatever its checks say
 #   FAKE_RUN_FAIL      the run (not the plan) fails in the policy class, as with no model key; a draft or review in the gateway class
 #   FAKE_RUN_CLASS_WORDS  the failed run's envelope carries exitClassName, exitClassMeaning and retryLikelyHelps
 #   FAKE_NO_AGENTS     set to make `agent attach --help` print the parent's help (a CLI without attach)
@@ -161,6 +162,7 @@ case "$1" in
     fi
     dref=""; case "${2:-}" in --*|"") ;; *) dref="$2" ;; esac
     printf '{%s"checks":%s}\n' "$( [ -n "$dref" ] && printf '"ref":"%s",' "$dref" )" "$dchecks"
+    [ -n "${FAKE_DOCTOR_EXIT:-}" ] && exit "$FAKE_DOCTOR_EXIT"
     case "$dchecks" in *'"status":"fail"'*) echo "doctor: 1 check(s) failed" >&2; exit 1 ;; esac ;;
   list) echo '{"path":"/home/me/.config/agentry/installed.yaml","records":[{"registry":"r","namespace":"acme","name":"widget","target":"claude-skill","dir":"/home/me/.claude/skills/widget","version":"1.0.0","present":true},{"registry":"runner","namespace":"acme","name":"gone","target":"runner","dir":"/tmp/gone","version":"1.0.0","present":false}]}' ;;
   install)

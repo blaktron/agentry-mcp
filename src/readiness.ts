@@ -31,7 +31,10 @@ export interface ReadinessCheck {
 
 /** The readiness block a preview carries. */
 export interface Readiness {
-  /** No check failed: the run gets past the CLI's preflight, as far as doctor can tell. */
+  /**
+   * No check failed, and the model and the engine were among the checks:
+   * the run gets past the CLI's preflight, as far as doctor can tell.
+   */
   ready: boolean;
   /** What doctor was asked about: this machine, or this machine and one release. */
   checked: string;
@@ -61,7 +64,7 @@ const DOCTOR_TIMEOUT_MS = 120_000;
 
 /**
  * The facets a person reads first, in this order, and the check names each
- * gathers (a name, or a prefix ending in ":" or "."). Every other failing or
+ * gathers (a name, or a prefix ending in ":"). Every other failing or
  * warning check follows under its own name.
  */
 const FACETS: { label: string; names: string[] }[] = [
@@ -73,9 +76,7 @@ const FACETS: { label: string; names: string[] }[] = [
 ];
 
 function inFacet(check: ReadinessCheck, names: string[]): boolean {
-  return names.some((n) =>
-    n.endsWith(":") || n.endsWith(".") ? check.name.startsWith(n) : check.name === n,
-  );
+  return names.some((n) => (n.endsWith(":") ? check.name.startsWith(n) : check.name === n));
 }
 
 function isCheck(v: unknown): v is ReadinessCheck {
@@ -161,6 +162,20 @@ export async function readiness(
       true,
     );
   }
+  // Doctor exits in the cli class only when a check failed; one that exits
+  // so with no failing check, or that checked nothing, is a report this
+  // server does not understand, never a ready machine.
+  const failed = checks.some((c) => c.status === "fail");
+  if (checks.length === 0 || (env.exitClass === "cli" && !failed)) {
+    return text(
+      `${tool}: the CLI's doctor report ${checks.length === 0 ? "lists no checks" : "exited in the cli class with no failing check"}; ` +
+        "nothing was done. Run `agentry doctor` in a terminal to see the machine's state.",
+      true,
+    );
+  }
+  // Ready means the two checks every run needs were made and passed.
+  const checked = (name: string) => checks.some((c) => c.name === name);
+  const ready = !failed && checked("model") && checked("docker");
   const where =
     target.local !== undefined
       ? `this machine and the workspace ${target.local}`
@@ -168,7 +183,7 @@ export async function readiness(
         ? `this machine and ${target.ref}`
         : "this machine";
   return {
-    ready: !checks.some((c) => c.status === "fail"),
+    ready,
     checked: where,
     checks: checks.map((c) => ({
       name: c.name,
@@ -186,10 +201,13 @@ export function isReadiness(v: Readiness | CallToolResult): v is Readiness {
 
 /** The readiness in words, for the summary a person reads: whether it can start, then each line. */
 export function readinessWords(r: Readiness): string[] {
+  const failed = r.checks.some((c) => c.status === "fail");
   return [
     r.ready
-      ? `Ready to start: yes (agentry doctor checked ${r.checked}).`
-      : `Ready to start: no — a run would fail at the CLI's preflight (agentry doctor checked ${r.checked}).`,
+      ? `Ready to start: yes — no check failed (agentry doctor checked ${r.checked}).`
+      : failed
+        ? `Ready to start: no — a run would fail at the CLI's preflight (agentry doctor checked ${r.checked}).`
+        : `Ready to start: unknown — doctor did not check the model key or the engine (it checked ${r.checked}).`,
     ...r.lines.map((l) => `  ${l}`),
   ];
 }
