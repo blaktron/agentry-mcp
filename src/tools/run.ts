@@ -90,13 +90,19 @@ export function registerRunTools(d: Driver): void {
     {
       description:
         "Run a QuickAgent autonomously with the installed agentry CLI, in two calls. Without `confirm`: a " +
-        "preview (`agentry run --plan --json`) — the compiled run plan: the release that resolved, its digest, " +
-        "the capabilities and enforcement a run would apply, the tools it would be served, the gateway and proxy " +
-        "shape, the budgets, the attestation verdict and every refusal a run would meet (`refusals`) — plus `digest`; nothing " +
-        "runs, nothing is recorded. Show the person what the run may reach and do, and only when they agree " +
-        "call again with `confirm` set to that digest: the server re-plans, refuses if anything changed, then " +
-        "runs `agentry run --mode autonomous --output-format json` and returns the CLI's result envelope " +
-        "(status, exitClass, result, usage, receipts) with `receiptsDir`, `resultFile` and `outDir` beside it. " +
+        "preview (`agentry run --plan --json`, then `agentry doctor <ref> --json`): `summary`, the contract in words " +
+        "for the person (what runs and for how long, the model and how it is paid, what it may reach on the network, " +
+        "what it reads and writes, where its result goes, every refusal, and whether it can start); `readiness`, " +
+        "doctor's checks on this machine and the release (the model key's variable, the container engine, the images, " +
+        "the registry sign-in, each declared secret) with `ready` and one line each; the compiled run plan under `plan` " +
+        "(the release that resolved, its digest, the capabilities and enforcement a run would apply, the tools it would " +
+        "be served, the gateway and proxy shape, the budgets, the attestation verdict) and every refusal a run would " +
+        "meet (`refusals`); plus `digest`, which covers all of it. Nothing runs, nothing is recorded. Show the person the " +
+        "summary (not the raw plan), and only when they agree call again with `confirm` set to that digest: the server " +
+        "re-plans and re-checks, refuses if anything changed, then runs `agentry run --mode autonomous --output-format " +
+        "json` and returns the CLI's result envelope (status, exitClass, result, usage, receipts) with `receiptsDir`, " +
+        "`resultFile` and `outDir` beside it. A run whose exit class is not ok comes back as a tool error (`isError`) " +
+        "carrying that envelope: read its exitClass and reason, and never report it as finished. " +
         "The run's deliverables, the files it was for, come back after the envelope: text ones inline (up to 256 KiB " +
         "each and 1 MiB in all), the rest as links to the delivered copy or the file in the run folder, each only " +
         "after its bytes match the SHA-256 the runner listed; `deliverables` in the envelope says what came of each. " +

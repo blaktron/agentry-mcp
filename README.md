@@ -106,12 +106,12 @@ person before the write.
 | `agentry_uninstall`      | `agentry uninstall --plan --json`, then `agentry uninstall --json`   | the preview with a `digest`, then what was removed                |
 | `agentry_list_installed` | `agentry list --json`                                                | every install record, with `present` (its directory still exists) |
 
-| Tool               | Runs                                                                                             | Returns                                                                                                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agentry_setup`    | `agentry setup --json` (with or without the image pulls)                                         | the policy as configured — provider, model, the key's variable **name** — and whether the images are ready                                    |
-| `agentry_run`      | `agentry run --plan --json`, then `agentry run --mode autonomous --output-format json` consented | the run plan with a `digest`, then the CLI's result envelope with `receiptsDir`, `resultFile`, `outDir` beside it, and the run's deliverables |
-| `agentry_deliver`  | `agentry deliver RUN-FOLDER --json` consented                                                    | a preview of the run's deliverables, the folder and the destinations with a `digest`, then the CLI's deliveries                               |
-| `agentry_validate` | `agentry validate DIR --json`                                                                    | the rules and scan findings as data, and whether publish would pass                                                                           |
+| Tool               | Runs                                                                                                                               | Returns                                                                                                                                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agentry_setup`    | `agentry setup --json` (with or without the image pulls)                                                                           | the policy as configured — provider, model, the key's variable **name** — and whether the images are ready                                                                                                                   |
+| `agentry_run`      | `agentry run --plan --json` and `agentry doctor <ref> --json`, then `agentry run --mode autonomous --output-format json` consented | the summary in words, the readiness block and the run plan with a `digest`, then the CLI's result envelope with `receiptsDir`, `resultFile`, `outDir` beside it, and the run's deliverables; a failure class is a tool error |
+| `agentry_deliver`  | `agentry deliver RUN-FOLDER --json` consented                                                                                      | a preview of the run's deliverables, the folder and the destinations with a `digest`, then the CLI's deliveries                                                                                                              |
+| `agentry_validate` | `agentry validate DIR --json`                                                                                                      | the rules and scan findings as data, and whether publish would pass                                                                                                                                                          |
 
 `agentry_setup`'s `provider` is one of `anthropic`, `openai`, `google`,
 `vultr` (Vultr Serverless Inference, key variable `VULTR_INFERENCE_API_KEY`;
@@ -123,7 +123,21 @@ in with a provider's own account (_Connect your account_) stays in a terminal
 (`agentry setup`) or the desktop.
 
 A run's preview is the CLI's compiled run plan with the attestation verdict
-and every refusal a run would meet. A run stops at `timeoutSeconds`, or at the
+and every refusal a run would meet, under `plan`, with two things read before
+the person is asked: `summary`, the contract in words (what runs and for how
+long, the model and how it is paid, what the run may reach on the network,
+what it reads and writes, where its result goes, every refusal, and whether
+it can start), and `readiness`, the report of `agentry doctor <ref> --json`
+(`doctor --local DIR` for a workspace): whether the model key's variable is
+set, the container engine answers, the images are present, the registry
+sign-in holds and each declared secret resolves, each check as the CLI wrote
+it with its remedy, and `ready` when none failed and the model and the engine
+were among the checks. Both are in the digest, so
+a key set or an engine stopped between the two calls refuses the confirm. A
+run whose exit class is not `ok` comes back as a tool error (`isError`)
+whose content is still the envelope, with the CLI's `exitClassName`,
+`exitClassMeaning` and `retryLikelyHelps` beside `exitClass` when the CLI
+printed them. A run stops at `timeoutSeconds`, or at the
 runner policy's own budget when the call names none: the CLI ends it, the
 server sends SIGINT 30 s later if the process is still there, and kills it
 60 s after that. Progress streams as MCP progress notifications when the
@@ -164,12 +178,12 @@ Interactive sessions launch `agentry run --mode interactive
 and an event pipe on descriptor 3. One session runs at a time. Windows uses
 the terminal CLI because the pipe protocol is unavailable there.
 
-| Tool                    | Runs                                                                                                                       | Returns                                                                                         |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `agentry_session_start` | `agentry run --plan --json --mode interactive`, then `agentry run --mode interactive` consented, over the session protocol | the plan with a `digest`, then the session id, the output folder and the receipts directory     |
-| `agentry_session_send`  | a JSON send command to the open chat session                                                                               | the agent's reply as the events receipt recorded it, the tools it called, the usage             |
-| `agentry_session_add`   | a consented JSON add command to the open chat session                                                                      | staged file submission; collect its notice or refusal with send                                 |
-| `agentry_session_close` | a JSON end command to the open chat session, then the CLI's teardown                                                       | why the session ended, the envelope's status and result, the transcript, the receipts directory |
+| Tool                    | Runs                                                                                                                                                         | Returns                                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `agentry_session_start` | `agentry run --plan --json --mode interactive` and `agentry doctor <ref> --json`, then `agentry run --mode interactive` consented, over the session protocol | the summary, the readiness block and the plan with a `digest`, then the session id, the output folder and the receipts directory |
+| `agentry_session_send`  | a JSON send command to the open chat session                                                                                                                 | the agent's reply as the events receipt recorded it, the tools it called, the usage                                              |
+| `agentry_session_add`   | a consented JSON add command to the open chat session                                                                                                        | staged file submission; collect its notice or refusal with send                                                                  |
+| `agentry_session_close` | a JSON end command to the open chat session, then the CLI's teardown                                                                                         | why the session ended, the envelope's status and result, the transcript, the receipts directory; a failure class is a tool error |
 
 Persistent agents run in the background once started and keep their
 conversation from one start to the next: the Assistant and the Coding agent.
@@ -217,12 +231,12 @@ Knowledge and Voice metadata; the confirm re-reads those facts and refuses
 changes. These runs use the person's keys and can incur model, AI Review and
 search charges.
 
-| Tool                      | Runs                                                     | Returns                                                   |
-| ------------------------- | -------------------------------------------------------- | --------------------------------------------------------- |
-| `agentry_draft`           | `agentry draft --output-format json`                     | draft/package and receipts                                |
-| `agentry_review`          | `agentry review DIR --json`                              | Examiner report and expected or undetermined gate outcome |
-| `agentry_knowledge_build` | `agentry knowledge create/add --output-format json`      | Creator build report, the sources it fetched, receipts    |
-| `agentry_voice_build`     | `agentry voice create/improve/edit --output-format json` | Voice Writer build report, each page's outcome, receipts  |
+| Tool                      | Runs                                                     | Returns                                                                                                  |
+| ------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `agentry_draft`           | `agentry draft --output-format json`                     | the operation's summary, readiness and facts with a `digest`, then the draft/package and receipts        |
+| `agentry_review`          | `agentry review DIR --json`                              | the same preview, then the Examiner report and expected or undetermined gate outcome                     |
+| `agentry_knowledge_build` | `agentry knowledge create/add --output-format json`      | the same preview (the sources it will fetch among the facts), then the Creator build report and receipts |
+| `agentry_voice_build`     | `agentry voice create/improve/edit --output-format json` | the same preview, then the Voice Writer build report, each page's outcome, receipts                      |
 
 A knowledge build takes git repositories (`repos`, https, with `@ref` for a
 branch, tag or commit) and file addresses (`urls`) beside its files, and a

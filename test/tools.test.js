@@ -82,7 +82,7 @@ test("the CLI's JSON comes back whatever the exit class: doctor's failing checks
   assert.equal(r.isError, undefined, "a JSON report is not an error");
   const { json } = envelope(r);
   assert.equal(json.exitClass, "cli");
-  assert.equal(json.result.checks[0].name, "docker");
+  assert.ok(json.result.checks.some((c) => c.name === "docker" && c.status === "ok"));
 });
 
 test("every exit class without JSON is a tool error naming the class, with the CLI's stderr", async () => {

@@ -97,6 +97,53 @@ export function toToolResult(what: string, r: CliResult): ToolResult {
   );
 }
 
+/**
+ * The exit-class words the CLI prints beside `exitClass` when it has them:
+ * the class's name, its meaning in a phrase, and whether retrying the same
+ * run is likely to help. Carried beside the server's own `exitClass` when
+ * the CLI's envelope has them, absent otherwise.
+ */
+export interface ExitClassWords {
+  exitClassName?: string;
+  exitClassMeaning?: string;
+  retryLikelyHelps?: boolean;
+}
+
+export function exitClassWords(result: unknown): ExitClassWords {
+  const r = result as Record<string, unknown> | null;
+  if (!r || typeof r !== "object") return {};
+  const out: ExitClassWords = {};
+  if (typeof r.exitClassName === "string") out.exitClassName = r.exitClassName;
+  if (typeof r.exitClassMeaning === "string") out.exitClassMeaning = r.exitClassMeaning;
+  if (typeof r.retryLikelyHelps === "boolean") out.retryLikelyHelps = r.retryLikelyHelps;
+  return out;
+}
+
+/**
+ * The result of a tool that started a run (a QuickAgent run, a draft, a
+ * review, a build): the envelope as the CLI wrote it, and `isError` set
+ * when its exit class is not ok, so a host reads a classed failure as the
+ * failure it is and never as a finished run. The envelope stays the
+ * content: the class, the CLI's reason and the receipts are what the host
+ * acts on. A result that is already an error, or not JSON, is returned as
+ * it is.
+ */
+export function runOutcome(r: ToolResult): ToolResult {
+  if (r.isError) return r;
+  const first = r.content[0];
+  if (!first || first.type !== "text") return r;
+  const parsed = parseJSON(first.text);
+  if (parsed === undefined) return r;
+  const env = parsed.value as (Envelope & ExitClassWords & { result?: unknown }) | null;
+  if (!env || typeof env !== "object" || typeof env.exitClass !== "string") return r;
+  const withWords = { ...env, ...exitClassWords(env.result) };
+  const content = [
+    { type: "text" as const, text: JSON.stringify(withWords) },
+    ...r.content.slice(1),
+  ];
+  return env.exitClass === "ok" ? { ...r, content } : { ...r, content, isError: true };
+}
+
 function parseJSON(text: string): { value: unknown } | undefined {
   if (text.trim() === "") return undefined;
   try {

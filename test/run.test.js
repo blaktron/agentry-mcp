@@ -566,7 +566,8 @@ test("a run past its timeout gets SIGINT; the envelope the CLI's teardown wrote 
     arguments: { ref: "acme/widget", confirm: p.digest, timeoutSeconds: 1 },
   });
   assert.ok(Date.now() - started < 20_000, "the run was interrupted");
-  assert.equal(r.isError, undefined, r.content[0].text);
+  // An interrupted run ended in a failure class: a tool error, the envelope its content.
+  assert.equal(r.isError, true, r.content[0].text);
   const out = JSON.parse(r.content[0].text);
   assert.equal(out.exitClass, "cli");
   assert.equal(out.result.error, "interrupted");
@@ -592,7 +593,8 @@ test("a run refused for its inputs comes back as the envelope, each refused file
     name: "agentry_run",
     arguments: { ref: "acme/widget", confirm: p.digest },
   });
-  assert.equal(r.isError, undefined, r.content[0].text);
+  // A refused run is a tool error whose content is still the CLI's envelope.
+  assert.equal(r.isError, true, r.content[0].text);
   const out = JSON.parse(r.content[0].text);
   assert.equal(out.exitClass, "policy");
   assert.deepEqual(out.result.reason, { code: "input-refused", detail: "malware" });
