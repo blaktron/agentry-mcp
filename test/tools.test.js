@@ -129,3 +129,15 @@ test("a hung CLI is killed at the timeout and reported as such", async () => {
   assert.equal(r.isError, true);
   assert.match(r.content[0].text, /timed out after 300ms/);
 });
+
+test("agentry_info passes the run object through and says to answer its questions in intake", async () => {
+  const { client } = await connect();
+  const { tools } = await client.listTools();
+  const info = tools.find((t) => t.name === "agentry_info");
+  assert.match(info.description, /`intake`, each question it asks before a run/);
+  assert.match(info.description, /agentry_run answers the questions in its intake argument by id/);
+  const r = await client.callTool({ name: "agentry_info", arguments: { ref: "acme/widget" } });
+  assert.notEqual(r.isError, true);
+  assert.match(r.content[0].text, /"type": ?"repository"/);
+  assert.match(r.content[0].text, /"guide"/);
+});
