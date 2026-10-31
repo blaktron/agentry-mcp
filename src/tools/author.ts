@@ -8,6 +8,8 @@ import type { ServerRequest, ServerNotification } from "@modelcontextprotocol/sd
 import { ArgumentError, flag, value } from "../argv.js";
 import { confirmed, isConsent, previewText, runPlan } from "../consent.js";
 import { guard, type Driver } from "../driver.js";
+import { runOutcome } from "../envelope.js";
+import { isReadiness, readiness, readinessWords, type Readiness } from "../readiness.js";
 import { fingerprint, localPackPaths } from "../snapshot.js";
 import { progressSink, TEARDOWN_GRACE_MS } from "../run.js";
 import { registerTool } from "../toolargs.js";
@@ -124,7 +126,11 @@ async function execute(
   }
   const inputs = [];
   for (const path of paths) inputs.push({ path, digest: await fingerprint(path, d.cwd) });
-  const facts = {
+  // Whether the built-in's run can start: doctor on this machine (the model
+  // key, the engine, the images), re-read at confirm with the other facts.
+  const ready = await readiness(d, tool, { policy: a.policy, registry: a.registry });
+  if (!isReadiness(ready)) return ready;
+  const operation = {
     tool,
     argv,
     inputs,
@@ -135,10 +141,14 @@ async function execute(
     ...(sourceFacts.fetches?.length ? { fetches: sourceFacts.fetches } : {}),
     ...(sourceFacts.review ? { review: sourceFacts.review } : {}),
   };
+  const summary = operationSummary(tool, a, paths, sourceFacts, ready);
+  const facts = { ...operation, readiness: ready, summary };
   if (a.confirm === undefined)
     return previewText(
       {
-        operation: facts,
+        summary,
+        readiness: ready,
+        operation,
         writes: false,
         note: "Operation preview, not a compiled CLI run plan. The CLI's embedded built-in runs with the named inputs and policy, uses the person's model and review keys, and can incur model/search charges. Review the input paths, web choice, output and budgets before confirming.",
       },
@@ -146,15 +156,60 @@ async function execute(
     );
   const consent = await confirmed(d.server, tool, a.confirm, facts, {
     unsigned: false,
-    ask: `Execute ${tool}? Inputs: ${paths.join(", ") || "text in the operation"}.${sourceFacts.fetches?.length ? ` Fetched first: ${sourceFacts.fetches.map((f) => f.address).join(", ")}.` : ""} Output: ${a.out}. Budget: ${a.timeoutSeconds}s. Model and review/search charges may apply.`,
+    ask: `Execute ${tool}? Inputs: ${paths.join(", ") || "text in the operation"}.${sourceFacts.fetches?.length ? ` Fetched first: ${sourceFacts.fetches.map((f) => f.address).join(", ")}.` : ""} Output: ${a.out}. Budget: ${a.timeoutSeconds}s. Model and review/search charges may apply. ${readinessWords(ready).join(" ")}`,
   });
   if (!isConsent(consent)) return consent;
-  // These commands have no terminal capability gate and take no bypass flags.
-  return d.run(tool, argv, {
-    timeoutMs: a.timeoutSeconds * 1000 + d.runTimeoutSlackMs,
-    graceMs: TEARDOWN_GRACE_MS,
-    onStderrLine: progressSink(extra),
-  });
+  // These commands have no terminal capability gate and take no bypass
+  // flags. A build that ends in a failure class is a tool error carrying
+  // the CLI's envelope.
+  return runOutcome(
+    await d.run(tool, argv, {
+      timeoutMs: a.timeoutSeconds * 1000 + d.runTimeoutSlackMs,
+      graceMs: TEARDOWN_GRACE_MS,
+      onStderrLine: progressSink(extra),
+    }),
+  );
+}
+
+/** What each built-in is, in a phrase, for the summary. */
+const BUILTIN: Record<string, string> = {
+  agentry_draft: "Draft or revise a QuickAgent with the Drafter (agentry draft)",
+  agentry_review: "Review a QuickAgent workspace with the Examiner (agentry review)",
+  agentry_knowledge_build: "Build a Knowledge pack with the Creator (agentry knowledge)",
+  agentry_voice_build: "Build a Writing Voice with the Voice Writer (agentry voice)",
+};
+
+/**
+ * The operation in words, for the person: what runs, what it reads, what
+ * it fetches, where it writes, its budget, what it spends, and the
+ * readiness lines. In the digest with the rest of the facts.
+ */
+function operationSummary(
+  tool: string,
+  a: Common,
+  paths: string[],
+  sourceFacts: SourceFacts,
+  ready: Readiness,
+): string {
+  const budget = [
+    `up to ${a.timeoutSeconds} s`,
+    a.maxCost ? `at most $${a.maxCost}` : "",
+    a.maxTurns ? `at most ${a.maxTurns} tool calls` : "",
+  ].filter(Boolean);
+  const lines = [
+    `${BUILTIN[tool] ?? tool}, ${budget.join(", ")}.`,
+    `Reads: ${paths.length ? paths.join(", ") : "the text in the operation"}.`,
+    `Network: ${
+      sourceFacts.fetches?.length
+        ? `fetches ${sourceFacts.fetches.map((f) => `${f.address} (${f.host})`).join(", ")} before the run`
+        : "no fetch before the run"
+    }; the built-in's own web tools follow its web choice and the runner policy.`,
+    `Writes: its report and receipts under ${a.out}.`,
+    `Cost: the person's model key, and review or search charges where the built-in uses them.`,
+    ...(sourceFacts.review ? [`Review: ${sourceFacts.review}.`] : []),
+    ...readinessWords(ready),
+  ];
+  return lines.join("\n");
 }
 
 export function registerAuthorTools(d: Driver): void {
@@ -163,7 +218,7 @@ export function registerAuthorTools(d: Driver): void {
     "agentry_draft",
     {
       description:
-        "Draft or revise a QuickAgent with agentry draft --output-format json (the Drafter). Two calls: an operation preview, then confirm with its digest after agreement. Reads the description and optional Knowledge; uses AI Review and may search the web. Returns the draft and receipts; inspect the package before publishing in a terminal.",
+        "Draft or revise a QuickAgent with agentry draft --output-format json (the Drafter). Two calls: an operation preview (its `summary` in words and the machine's `readiness` from `agentry doctor`, under one digest), then confirm with its digest after agreement. A draft that ends in a failure class is a tool error carrying the CLI's envelope. Reads the description and optional Knowledge; uses AI Review and may search the web. Returns the draft and receipts; inspect the package before publishing in a terminal.",
       inputSchema: {
         ...common,
         descriptionFile: z.string().optional(),
@@ -213,7 +268,7 @@ export function registerAuthorTools(d: Driver): void {
     "agentry_review",
     {
       description:
-        "Review a local QuickAgent with agentry review DIR --json (the Examiner). Two calls: operation preview and confirm. Runs registry rules and AI Review using the person's keys; returns report.json findings and an expected gate outcome, which may be undetermined. Publication still runs the registry's pipeline.",
+        "Review a local QuickAgent with agentry review DIR --json (the Examiner). Two calls: operation preview (summary in words, readiness, digest) and confirm; a failure class is a tool error carrying the envelope. Runs registry rules and AI Review using the person's keys; returns report.json findings and an expected gate outcome, which may be undetermined. Publication still runs the registry's pipeline.",
       inputSchema: { ...common, dir: z.string() },
       annotations: writes,
     },
@@ -227,7 +282,7 @@ export function registerAuthorTools(d: Driver): void {
     "agentry_knowledge_build",
     {
       description:
-        "Create or extend a Knowledge pack with agentry knowledge create/add --output-format json (the Creator). Two calls: operation preview and confirm. Sources are files, git repositories (repos, https with @ref), file addresses (urls), a brief file, or any mix; the CLI fetches each repository or address before the run, through a proxy to its host alone, and the preview lists them. The explicit web choice is shown before the model runs. Returns the build report, the sources it fetched, and receipts. A private repository's token is the one a terminal build saved for its host in the system keychain; the server never takes one. Account upload/export/delete stay in a terminal.",
+        "Create or extend a Knowledge pack with agentry knowledge create/add --output-format json (the Creator). Two calls: operation preview (summary in words, readiness from `agentry doctor`, digest) and confirm; a build that ends in a failure class is a tool error carrying the envelope. Sources are files, git repositories (repos, https with @ref), file addresses (urls), a brief file, or any mix; the CLI fetches each repository or address before the run, through a proxy to its host alone, and the preview lists them. The explicit web choice is shown before the model runs. Returns the build report, the sources it fetched, and receipts. A private repository's token is the one a terminal build saved for its host in the system keychain; the server never takes one. Account upload/export/delete stay in a terminal.",
       inputSchema: {
         ...common,
         timeoutSeconds: common.timeoutSeconds.default(3600),
@@ -281,7 +336,7 @@ export function registerAuthorTools(d: Driver): void {
     "agentry_voice_build",
     {
       description:
-        "Create, improve or AI-edit a Writing Voice with agentry voice create/improve/edit --output-format json (the Voice Writer). Two calls: operation preview and confirm. Reads writing samples (files) and pages of the person's writing (urls, https), and an optional brief (edit uses note); each page is fetched first and read by AI Review with the person's own TypeSafe key, which a build with urls needs. Returns the build, what became of each page, and receipts. This changes this computer's voice unless write names a VOICE.md output file.",
+        "Create, improve or AI-edit a Writing Voice with agentry voice create/improve/edit --output-format json (the Voice Writer). Two calls: operation preview (summary in words, readiness, digest) and confirm; a failure class is a tool error carrying the envelope. Reads writing samples (files) and pages of the person's writing (urls, https), and an optional brief (edit uses note); each page is fetched first and read by AI Review with the person's own TypeSafe key, which a build with urls needs. Returns the build, what became of each page, and receipts. This changes this computer's voice unless write names a VOICE.md output file.",
       inputSchema: {
         ...common,
         action: z.enum(["create", "improve", "edit"]),

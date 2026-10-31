@@ -11,9 +11,10 @@
  * run would enforce (the contract, the tools, the gateway, the proxy, the
  * budgets) — with the attestation verdict and every refusal a run would
  * meet, printed without asking or recording anything.
- * The digest is over that whole plan. The consented flags are spelled in
- * consent.ts only; this file hands it the argv to append to, and the
- * preview carries neither.
+ * The digest is over that whole plan, the machine's readiness for it
+ * (`agentry doctor`, src/readiness.ts) and the summary in words the person
+ * reads. The consented flags are spelled in consent.ts only; this file
+ * hands it the argv to append to, and the preview carries neither.
  */
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -42,7 +43,13 @@ import {
   type PlanRefusal,
 } from "./consent.js";
 import type { Driver } from "./driver.js";
-import { tail, toolText as text } from "./envelope.js";
+import { runOutcome, tail, toolText as text } from "./envelope.js";
+import {
+  isReadiness,
+  readiness as readinessOf,
+  readinessWords,
+  type Readiness,
+} from "./readiness.js";
 
 /**
  * The budget the server assumes when neither the call nor the compiled plan
@@ -146,6 +153,36 @@ export interface RunArgs {
   acceptUnscanned?: boolean;
 }
 
+/** The compiled plan's fields the summary in words reads; everything else passes through. */
+export interface CompiledPlan {
+  budgets?: { timeoutSeconds?: number; maxTurns?: number; maxCostUsd?: number };
+  capabilities?: {
+    egressMode?: string;
+    egressHosts?: string[];
+    fsReadMode?: string;
+    fsReadPaths?: string[];
+    fsWriteMode?: string;
+    fsWritePaths?: string[];
+    execCommands?: string[];
+    dataAccess?: string[];
+    webTools?: boolean;
+    webRender?: boolean;
+    targetHosts?: string[];
+    browser?: unknown;
+    scratch?: boolean;
+    pdf?: boolean;
+  };
+  tools?: string[];
+  harness?: {
+    adapter?: string;
+    model?: string;
+    agent?: { env?: { fromInference?: boolean }[] };
+    host?: { env?: { fromInference?: boolean }[] };
+    modelSignIn?: { provider?: string };
+  };
+  [k: string]: unknown;
+}
+
 /** The run plan the CLI prints; the fields consent reads. */
 export interface RunPlan {
   ref: string;
@@ -155,7 +192,7 @@ export interface RunPlan {
   modes: string[];
   summary?: string;
   /** The compiled plan, canonical: what the run enforces. */
-  plan: { budgets?: { timeoutSeconds?: number }; [k: string]: unknown };
+  plan: CompiledPlan;
   /** The receipt's runPlanSha256 for that plan. */
   planSha256: string;
   contract: unknown;
@@ -217,6 +254,91 @@ function commonFlags(argv: string[], a: RunArgs, mode: RunMode): void {
       throw new ArgumentError(`intake id ${JSON.stringify(id)} is not an identifier`);
     argv.push("--intake", `${id}=${value(`intake.${id}`, v)}`);
   }
+}
+
+/** A list in words, or what to say when it is empty. */
+function listed(items: string[] | undefined, none: string): string {
+  return items?.length ? items.join(", ") : none;
+}
+
+/** How the run's model is paid for, from the compiled plan. */
+function costClass(p: RunPlan): string {
+  const h = p.plan.harness;
+  const credits = [...(h?.agent?.env ?? []), ...(h?.host?.env ?? [])].some((e) => e.fromInference);
+  if (credits) return "paid with your Agentry credits";
+  if (h?.modelSignIn)
+    return `spends your ${h.modelSignIn.provider ?? "model"} plan through its sign-in`;
+  return "paid with your own provider key";
+}
+
+/**
+ * The contract in words, for the person: what runs and for how long, the
+ * model and how it is paid, what the run may reach on the network, what it
+ * reads and writes, where its result goes, what it signs in with, every
+ * refusal, and the readiness lines. Everything here is read from the plan
+ * the digest covers; the summary is in the digest too.
+ */
+export function runSummary(
+  p: RunPlan,
+  a: RunArgs,
+  mode: RunMode,
+  timeoutSeconds: number,
+  sends: { folder: string; destinations: string[] },
+  secrets: SignIn[],
+  refusals: PlanRefusal[],
+  ready: Readiness,
+): string {
+  const cap = p.plan.capabilities ?? {};
+  const budgets = p.plan.budgets ?? {};
+  const verb = mode === "interactive" ? "Start an interactive session with" : "Run";
+  const network =
+    cap.egressMode === "all"
+      ? "any host on the network"
+      : cap.egressMode === "hosts"
+        ? `only ${listed(cap.egressHosts, "the hosts it declares")}`
+        : "no network";
+  const extras = [
+    cap.webTools ? "web search and fetch through the gateway" : "",
+    cap.webRender ? "page rendering" : "",
+    cap.browser ? "a browser" : "",
+    cap.targetHosts?.length ? `the target hosts ${cap.targetHosts.join(", ")}` : "",
+    cap.dataAccess?.length ? `data access: ${cap.dataAccess.join(", ")}` : "",
+  ].filter(Boolean);
+  const reads =
+    cap.fsReadMode === "none" || cap.fsReadMode === undefined
+      ? "nothing of yours"
+      : cap.fsReadMode === "workspace"
+        ? "the workspace"
+        : `${cap.fsReadMode}${cap.fsReadPaths?.length ? ` (${cap.fsReadPaths.join(", ")})` : ""}`;
+  const writes =
+    cap.fsWriteMode === "none" || cap.fsWriteMode === undefined
+      ? "only its report under the output folder"
+      : `${cap.fsWriteMode}${cap.fsWritePaths?.length ? ` (${cap.fsWritePaths.join(", ")})` : ""}, and its report`;
+  const maxCost = a.maxCost ?? budgets.maxCostUsd;
+  const maxTurns = a.maxTurns ?? budgets.maxTurns;
+  const budget = [
+    mode === "interactive" ? "" : `up to ${timeoutSeconds} s`,
+    maxCost ? `at most $${maxCost}` : "",
+    maxTurns ? `at most ${maxTurns} tool calls` : "",
+  ].filter(Boolean);
+  const lines = [
+    `${verb} ${p.ref} (${p.mode}; attestation ${p.attestation}${p.signed ? ", signed" : ""})` +
+      `${budget.length ? `, ${budget.join(", ")}` : ""}.`,
+    `Model: ${p.plan.harness?.model ?? "the runner policy's model"}, ${costClass(p)}.`,
+    `Network: ${network}${extras.length ? `; also ${extras.join("; ")}` : ""}.`,
+    `Reads: ${reads}. Writes: ${writes}.` +
+      `${cap.execCommands?.length ? ` Runs the commands: ${cap.execCommands.join(", ")}.` : ""}` +
+      `${a.files?.length ? ` Given read-only: ${a.files.join(", ")}.` : ""}` +
+      `${a.knowledge?.length ? ` Knowledge: ${a.knowledge.join(", ")}.` : ""}`,
+    `Tools served: ${listed(p.plan.tools, "none")}.`,
+    `Delivers to: ${sends.folder}${sends.destinations.length ? `; destinations ${sends.destinations.join(", ")}` : "; no destination"}.`,
+    ...(secrets.length ? [`Signs in with: ${secrets.map(describeSignIn).join("; ")}.`] : []),
+    ...(refusals.length
+      ? [`The CLI would refuse: ${refusals.map((r) => r.message).join("; ")}.`]
+      : []),
+    ...readinessWords(ready),
+  ];
+  return lines.join("\n");
 }
 
 /**
@@ -353,6 +475,18 @@ export async function runConsent(
   }
   const sends = delivery(a, plan, destinationsState);
   const secrets = signIns(a);
+  // Whether the run can start: doctor on this machine and the release the
+  // plan resolved (its install, its declared secrets), re-read at confirm
+  // like every other fact, so a key set or an engine stopped between the
+  // two calls changes the digest.
+  const ready = await readinessOf(d, tool, {
+    ...(a.local !== undefined ? { local: a.local } : { ref: plan.ref }),
+    policy: a.policy,
+    registry: a.registry,
+    adapter: a.adapter,
+  });
+  if (!isReadiness(ready)) return ready;
+  const summary = runSummary(plan, a, mode, timeoutSeconds, sends, secrets, refusals, ready);
   const facts = {
     ...runFacts(plan, a, timeoutSeconds, refusals),
     attachmentInputs,
@@ -360,18 +494,22 @@ export async function runConsent(
     voiceState: voice.plan,
     delivery: sends,
     signIns: secrets,
+    readiness: ready,
+    summary,
   };
 
   if (a.confirm === undefined) {
     return previewText(
       {
-        plan,
+        summary,
+        readiness: ready,
         unsigned,
         unscanned,
         refusals,
         timeoutSeconds,
         delivery: sends,
         ...(secrets.length ? { signIns: secrets } : {}),
+        plan,
         log: tail(log),
         writes: false,
       },
@@ -390,7 +528,8 @@ export async function runConsent(
       `${a.deliverTo !== undefined ? `Copies its deliverables to ${a.deliverTo}. ` : ""}` +
       `${sends.destinations.length ? `Sends its result and deliverables to ${sends.destinations.join(", ")}. ` : ""}` +
       `${secrets.length ? `Signs in with: ${secrets.map(describeSignIn).join("; ")}. ` : ""}` +
-      `Attestation: ${plan.attestation}.${plan.reason ? ` The CLI would ask because: ${plan.reason}.` : ""}`,
+      `Attestation: ${plan.attestation}.${plan.reason ? ` The CLI would ask because: ${plan.reason}.` : ""} ` +
+      readinessWords(ready).join(" "),
   });
   if (!isConsent(ok)) return ok;
   return { consent: ok, plan, timeoutSeconds };
@@ -570,7 +709,8 @@ function describeSignIn(s: SignIn): string {
 /**
  * Adds receiptsDir, resultFile and outDir beside the CLI's envelope, and
  * hands back the run's deliverables: what came of each in the envelope, and
- * after it the files themselves, text inline and the rest as links.
+ * after it the files themselves, text inline and the rest as links. A run
+ * whose exit class is not ok is a tool error carrying that envelope.
  */
 async function decorateRun(r: CallToolResult, cwd?: string): Promise<CallToolResult> {
   if (r.isError) return r;
@@ -589,13 +729,15 @@ async function decorateRun(r: CallToolResult, cwd?: string): Promise<CallToolRes
   // The run's outcome is the CLI's: a deliverable that cannot be handed
   // back never turns a finished run into a tool error.
   const back = await deliverablesBack(env.result, cwd).catch(() => undefined);
-  if (!back) return { content: [{ type: "text", text: JSON.stringify(out) }] };
+  if (!back) return runOutcome({ content: [{ type: "text", text: JSON.stringify(out) }] });
   const withBack = {
     ...out,
     deliverables: back.deliverables,
     ...(back.truncated ? { deliverablesTruncated: true } : {}),
   };
-  return { content: [{ type: "text", text: JSON.stringify(withBack) }, ...back.content] };
+  return runOutcome({
+    content: [{ type: "text", text: JSON.stringify(withBack) }, ...back.content],
+  });
 }
 
 export interface ValidateArgs {

@@ -101,9 +101,19 @@ QuickAgent asks (`intake`), the files it takes (`takes`, `inputView`), its keys
   question it does not answer, or a file the QuickAgent needs.
 
 For `agentry_install`, `agentry_uninstall`, `agentry_run` and
-`agentry_session_start`, omit `confirm` to preview. Show the relevant contract,
-refusals, inputs, output location and budgets. Once the person has agreed to
-those facts, repeat the call with the returned digest. Reuse authorization
+`agentry_session_start`, omit `confirm` to preview. A run's or a session's
+preview puts `summary` first: the contract in words (what runs and for how
+long, the model and how it is paid, what it may reach on the network, what it
+reads and writes, where its result goes, every refusal, and whether it can
+start), then `readiness`, the report of `agentry doctor` for this machine and
+the release: the model key's variable, the container engine, the images, the
+registry sign-in and each declared secret, `ready` when no check failed and
+one line each with the CLI's own remedy. Show the person the summary and the
+readiness lines, never the raw plan (it is there under `plan` when they ask).
+When `ready` is false, say so and give the remedy; the person decides whether
+to go ahead, and a run started anyway fails at the CLI's preflight. For an
+install, show the contract, the refusals and where it lands. Once the person
+has agreed to those facts, repeat the call with the returned digest. Reuse authorization
 already given for those same facts; a changed preview needs the changed facts
 reviewed. Supply `acceptUnsigned` or `acceptUnscanned` only for the person's
 explicit acceptance of that specific verdict. Do not lift another refusal.
@@ -117,8 +127,12 @@ Runs accept task text or an input-file path, file/directory inputs, intake
 answers, Knowledge pack names/directories, a Writing Voice selection, an adapter,
 and time/tool-call/cost budgets. Choose only one of `voice`, `noVoice` or
 `voiceFile`. Receipts record enforcement; report `exitClass`, any CLI failure
-`reason`, the result and receipt/output paths. Inspect the generated artifacts
-before claiming the task succeeded.
+`reason`, the result and receipt/output paths. A run whose exit class is not
+`ok` comes back as a tool error whose content is still the envelope: read
+`exitClass` and `error` there (and `exitClassName`, `exitClassMeaning` and
+`retryLikelyHelps` beside them when the CLI printed them), name the receipts,
+and never report the run as finished. Inspect the generated artifacts before
+claiming the task succeeded.
 
 A run refused because of its inputs names each refused file in the result's
 `refusedInputs`: its `path` (`<archive>/<member>` for a file inside an
@@ -229,8 +243,12 @@ the person set up. The pipe protocol is unavailable on Windows.
 Inspect `agentry_builtins`, `agentry_knowledge_list` and `agentry_voice_status`.
 The four authoring tools are **operation previews**, not compiled run plans:
 local inputs, policy and embedded-package identities are fingerprinted at
-preview and confirm. Show their input paths, web choice, destinations and
-budgets; these runs may spend model, AI Review and search charges.
+preview and confirm. Each preview puts its `summary` in words first and the
+machine's `readiness` (`agentry doctor --json`: the model key, the engine, the
+images) beside it, both in the digest. Show the summary, the input paths, web
+choice, destinations, budgets and the readiness lines; these runs may spend
+model, AI Review and search charges. A build that ends in a failure class is a
+tool error carrying the CLI's envelope.
 
 - `agentry_draft`: provide a description file, a local revision directory, or
   an exact published `reviseRef`. Optional Knowledge is read first; the tool
@@ -277,6 +295,8 @@ An MCP startup failure usually names a missing CLI, version floor or missing
 command. Verify both absolute executable paths and restart after changing
 registration. `agentry_doctor` reports Docker, images, policy and key **names**;
 `agentry_setup` writes provider settings and prepares images. A missing key is
-for the person to configure outside chat. New files or changed policy/attachments
+for the person to configure outside chat; a run preview's `readiness` says so
+before anyone confirms, with the CLI's remedy. New files, a changed
+policy/attachments or a changed readiness (a key set, an engine stopped)
 invalidate a consent digest; preview again. For run failures, retain receipts
 and the CLI's fixed failure reason rather than guessing from narration.

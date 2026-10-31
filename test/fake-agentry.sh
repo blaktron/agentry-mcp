@@ -34,6 +34,11 @@
 #   FAKE_DESTINATIONS  what `destinations list --json` prints (default none saved)
 #   FAKE_DESTINATIONS_FILE  a file whose content, when it exists, is FAKE_DESTINATIONS
 #   FAKE_RUN_REFUSED_INPUTS  the run is refused for its inputs (class policy): this is its refusedInputs, verbatim JSON
+#   FAKE_DOCTOR        the checks `doctor --json` prints, verbatim JSON (default: every check ok)
+#   FAKE_DOCTOR_FILE   a file whose content, when it exists, is FAKE_DOCTOR (so a test can change it between calls)
+#   FAKE_DOCTOR_KEY_UNSET  the model check fails: the key's variable is not set (doctor exits 1)
+#   FAKE_RUN_FAIL      the run (not the plan) fails in the policy class, as with no model key; a draft or review in the gateway class
+#   FAKE_RUN_CLASS_WORDS  the failed run's envelope carries exitClassName, exitClassMeaning and retryLikelyHelps
 #   FAKE_NO_AGENTS     set to make `agent attach --help` print the parent's help (a CLI without attach)
 #   FAKE_AGENT_STATE   what `agent show` says the assistant is (default stopped)
 #   FAKE_AGENT_LINE_FILE  a file whose content, when it exists, is the share entry's consent sentence
@@ -135,11 +140,28 @@ case "$1" in
     fi ;;
   draft|review)
     [ -n "${FAKE_WRITES:-}" ] && echo built >> "$FAKE_WRITES"
+    if [ -n "${FAKE_RUN_FAIL:-}" ]; then echo '{"status":"error","exitCode":13,"exitClass":"gateway","error":"the gateway did not start"}'; exit 13; fi
     echo '{"status":"ok","report":"report.json","reason":"example"}' ;;
   search) echo '{"results":[{"namespace":"acme","name":"widget","modes":["autonomous"],"summary":"x","installs30d":2,"quarantineState":"none"}],"facets":{},"total":1}' ;;
   info) echo '{"agent":{"namespace":"acme","name":"widget"},"latest":{"version":"1.0.0","capabilities":{"network":{"egress":"none"}}},"run":{"intake":[{"id":"repo","type":"repository","required":false,"prompt":"The repository","personsOwn":false,"answer":"The repository'"'"'s https address"}],"takes":["code"],"inputView":"original","secrets":[],"modes":["autonomous"],"guide":{"overview":"Audits a repository."}}}' ;;
   verify) echo '{"ref":"acme/widget@1.0.0","digestMatch":true,"attestation":{"state":"verified"}}' ;;
-  doctor) echo '{"checks":[{"name":"docker","status":"ok"}],"ok":true}' ;;
+  doctor)
+    # The report as the CLI prints it, with the ref when one was given:
+    # FAKE_DOCTOR (or FAKE_DOCTOR_FILE's content) replaces the checks, and
+    # FAKE_DOCTOR_KEY_UNSET makes the model check fail as the CLI does when
+    # the key's variable is not set. A failing check exits 1 (class cli).
+    dchecks="${FAKE_DOCTOR:-}"; [ -n "${FAKE_DOCTOR_FILE:-}" ] && [ -f "$FAKE_DOCTOR_FILE" ] && dchecks=$(cat "$FAKE_DOCTOR_FILE")
+    if [ -z "$dchecks" ]; then
+      model='{"name":"model","status":"ok","detail":"anthropic/claude-sonnet-5-5 (key from $ANTHROPIC_API_KEY)"}'
+      [ -n "${FAKE_DOCTOR_KEY_UNSET:-}" ] && model='{"name":"model","status":"fail","detail":"anthropic/claude-sonnet-5-5: $ANTHROPIC_API_KEY is not set in this environment","remedy":"export ANTHROPIC_API_KEY, or run `agentry setup` to store the key"}'
+      dchecks='[{"name":"policy","status":"ok","detail":"/home/me/.agentry/runner/policy.yaml"},'"$model"',{"name":"secretSource","status":"ok","detail":"env"},{"name":"docker","status":"ok","detail":"Docker Engine 29.0.0 at /var/run/docker.sock"},{"name":"image:gateway","status":"ok","detail":"ghcr.io/blaktron/agentry-mcp-gateway:v0.44.3"},{"name":"image:harness","status":"ok","detail":"docker/docker-agent:1.150.0"},{"name":"registry","status":"ok","detail":"https://r.example reachable (credential stored)"}'
+      dref=""; case "${2:-}" in --*|"") ;; *) dref="$2" ;; esac
+      if [ -n "$dref" ] || has --local; then dchecks="$dchecks"',{"name":"resolve","status":"ok","detail":"acme/widget@1.0.0 (sha256:aaaa)"},{"name":"install","status":"warn","detail":"not installed yet — `agentry run acme/widget@1.0.0 --prepare` downloads, verifies and installs it"},{"name":"secrets","status":"ok","detail":"all 1 declared secret(s) resolve"}'; fi
+      dchecks="$dchecks]"
+    fi
+    dref=""; case "${2:-}" in --*|"") ;; *) dref="$2" ;; esac
+    printf '{%s"checks":%s}\n' "$( [ -n "$dref" ] && printf '"ref":"%s",' "$dref" )" "$dchecks"
+    case "$dchecks" in *'"status":"fail"'*) echo "doctor: 1 check(s) failed" >&2; exit 1 ;; esac ;;
   list) echo '{"path":"/home/me/.config/agentry/installed.yaml","records":[{"registry":"r","namespace":"acme","name":"widget","target":"claude-skill","dir":"/home/me/.claude/skills/widget","version":"1.0.0","present":true},{"registry":"runner","namespace":"acme","name":"gone","target":"runner","dir":"/tmp/gone","version":"1.0.0","present":false}]}' ;;
   install)
     if has --plan; then
@@ -220,6 +242,13 @@ print(out, end="")')
       fi
       if [ -n "${FAKE_RUN_REFUSED_INPUTS:-}" ]; then
         echo '{"status":"error","exitCode":11,"exitClass":"policy","error":"the run was refused before the agent started: malware found in an input","stage":"prepare","reason":{"code":"input-refused","detail":"malware"},"refusedInputs":'"$FAKE_RUN_REFUSED_INPUTS"',"refusedInputsMore":2,"runId":"r1","ref":"acme/widget@1.0.0","outDir":"/tmp/out","resultFile":"/tmp/out/result.json","receipts":{"dir":"/tmp/out/receipts","runPlanSha256":"abc"},"result":""}'
+        exit 11
+      fi
+      if [ -n "${FAKE_RUN_FAIL:-}" ]; then
+        # The run fails in the policy class as it does with no model key;
+        # FAKE_RUN_CLASS_WORDS adds the class's name, meaning and retry hint.
+        words=""; [ -n "${FAKE_RUN_CLASS_WORDS:-}" ] && words=',"exitClassName":"policy","exitClassMeaning":"the runner policy refused the run before the agent started","retryLikelyHelps":false'
+        echo '{"status":"error","exitCode":11,"exitClass":"policy","error":"model key: $ANTHROPIC_API_KEY is not set","stage":"prepare","runId":"r1","ref":"acme/widget@1.0.0","outDir":"/tmp/out","resultFile":"/tmp/out/result.json","receipts":{"dir":"/tmp/out/receipts","runPlanSha256":"abc"},"result":""'"$words"'}'
         exit 11
       fi
       rout="${FAKE_RUN_OUT:-/tmp/out}"; rextra=""
