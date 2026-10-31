@@ -22,8 +22,8 @@ export function registerSessionTools(d: Driver): void {
     {
       description:
         "Start an interactive session with a QuickAgent (`agentry run --mode interactive`), in the same two " +
-        "calls as agentry_run: without `confirm`, a preview of the compiled plan for the interactive mode " +
-        "with a `digest`; with `confirm` set to that digest (and `acceptUnsigned: true` only if the person " +
+        "calls as agentry_run: without `confirm`, a preview of the compiled plan for the interactive mode, " +
+        "with its `summary` in words, the machine's `readiness` from `agentry doctor` and a `digest` over all of it; with `confirm` set to that digest (and `acceptUnsigned: true` only if the person " +
         "accepted an unsigned or local release, `acceptUnscanned: true` only if they accepted an unscanned one), the CLI process is launched over its JSON-line session protocol " +
         "and the call returns once the process launches; startup failures appear on send or close, with the session id, the output folder and the " +
         "receipts directory. Then agentry_session_send for each turn and agentry_session_close to end it. " +
