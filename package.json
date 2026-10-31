@@ -1,12 +1,12 @@
 {
   "name": "@blaktron/agentry-mcp",
-  "version": "0.6.1001",
+  "version": "0.6.1002",
   "private": true,
   "description": "MCP server that drives the installed agentry CLI: search, read contracts, verify, check the machine, install, run and manage QuickAgents from Claude Code, Codex or any MCP host",
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "bin": {
     "agentry-mcp": "./dist/index.js"
@@ -35,8 +35,8 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^22.15.0",
-    "prettier": "^3.6.0",
-    "typescript": "^5.9.3"
+    "@types/node": "^26.6.6",
+    "prettier": "^3.9.10",
+    "typescript": "^7.0.2"
   }
 }

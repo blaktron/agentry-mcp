@@ -18,7 +18,7 @@ Use the registry/site the person chose; default to
 installer and downloads. A development site supplies development artifacts.
 
 1. Check `agentry --version` and `node --version`. This MCP version needs
-   Agentry 0.6.63 or newer and Node 20 or newer. Install or update the CLI with
+   Agentry 0.6.63 or newer and Node 24 or newer. Install or update the CLI with
    that site's installer:
 
    ```sh

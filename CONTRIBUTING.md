@@ -26,7 +26,7 @@ and say in the pull request what you verified and how.
 
 ## Development setup
 
-You need Node 20 or newer. The tests run against a fake `agentry` CLI, so
+You need Node 24 or newer. The tests run against a fake `agentry` CLI, so
 they do not need the real one.
 
 | Command                   | What                                                                       |

@@ -44,7 +44,7 @@ reach that operation, so the server's instructions tell the model not to.
 
 ## Install
 
-Requires Node 20 or newer.
+Requires Node 24 or newer.
 
 ```bash
 git clone https://github.com/blaktron/agentry-mcp && cd agentry-mcp/secureagentry-mcp
