@@ -173,7 +173,9 @@ Multiline and slash-prefixed text are literal JSON data. A timed-out or opening
 turn is collected on the next send with `sent: false`; send the held text again
 after collecting it. `agentry_session_add` previews and confirms a new file,
 then stages it read-only; collect its notice/refusal with send. Close with
-`finish: true` for a final result, or false to quit. One session per server.
+`finish: true` for a final result, or false to quit; a close whose envelope
+ended in a failure class is a tool error carrying the same record. One
+session per server.
 The CLI's pipe protocol is unavailable on Windows; use a terminal session there.
 
 ## Persistent agents

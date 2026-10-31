@@ -131,7 +131,8 @@ it can start), and `readiness`, the report of `agentry doctor <ref> --json`
 (`doctor --local DIR` for a workspace): whether the model key's variable is
 set, the container engine answers, the images are present, the registry
 sign-in holds and each declared secret resolves, each check as the CLI wrote
-it with its remedy, and `ready` when none failed. Both are in the digest, so
+it with its remedy, and `ready` when none failed and the model and the engine
+were among the checks. Both are in the digest, so
 a key set or an engine stopped between the two calls refuses the confirm. A
 run whose exit class is not `ok` comes back as a tool error (`isError`)
 whose content is still the envelope, with the CLI's `exitClassName`,
@@ -182,7 +183,7 @@ the terminal CLI because the pipe protocol is unavailable there.
 | `agentry_session_start` | `agentry run --plan --json --mode interactive` and `agentry doctor <ref> --json`, then `agentry run --mode interactive` consented, over the session protocol | the summary, the readiness block and the plan with a `digest`, then the session id, the output folder and the receipts directory |
 | `agentry_session_send`  | a JSON send command to the open chat session                                                                                                                 | the agent's reply as the events receipt recorded it, the tools it called, the usage                                              |
 | `agentry_session_add`   | a consented JSON add command to the open chat session                                                                                                        | staged file submission; collect its notice or refusal with send                                                                  |
-| `agentry_session_close` | a JSON end command to the open chat session, then the CLI's teardown                                                                                         | why the session ended, the envelope's status and result, the transcript, the receipts directory                                  |
+| `agentry_session_close` | a JSON end command to the open chat session, then the CLI's teardown                                                                                         | why the session ended, the envelope's status and result, the transcript, the receipts directory; a failure class is a tool error |
 
 Persistent agents run in the background once started and keep their
 conversation from one start to the next: the Assistant and the Coding agent.
