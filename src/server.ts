@@ -19,7 +19,7 @@ import { registerSessionTools } from "./tools/session.js";
 import { registerWriteTools } from "./tools/write.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.6.1002";
+export const SERVER_VERSION = "0.6.1003";
 
 export function instructions(bin: string, cliVersion: string): string {
   return [
@@ -31,7 +31,9 @@ export function instructions(bin: string, cliVersion: string): string {
     "A QuickAgent is a reviewable package of instructions published as an immutable, " +
       "content-addressed release. The registry reports each release as scanned, with a finding " +
       "count, and signed or unsigned — never as safe. Say what the registry says. The capability " +
-      "contract on agentry_info is what a run enforces; read it before you propose an install or a run.",
+      "contract on agentry_info is what a run enforces; read it before you propose an install or a run. " +
+      "agentry_info's run object lists the questions a QuickAgent asks before a run and how to answer " +
+      "each: answer them in agentry_run's intake, by id, and ask the person only for what is missing.",
     "",
     "Installing and removing are two calls each: a preview that shows the person the contract (or " +
       "what would be removed) and returns a digest, then a confirm that carries that digest. The " +
