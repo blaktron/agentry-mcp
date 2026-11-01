@@ -95,10 +95,15 @@ to run there instead of on this computer (`agentry run --on`, CLI v0.6.1017 or
 later). The release is verified on this computer and sent over SSH with the
 model key; the runhost verifies it again, runs it under gVisor and seals the
 output to this computer, which opens it into the output folder. The preview's
-readiness is `agentry runhost doctor` for that runhost. A run on a runhost
-takes a published release with no secrets, intake questions, target hosts or
-MCP servers, and none of `files`, `knowledge`, the voice arguments,
-`reportTheme`, `deliverTo` or `destinations` yet.
+readiness is `agentry runhost doctor` for that runhost. With CLI v0.6.1019 or
+later a run on a runhost takes what a run on this computer takes: `files`,
+`knowledge`, the voice arguments, `intake` and `intakeTokens`, `reportTheme`,
+`deliverTo` and `destinations`. The secrets and intake answers are gathered on
+this computer and sent with the files for that run alone; the runhost delivers
+to the destinations and deletes everything it was sent when the run ends. A
+release with target hosts, the target-host sign-ins, a destination on the
+person's own network, and a model sign-in or Agentry credits are not taken on
+a runhost yet.
 
 Setting a runhost up (`agentry runhost add`), removing it (`agentry runhost
 remove`), and later pairing another device, changing its settings and choosing

@@ -34,6 +34,8 @@ export interface CliFeatures {
   compact: boolean;
   /** `run --on <runhost>`: a run on one of the person's remote runhosts. */
   runhosts: boolean;
+  /** `run --on` carrying the run's secrets, files and intake, not a bare release alone. */
+  runhostJobs: boolean;
 }
 
 /** The features of a CLI that has them all (the tests' fake, a current CLI). */
@@ -46,6 +48,7 @@ export const ALL_FEATURES: CliFeatures = {
   tasks: true,
   compact: true,
   runhosts: true,
+  runhostJobs: true,
 };
 
 /** What `agentry --version` said, parsed. */
@@ -329,6 +332,7 @@ export async function checkCli(
       tasks: /tasks <name> \[pause\|resume/.test(tasksHelp.stdout + tasksHelp.stderr),
       compact: /compact <name>/.test(compactHelp.stdout + compactHelp.stderr),
       runhosts: /--on\b/.test(runHelp),
+      runhostJobs: /--on\b[^\n]*secrets, files and intake/.test(runHelp),
     },
   };
 }
