@@ -1,10 +1,16 @@
 // A run on a remote runhost: agentry_run's `on` plans on this computer, takes
 // the runhost's doctor as its readiness, covers `on` in the digest and runs
-// with --on; what a run on a runhost does not carry yet is refused before any
-// plan; an older CLI is told what to update to. agentry_runhost_list passes
+// with --on and the run's files, intake and destinations; what a run on a
+// runhost does not carry yet is refused before any plan; an older CLI is told
+// what to update to. agentry_runhost_list passes
 // the CLI's list through.
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+
+import { ALL_FEATURES } from "../dist/cli.js";
 
 import { connect, receivedArgv } from "./helpers.js";
 
@@ -64,10 +70,8 @@ test("a runhost whose doctor fails is not ready, and the summary says so", async
 test("what a run on a runhost does not carry yet, and a name that is not a runhost's, are refused before any plan", async () => {
   const { client, argvFile } = await connect();
   for (const args of [
-    { ref: "acme/widget", on: "lab", files: ["/tmp/x"] },
-    { ref: "acme/widget", on: "lab", intake: { repo: "https://example.com/r" } },
-    { ref: "acme/widget", on: "lab", destinations: ["hook"] },
-    { ref: "acme/widget", on: "lab", knowledge: ["notes"] },
+    { ref: "acme/widget", on: "lab", hostKeys: { box: "/tmp/k" } },
+    { ref: "acme/widget", on: "lab", hostPasswords: { box: "BOX_PASSWORD" } },
     { local: "/tmp/ws", on: "lab" },
     { ref: "acme/widget", on: "Lab Server" },
     { ref: "acme/widget", on: "lab; id" },
@@ -76,6 +80,61 @@ test("what a run on a runhost does not carry yet, and a name that is not a runho
     assert.equal(r.isError, true, JSON.stringify(args));
   }
   assert.equal(runArgv(argvFile).length, 0, "nothing was planned");
+});
+
+test("a run on a runhost carries its files, intake, knowledge, voice, theme and destinations to the CLI", async () => {
+  const { client, argvFile } = await connect();
+  const dir = mkdtempSync(join(tmpdir(), "agentry-mcp-runhost-"));
+  const notes = join(dir, "notes.txt");
+  writeFileSync(notes, "notes");
+  const args = {
+    ref: "acme/widget",
+    on: "lab",
+    files: [notes],
+    knowledge: ["notes"],
+    intake: { topic: "birds" },
+    destinations: ["hook"],
+    reportTheme: "plain",
+    deliverTo: dir,
+  };
+  const p = await preview(client, args);
+  assert.match(p.summary, /the secrets and intake answers it gathers here, and the run's files/);
+  const r = await client.callTool({
+    name: "agentry_run",
+    arguments: { ...args, confirm: p.digest },
+  });
+  assert.equal(r.isError, undefined, r.content[0].text);
+  const run = runArgv(argvFile).at(-1).join(" ");
+  for (const want of [
+    "--on lab",
+    `--file ${notes}`,
+    "--knowledge notes",
+    "--intake topic=birds",
+    "--destination hook",
+    "--report-theme plain",
+    `--deliver-to ${dir}`,
+  ])
+    assert.ok(run.includes(want), `${want} in ${run}`);
+});
+
+test("a CLI whose run --on carries a release alone is told to update before it is handed files", async () => {
+  const { client, argvFile } = await connect({ FAKE_OLD_RUNHOST: "1" }, {}, undefined, {
+    ...ALL_FEATURES,
+    runhostJobs: false,
+  });
+  for (const args of [
+    { ref: "acme/widget", on: "lab", files: ["/tmp/x"] },
+    { ref: "acme/widget", on: "lab", intake: { repo: "https://example.com/r" } },
+    { ref: "acme/widget", on: "lab", destinations: ["hook"] },
+    { ref: "acme/widget", on: "lab", knowledge: ["notes"] },
+  ]) {
+    const r = await client.callTool({ name: "agentry_run", arguments: args });
+    assert.equal(r.isError, true, JSON.stringify(args));
+    assert.match(r.content[0].text, /update the CLI to v0\.6\.1019/);
+  }
+  assert.equal(runArgv(argvFile).length, 0, "nothing was planned");
+  const ok = await preview(client, { ref: "acme/widget", on: "lab" });
+  assert.match(ok.summary, /Where: the remote runhost lab/);
 });
 
 test("a CLI without run --on is told what to update to", async () => {

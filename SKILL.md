@@ -156,10 +156,14 @@ computer, that run QuickAgents for them. `agentry_runhost_list` lists them.
 To run on one, pass its name as `agentry_run`'s `on`. Use it only when the
 person asked for that runhost by name or chose it. The preview's `summary`
 says where the run goes, and its `readiness` is the runhost's own doctor;
-show both. A run on a runhost takes a published release with no secrets,
-intake questions, target hosts or MCP servers, and no `files`, `knowledge`,
-voice, `reportTheme`, `deliverTo` or `destinations` yet. For those, run on
-this computer.
+show both. A run on a runhost takes everything a run on this computer
+takes, `files`, `knowledge`, the voice, `intake`, `reportTheme`, `deliverTo`
+and `destinations` among them: this computer gathers the secrets and the
+intake answers and sends them, with the files, for that run alone, and the
+runhost deletes them when the run ends. It does not take a release with
+target hosts, the target-host sign-ins, a destination on the person's own
+network, or a model sign-in or Agentry credits yet; for those, run on this
+computer.
 
 Never try to set a runhost up, remove one, pair a device or change its
 settings: those take an administrator's sign-in to the person's server and
