@@ -221,20 +221,34 @@ export interface RunPlan {
 /** What a run on a runhost does not carry yet, by argument; the CLI refuses the same. */
 const NOT_ON_A_RUNHOST: [keyof RunArgs, string][] = [
   ["local", "local (a runhost runs a published release)"],
+  ["hostKeys", "target-host sign-ins"],
+  ["hostPasswords", "target-host sign-ins"],
+  ["hostPassphrases", "target-host sign-ins"],
+  ["hostSudoPasswords", "target-host sign-ins"],
+];
+
+/** What only a CLI whose `--on` carries the whole job takes on a runhost. */
+const ON_A_RUNHOST_WITH_JOBS: [keyof RunArgs, string][] = [
   ["files", "files"],
   ["knowledge", "knowledge"],
   ["voice", "voice"],
   ["voiceFile", "voiceFile"],
   ["intake", "intake"],
   ["intakeTokens", "intakeTokens"],
-  ["hostKeys", "target-host sign-ins"],
-  ["hostPasswords", "target-host sign-ins"],
-  ["hostPassphrases", "target-host sign-ins"],
-  ["hostSudoPasswords", "target-host sign-ins"],
   ["deliverTo", "deliverTo"],
   ["destinations", "destinations"],
   ["reportTheme", "reportTheme"],
 ];
+
+/** Whether a call gave argument v at all. */
+function given(v: unknown): boolean {
+  return (
+    v !== undefined &&
+    v !== false &&
+    !(Array.isArray(v) && v.length === 0) &&
+    !(typeof v === "object" && v !== null && !Array.isArray(v) && Object.keys(v).length === 0)
+  );
+}
 
 /** A runhost's name, as the CLI names them. */
 const RUNHOST_NAME = /^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/;
@@ -250,16 +264,14 @@ function checkOn(d: Driver, a: RunArgs): void {
     throw new ArgumentError(
       `on ${JSON.stringify(a.on)} is not a runhost's name (see agentry_runhost_list)`,
     );
-  for (const [k, what] of NOT_ON_A_RUNHOST) {
-    const v = a[k];
-    if (
-      v !== undefined &&
-      v !== false &&
-      !(Array.isArray(v) && v.length === 0) &&
-      !(typeof v === "object" && v !== null && !Array.isArray(v) && Object.keys(v).length === 0)
-    )
-      throw new ArgumentError(`a run on a runhost does not take ${what} yet`);
-  }
+  for (const [k, what] of NOT_ON_A_RUNHOST)
+    if (given(a[k])) throw new ArgumentError(`a run on a runhost does not take ${what} yet`);
+  if (!d.features.runhostJobs)
+    for (const [k, what] of ON_A_RUNHOST_WITH_JOBS)
+      if (given(a[k]))
+        throw new ArgumentError(
+          `this agentry CLI's run --on does not carry ${what}; update the CLI to v0.6.1019 or later, or run on this computer`,
+        );
 }
 
 function target(a: RunArgs, resolvedRef?: string): string[] {
@@ -395,8 +407,10 @@ export function runSummary(
     ...(a.on !== undefined
       ? [
           `Where: the remote runhost ${a.on}, over SSH. This computer verifies the release and sends it with the ` +
-            `model key; the runhost verifies it again and runs it under gVisor, and seals the output to this ` +
-            `computer, which opens it into the output folder. The plan below is this computer's compile of the same release.`,
+            `model key, the secrets and intake answers it gathers here, and the run's files; the runhost verifies ` +
+            `it again, runs it under gVisor, delivers to its destinations, deletes what it was sent, and seals the ` +
+            `output to this computer, which opens it into the output folder. The plan below is this computer's ` +
+            `compile of the same release.`,
         ]
       : []),
     modelWords(p),
