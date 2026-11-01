@@ -24,7 +24,8 @@ info:
 
 
     Compatibility: changes within `/api/v1` are additive. A release declares
-    `modes`, the set of run modes it supports (autonomous | interactive);
+    `modes`, the set of run modes it supports (autonomous | interactive |
+    persistent);
     the search filter is `?mode=` and the facet is `mode`.
 
 
@@ -124,6 +125,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Meta"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /connectors:
+    get:
+      operationId: getConnectors
+      tags: [meta]
+      summary: Agentry's connectors and this deployment's public client ids.
+      description: >
+        Every connector this build's catalogue holds: the vendor products
+        whose servers Agentry has vetted. A connector whose app is a public
+        client carries the `publicClientId` this deployment registered for
+        it, which a client uses for a local sign-in to that connector's
+        servers; it is absent where the deployment has configured none.
+        No client secret is ever listed.
+      security: []
+      responses:
+        "200":
+          description: The connectors.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorList"
         default:
           $ref: "#/components/responses/Problem"
 
@@ -1886,9 +1910,22 @@ paths:
                     refused on a retired agent (`409
                     agent-retired`): Restore is how a retired agent comes
                     back. It is refused on a fork for good (`409
-                    fork-stays-private`).
+                    fork-stays-private`). Making a QuickAgent public
+                    while one of its versions, other than a yanked or
+                    rejected one, ships a knowledge pack needs
+                    `acknowledgeShippedKnowledge: true`, or the answer is
+                    `409 shipped-knowledge-unacknowledged`, which names the
+                    packs and the versions that ship them.
                   type: string
                   enum: [public, private]
+                acknowledgeShippedKnowledge:
+                  description: >-
+                    The publisher's confirmation that the knowledge packs
+                    the QuickAgent's versions ship become readable by
+                    everyone who can download them once it is public, and
+                    hold no private data. Read only when `visibility` is
+                    `public`; it is not a setting and changes nothing else.
+                  type: boolean
                 autoPublishTags:
                   type: boolean
                 allowForcePush:
@@ -2241,6 +2278,17 @@ paths:
         server re-validates, re-packs deterministically, and compares
         digests: client packing is never trusted).
 
+        A package that ships knowledge packs (the manifest's
+        `knowledge.ships`) makes their contents readable by everyone who can
+        download the release, so the upload must confirm it: the
+        `knowledgeShipping` part, one entry for each pack shipped. Without
+        it the upload is refused `422 knowledge-shipping-unacknowledged`,
+        naming the packs. An entry may claim where the pack was laid down
+        from (`origin`); a claim that is not true is refused `422
+        knowledge-shipping-invalid`, naming the pack. A tag submission (JSON
+        {tag}) and a tag push carry no confirmation, and the version's
+        record says it was published that way.
+
         A deployment with an admission extension (the hosted product's
         subscription tiers) may refuse a submission after every core check
         has passed and before anything is stored: `402` with the problem
@@ -2279,6 +2327,8 @@ paths:
                 digest:
                   type: string
                   description: Client-computed sha256 digest to cross-check.
+                knowledgeShipping:
+                  $ref: "#/components/schemas/KnowledgeShipping"
                 draftRun:
                   type: string
                   format: uuid
@@ -2292,6 +2342,9 @@ paths:
                     scans its manifest and instruction file as a first
                     release's. Otherwise nothing changes. A core registry
                     has no DraftProvenance and never grants it.
+            encoding:
+              knowledgeShipping:
+                contentType: application/json
       responses:
         "202":
           description: Version accepted into the pipeline.
@@ -2299,6 +2352,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentVersion"
+        "422":
+          description: >-
+            The package or its confirmation was refused. Among the
+            problem types, `knowledge-shipping-unacknowledged` (a package
+            that ships packs with no confirmation, or one that leaves a
+            pack out; `packs` names them at the top level of the problem)
+            and `knowledge-shipping-invalid` (an entry names a pack the
+            release does not ship, or claims an origin that is not true;
+            `packs` names it).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
         "402":
           description: >-
             Refused by the deployment's admission extension (problem type
@@ -3566,6 +3632,7 @@ paths:
               properties:
                 url:
                   type: string
+                  description: An absolute https:// URL with a host, and a port from 1 to 65535 if it names one.
                 events:
                   type: array
                   items:
@@ -4529,6 +4596,48 @@ components:
           items:
             type: string
 
+    ConnectorList:
+      type: object
+      required: [connectors]
+      properties:
+        connectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorInfo'
+
+    ConnectorInfo:
+      type: object
+      required: [id, vendor, name, strategy]
+      description: >
+        One connector of Agentry's catalogue. A declared server gets the
+        connector's app only when it is one of the connector's vetted
+        servers, matched by the client from the catalogue it is built with.
+      properties:
+        id:
+          type: string
+          description: Stable id, such as `github` or `microsoft-365`.
+          example: microsoft-365
+        vendor:
+          type: string
+          example: Microsoft
+        name:
+          type: string
+          example: Microsoft 365
+        strategy:
+          type: string
+          description: >
+            How the connector's app signs a person in:
+            `agentry-confidential` (Agentry's web client, whose secret stays
+            with the deployment) or `agentry-public` (a public client id
+            with no secret, listed here when configured).
+          enum: [agentry-confidential, agentry-public]
+        publicClientId:
+          type: string
+          description: >
+            The public client id this deployment registered for the
+            connector (configuration `connectors.publicClients`); absent
+            where none is configured or the strategy takes none.
+
     BrandInfo:
       type: object
       required: [name]
@@ -4772,6 +4881,11 @@ components:
         never lists or reads one; it is consumed only by a registry that
         mounts the vault extension. `voice:read` reads the account's Writing
         Voice and `voice:write` puts, restores, sets and deletes it.
+        `credits:session` opens, renews and ends a credits session, which
+        pays for a run's model with the account's credits, and does nothing
+        else: it is minted with no other scope, and every other route
+        refuses a token carrying it. It is consumed only by a registry that
+        mounts the credits extension.
       enum:
         - repo:read
         - repo:write
@@ -4789,6 +4903,7 @@ components:
         - secret:write
         - voice:read
         - voice:write
+        - credits:session
 
     Voice:
       type: object
@@ -5212,6 +5327,9 @@ components:
         - knowledge:read
         - knowledge:write
         - secret:write
+        - voice:read
+        - voice:write
+        - credits:session
 
     OrgRole:
       type: string
@@ -5767,13 +5885,16 @@ components:
         A run mode a release supports. `autonomous` runs from its
         source files, writes its output and receipts, and ends; `interactive`
         starts from the same plan and controls but the run is a conversation
-        with the user in the CLI or the desktop. A release declares one or both.
-      enum: [autonomous, interactive]
+        with the user in the CLI or the desktop; `persistent` is a
+        conversation the runner keeps between sessions, and is run only for
+        the runner's own built-in agents, so a client withholds Run for a
+        release that supports no other mode. A release declares at least one.
+      enum: [autonomous, interactive, persistent]
     AgentModes:
       type: array
       description: The run modes a release supports; at least one.
       minItems: 1
-      maxItems: 2
+      maxItems: 3
       uniqueItems: true
       items:
         $ref: "#/components/schemas/AgentMode"
@@ -5848,6 +5969,23 @@ components:
             and a registry without bug reports sends none). Not required
             on a write: a client that predates the switch leaves it as it
             was rather than turning it off by omission.
+        runFailures:
+          type: boolean
+          description: >
+            A run of a QuickAgent In Agentry failed after it started or was
+            refused by the queue: a run, a draft, a knowledge build or a
+            scheduled fire (the hosted product's mail; a registry that runs
+            no QuickAgents sends none). Off until the person turns it on.
+            Not required on a write: a client that predates the switch
+            leaves it as it was rather than changing it by omission.
+        runFinished:
+          type: boolean
+          description: >
+            A run of a QuickAgent In Agentry completed (the hosted
+            product's mail; a registry that runs no QuickAgents sends
+            none). Off until the person turns it on. Not required on a
+            write: a client that predates the switch leaves it as it was
+            rather than changing it by omission.
     WebNotificationSettings:
       type: object
       description: In-app alerts.
@@ -5885,10 +6023,11 @@ components:
         test holds them equal). Beyond what the schema says, the accent must
         reach 4.5:1 contrast on white when it touches text (titleBlock
         `band`, headings `smallcaps` or `numbered`) and 3:1 otherwise, and
-        `name` and `footer.text` are one line with no control or
-        bidirectional formatting characters. The tint is derived: 12% of the
+        `name` and `footer.text` are one line with no control, line-break,
+        bidirectional formatting or other invisible format characters. The tint is derived: 12% of the
         accent over white. The five built-in themes are each a value of it.
-        `logo` is optional and not counted in the 16 KB.
+        `logo` is optional and not counted in the 16 KB; `"logo": null` is
+        read as no logo.
       additionalProperties: false
       required: [agentryTheme, name, basedOn, version, paper, fonts, accent, titleBlock, headings, tables, quotes, footer]
       properties:
@@ -6203,7 +6342,7 @@ components:
       properties:
         description:
           type: string
-          maxLength: 8192
+          maxLength: 24576
           description: >-
             The person's description the draft was made from, as the
             Drafter read it. It is asked about as data, beside the draft.
@@ -6334,7 +6473,7 @@ components:
             family, or `<server>__<tool>` for a declared server's tool.
         grant:
           type: string
-          enum: [browser, exec, egress, targetHosts, filesystem.read, filesystem.write, mcpServers]
+          enum: [browser, exec, egress, targetHosts, filesystem.read, filesystem.write, mcpServers, persistent.clock, persistent.memory, persistent.selfConfigure, persistent.meetings, persistent.helper, persistent.web, persistent.review]
           description: The line of the capability contract the tool needs.
         path:
           type: string
@@ -6690,6 +6829,86 @@ components:
           format: date-time
         yankReason:
           type: string
+        knowledgeShipping:
+          $ref: "#/components/schemas/ShippedKnowledgeRecord"
+
+    KnowledgeShipping:
+      type: object
+      description: >-
+        A publisher's confirmation that the knowledge packs a release ships
+        become readable by everyone who can download it: one entry for each
+        pack the package's manifest ships (`knowledge.ships`), no more and
+        no fewer.
+      required: [packs]
+      additionalProperties: false
+      properties:
+        packs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShippedPack"
+
+    ShippedPack:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: The pack's name, as the manifest ships it.
+        origin:
+          $ref: "#/components/schemas/ShippedPackOrigin"
+
+    ShippedPackOrigin:
+      type: object
+      description: >-
+        The stored pack a shipped pack was laid down from. The registry
+        holds the claim to the facts: the pack exists and is `ready`, it is
+        the submitter's own (`own`) or the organization's (`org`), and its
+        digest is the digest in the shipped pack's `manifest.json`. An
+        organization's pack ships only from an administrator of the
+        organization, and only into a QuickAgent in the organization's own
+        namespace. A pack with no origin is the publisher's own files.
+      required: [kind, packId]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [own, org]
+        org:
+          type: string
+          description: The organization's handle; present when `kind` is `org`.
+        packId:
+          type: string
+          format: uuid
+
+    ShippedKnowledgeRecord:
+      type: object
+      description: >-
+        Who confirmed that the version's shipped packs become readable with
+        it, and how it was published. Served only to those who manage the
+        QuickAgent. A version that has no record serves none.
+      required: [at, via, packs]
+      properties:
+        by:
+          type: string
+          description: >-
+            The handle of the account that confirmed it. Absent for a
+            release published by a tag push, which carries no confirmation.
+        at:
+          type: string
+          format: date-time
+        via:
+          type: string
+          x-extensible-enum: [client, tag-push, fork]
+          description: >-
+            `client`: the upload carried the publisher's confirmation.
+            `tag-push`: the release was built from a tag and carried none.
+            `fork`: the first version of a fork, copied from the release it
+            forks.
+        packs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShippedPack"
 
     ResolveResult:
       type: object
@@ -6822,8 +7041,76 @@ components:
             tree. Absent for a release that ships no pack.
           items:
             $ref: "#/components/schemas/ShippedKnowledgeScan"
+        subagents:
+          type: array
+          description: >-
+            A persistent release's subagents (the manifest's
+            `dependencies.agents`) as the scan resolved them against the
+            registry, in the order the release declares them: the newest
+            stable, published version each constraint admits that runs on
+            its own and is not itself persistent, with what that version
+            declares, or the reason none does. A subagent must be public, or,
+            for a private release, private in the release's own
+            organization; a private release the release may not use reads as
+            one that is not in the registry. One that does not
+            resolve is also a finding, `S7/subagent-unresolved`, which holds
+            the version for a person. Absent for a release that declares
+            none.
+          items:
+            $ref: "#/components/schemas/SubagentScan"
         rescanInFlight:
           $ref: "#/components/schemas/RescanInFlight"
+
+    SubagentScan:
+      type: object
+      required: [ref, constraint]
+      properties:
+        ref:
+          type: string
+          description: The subagent's `namespace/name`.
+        constraint:
+          type: string
+          description: The semver constraint the release declares.
+        why:
+          type: string
+          description: The release's reason for it, shown when a person agrees.
+        version:
+          type: string
+          description: The version it resolved to; absent when none did.
+        problem:
+          type: string
+          description: Why it does not resolve; absent when it does.
+        reach:
+          $ref: "#/components/schemas/SubagentReach"
+
+    SubagentReach:
+      type: object
+      description: What a subagent's resolved version declares.
+      properties:
+        egress:
+          type: array
+          description: The hosts it may reach, its own and its servers' (`*` for any).
+          items: { type: string }
+        servers:
+          type: array
+          description: Its declared MCP servers, by source id.
+          items: { type: string }
+        exec:
+          type: array
+          description: The commands it may run.
+          items: { type: string }
+        secrets:
+          type: array
+          description: The secrets it asks for, its own and its servers'.
+          items: { type: string }
+        browser:
+          type: string
+          enum: [site, public]
+          description: Its browser's scope; absent for none.
+        targetHosts:
+          type: integer
+          minimum: 0
+          description: How many target hosts it asks for.
 
     ShippedKnowledgeScan:
       type: object
@@ -7204,9 +7491,19 @@ components:
       properties:
         url:
           type: string
-          description: HTTPS endpoint (https is required).
+          description: An absolute https:// URL with a host, and a port from 1 to 65535 if it names one.
         events:
           type: array
+          description: >
+            The events the endpoint subscribes to, by name, from the
+            closed catalogue: agent.created, version.submitted,
+            version.published, version.rejected, version.needs_review,
+            version.yanked, agent.quarantined, agent.reinstated,
+            advisory.published, agent.dependency_alert, scan.completed,
+            member.added, member.removed, policy.updated and run.ended (a
+            run of one of the organization's QuickAgents In Agentry ended;
+            delivered only where the registry runs QuickAgents). A name
+            outside the catalogue is refused with 422.
           items:
             type: string
 
