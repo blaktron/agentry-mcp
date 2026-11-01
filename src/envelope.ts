@@ -45,6 +45,8 @@ export interface Envelope {
   log: string;
   /** Set when the server's timeout interrupted the process and the CLI then exited by itself. */
   timedOut?: boolean;
+  /** Set when the host cancelled the call (or asked for the cancel), the CLI got SIGINT and exited by itself. */
+  cancelled?: boolean;
 }
 
 /** The tail of a stream, bounded so a long run's log does not swamp the host. */
@@ -85,6 +87,7 @@ export function toToolResult(what: string, r: CliResult): ToolResult {
   if (parsed !== undefined) {
     const env: Envelope = { result: parsed.value, exitClass: cls, log: tail(r.stderr) };
     if (r.timedOut) env.timedOut = true;
+    if (r.cancelled) env.cancelled = true;
     return { content: [{ type: "text", text: JSON.stringify(env) }] };
   }
   if (r.code !== 0) {

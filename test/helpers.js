@@ -39,10 +39,16 @@ export function receivedArgv(path) {
  */
 export async function connect(env = {}, cli = {}, elicit, features) {
   const argvFile = scratchArgv();
+  // The run records go to a scratch state directory, never the home's.
+  const stateDir = env.AGENTRY_MCP_STATE ?? mkdtempSync(join(tmpdir(), "agentry-mcp-state-"));
   const { server } = createServer({
     bin: FAKE,
     cliVersion: "0.4.0",
-    cli: { env: { FAKE_ARGV: argvFile, ...env }, timeoutMs: 10_000, ...cli },
+    cli: {
+      env: { FAKE_ARGV: argvFile, AGENTRY_MCP_STATE: stateDir, ...env },
+      timeoutMs: 10_000,
+      ...cli,
+    },
     runTimeoutSlackMs: 500,
     features,
   });
@@ -62,7 +68,7 @@ export async function connect(env = {}, cli = {}, elicit, features) {
     });
   }
   await client.connect(b);
-  return { client, server, argvFile, elicitations };
+  return { client, server, argvFile, elicitations, stateDir };
 }
 
 export function envelope(result) {

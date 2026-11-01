@@ -149,6 +149,31 @@ envelope's `deliverables` lists each one, and a
 `withheld` entry is a file that no longer matches what the run wrote. Pass
 `deliverTo` with a folder the person chose to have a copy made there too.
 
+## Long runs: cancel and detach
+
+A run or a build holds its tool call until it ends, up to its budget (15
+minutes by default for a run, 30 for a build). If the host's tool timeout is
+shorter than the budget the preview shows, confirm with `detach: true`: the
+call returns the run's `id` and `outDir` at once, and the run goes on even if
+this server stops. Then:
+
+- `agentry_run_status` with the id reports `state` (running, ended,
+  cancelled or lost), `progress` (the narration's line count and tail) and,
+  once the run has ended, the same result a waited run returns: the envelope
+  with `exitClass`, the receipts and the deliverables, a failure class as a
+  tool error. Poll it while the person waits; tell them what the narration
+  says. Without an id it lists every run on record.
+- `agentry_run_cancel` with the id stops the run the way Ctrl-C would and
+  returns it as status does. Cancel only when the person asks.
+- A run reported `lost` ended with no result the server can find: say so and
+  point the person at `agentry runs` in a terminal; never call it finished.
+
+When the host cancels a waited call, the CLI run is stopped the same way and
+its envelope is kept; the host gets no result for a cancelled call, so read
+it with `agentry_run_status` (no id) and report what the run's class says.
+The consent is the same for a waited and a detached start: one preview, one
+digest, `detach` chosen on the confirm.
+
 The run preview's `delivery` names where the run sends its result: a folder
 and saved destinations, the call's `destinations` or else the default set the
 person saved for that QuickAgent. Show it with the contract; pass

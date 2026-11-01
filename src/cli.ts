@@ -61,6 +61,8 @@ export interface CliResult {
   spawnError?: string;
   /** Set when the timeout's SIGINT ended the run and the CLI exited by itself. */
   timedOut?: boolean;
+  /** Set when the caller's signal ended the run (the host cancelled) and the CLI exited by itself. */
+  cancelled?: boolean;
 }
 
 export interface CliOptions {
@@ -76,6 +78,32 @@ export interface CliOptions {
    * SIGKILL at once, for the short commands.
    */
   graceMs?: number;
+  /**
+   * Ends the process the same way a timeout does when it aborts: the host
+   * cancelled the call, so the CLI gets SIGINT and its teardown runs.
+   */
+  signal?: AbortSignal;
+  /** Called once the process is started, with its id; a run that can be cancelled later needs it. */
+  onSpawn?: (pid: number | undefined) => void;
+}
+
+/**
+ * Ends a CLI process the way Ctrl-C would: SIGINT first, so the CLI's
+ * teardown runs on every path, then SIGKILL after graceMs if it is still
+ * there. Without a grace, SIGKILL at once (the short commands). Returns a
+ * function that drops the pending SIGKILL once the process has closed.
+ */
+export function interrupt(
+  child: { kill(signal: NodeJS.Signals): boolean },
+  graceMs: number | undefined,
+): () => void {
+  if (graceMs && graceMs > 0) {
+    child.kill("SIGINT");
+    const hard = setTimeout(() => child.kill("SIGKILL"), graceMs);
+    return () => clearTimeout(hard);
+  }
+  child.kill("SIGKILL");
+  return () => {};
 }
 
 /** Thrown at start when no usable CLI is found. */
@@ -126,10 +154,12 @@ export function runCli(bin: string, argv: string[], opts: CliOptions = {}): Prom
       env: { ...process.env, ...opts.env },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    opts.onSpawn?.(child.pid);
     let stdout = "";
     let stderr = "";
     let settled = false;
     let timedOut = false;
+    let cancelled = false;
     const finish = (r: CliResult) => {
       if (settled) return;
       settled = true;
@@ -151,40 +181,57 @@ export function runCli(bin: string, argv: string[], opts: CliOptions = {}): Prom
     });
     child.on("error", (err) => finish({ code: -1, stdout, stderr, spawnError: err.message }));
     child.on("close", (code, signal) => {
-      if (timedOut && (signal || code === null)) {
+      const ended = timedOut || cancelled;
+      const why = timedOut ? `timed out after ${opts.timeoutMs}ms` : "was cancelled";
+      if (ended && (signal || code === null)) {
         finish({
           code: -1,
           stdout,
           stderr,
           spawnError:
-            `timed out after ${opts.timeoutMs}ms and was killed` +
+            `${why} and was killed` +
             (opts.graceMs
               ? `; SIGINT went unanswered for ${opts.graceMs}ms, so the CLI's teardown may not have run — check for leftover agentry-* containers`
               : ""),
         });
-      } else if (timedOut) {
+      } else if (ended) {
         // SIGINT let the CLI finish its teardown and exit on its own: its
-        // exit class is the answer, and the timeout is noted.
-        finish({ code: code ?? -1, stdout, stderr, timedOut: true });
+        // exit class is the answer, and the timeout or the cancel is noted.
+        finish({
+          code: code ?? -1,
+          stdout,
+          stderr,
+          ...(timedOut ? { timedOut: true } : {}),
+          ...(cancelled ? { cancelled: true } : {}),
+        });
       } else if (signal) finish({ code: -1, stdout, stderr, spawnError: `killed by ${signal}` });
       else finish({ code: code ?? -1, stdout, stderr });
     });
+    let dropHardKill = () => {};
+    const end = () => {
+      if (settled) return;
+      dropHardKill = interrupt(child, opts.graceMs);
+    };
     if (opts.timeoutMs && opts.timeoutMs > 0) {
-      let hard: NodeJS.Timeout | undefined;
       const t = setTimeout(() => {
         timedOut = true;
-        if (opts.graceMs && opts.graceMs > 0) {
-          child.kill("SIGINT");
-          hard = setTimeout(() => child.kill("SIGKILL"), opts.graceMs);
-        } else {
-          child.kill("SIGKILL");
-        }
+        end();
       }, opts.timeoutMs);
-      child.on("close", () => {
-        clearTimeout(t);
-        if (hard) clearTimeout(hard);
-      });
+      child.on("close", () => clearTimeout(t));
     }
+    const onAbort = () => {
+      if (settled || timedOut) return;
+      cancelled = true;
+      end();
+    };
+    if (opts.signal) {
+      if (opts.signal.aborted) onAbort();
+      else opts.signal.addEventListener("abort", onAbort, { once: true });
+    }
+    child.on("close", () => {
+      dropHardKill();
+      opts.signal?.removeEventListener("abort", onAbort);
+    });
   });
 }
 
