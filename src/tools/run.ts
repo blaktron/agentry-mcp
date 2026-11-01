@@ -7,7 +7,10 @@
 import { z } from "zod";
 
 import { guard, type Driver } from "../driver.js";
-import { DEFAULT_RUN_TIMEOUT_SECONDS, run, setup, validate } from "../run.js";
+import { ArgumentError } from "../argv.js";
+import { runOutcome, toolJSON, toolText } from "../envelope.js";
+import { DEFAULT_RUN_TIMEOUT_SECONDS, decorateRun, run, setup, validate } from "../run.js";
+import type { RunStatus } from "../runs.js";
 import { registerTool } from "../toolargs.js";
 
 export function registerRunTools(d: Driver): void {
@@ -113,7 +116,11 @@ export function registerRunTools(d: Driver): void {
         "release, and every local workspace, needs `acceptUnsigned: true` on the confirm; an unscanned release " +
         "(admitted without a scan) needs `acceptUnscanned: true`; pass either only if the person said so. A run stops at timeoutSeconds, or the runner policy's own budget when omitted " +
         "(the preview shows which); the CLI's teardown runs on every path. Progress streams from the CLI's " +
-        "log when the host asks for it.",
+        "log when the host asks for it. Cancelling the call stops the CLI run (SIGINT, so its teardown runs and " +
+        "its receipts are written); the envelope it wrote is kept under a run id that agentry_run_status lists. " +
+        "With `detach: true` on the confirm, the run is started in its own process and its id comes back at " +
+        "once: follow it with agentry_run_status and stop it with agentry_run_cancel. Use that when the host's " +
+        "tool timeout is shorter than the run's budget. The digest is the same as for a waited run.",
       inputSchema: {
         ref: z
           .string()
@@ -259,6 +266,14 @@ export function registerRunTools(d: Driver): void {
           .describe(
             "Only with `confirm`, only when the preview said unscanned (admitted without a scan), and only if the person accepted that nothing about its contents was checked.",
           ),
+        detach: z
+          .boolean()
+          .optional()
+          .describe(
+            "With `confirm`: start the run and return its id at once instead of waiting for it. The run writes to " +
+              "`out`, or to ./agentry-out/<ns>-<name>-<id> under the working folder, and goes on if this server stops. " +
+              "Follow it with agentry_run_status; stop it with agentry_run_cancel.",
+          ),
       },
       annotations: {
         readOnlyHint: false,
@@ -268,6 +283,70 @@ export function registerRunTools(d: Driver): void {
       },
     },
     (a, extra) => guard("agentry_run", () => run(d, a, extra)),
+  );
+
+  registerTool(
+    d.server,
+    "agentry_run_status",
+    {
+      description:
+        "Report a run this server started (a QuickAgent run, a draft, a review or a build, waited or detached) by " +
+        "its id, or list them all without an id. Nothing of the CLI runs: the server reads the run's record, its " +
+        "narration so far and, once it ends, the envelope the CLI wrote (its stdout, or result.json in the output " +
+        "folder, the one `agentry runs` lists). `state` is running, ended, cancelled or lost; `progress` is the " +
+        "narration's line count and tail. An ended run comes back as the run tool would have returned it: the " +
+        "envelope with exitClass, receiptsDir, resultFile and outDir, its deliverables after it, and a failure " +
+        "class as a tool error. A run started by an earlier server process is judged by its process and its " +
+        "files, and one whose process is gone with no result is reported lost, never finished. Running runs are " +
+        "not cancelled or changed by this call.",
+      inputSchema: {
+        id: z
+          .string()
+          .optional()
+          .describe(
+            "The run id a detached start or a listing returned. Omit to list every run on record.",
+          ),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    (a) => guard("agentry_run_status", () => runStatus(d, a.id)),
+  );
+
+  registerTool(
+    d.server,
+    "agentry_run_cancel",
+    {
+      description:
+        "Stop a run this server started, by its id: the CLI gets SIGINT, as Ctrl-C would send it, so its teardown " +
+        "runs and it writes its envelope and receipts; SIGKILL follows after a minute if it is still there. Waits up " +
+        "to waitSeconds for the end and returns the run as agentry_run_status would: cancelled with the CLI's " +
+        "envelope (the class it reports, `cancelled: true` beside it), or still running if the teardown is not " +
+        "done yet, in which case call agentry_run_status again. A run started by an earlier server process is " +
+        "signalled by its process id. Cancel only when the person asks.",
+      inputSchema: {
+        id: z.string().describe("The run id a detached start or agentry_run_status returned."),
+        waitSeconds: z
+          .number()
+          .int()
+          .min(0)
+          .max(600)
+          .optional()
+          .describe("How long to wait for the run to end before answering (default 30)."),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    (a, extra) =>
+      guard("agentry_run_cancel", async () => {
+        const s = await d.runs.cancel(a.id);
+        if (!s) throw new ArgumentError(noSuchRun(a.id));
+        const waited = await d.runs.waitForEnd(a.id, (a.waitSeconds ?? 30) * 1000, extra.signal);
+        return statusResult(d, waited ?? s);
+      }),
   );
 
   registerTool(
@@ -288,4 +367,103 @@ export function registerRunTools(d: Driver): void {
     },
     (a) => guard("agentry_validate", () => validate(d, a)),
   );
+}
+
+function noSuchRun(id: string): string {
+  return `no run ${JSON.stringify(id)} is on record here; agentry_run_status without an id lists the runs this server started`;
+}
+
+async function runStatus(d: Driver, id: string | undefined): Promise<ReturnType<typeof toolJSON>> {
+  if (id === undefined) {
+    const runs = await d.runs.list();
+    return toolJSON({
+      runs: runs.map((s) => ({
+        id: s.record.id,
+        tool: s.record.tool,
+        what: s.record.what,
+        state: s.record.state,
+        detached: s.record.detached,
+        startedAt: s.record.startedAt,
+        endedAt: s.record.endedAt,
+        outDir: s.record.outDir,
+        exitClass: exitClassOf(s),
+      })),
+    });
+  }
+  const s = await d.runs.status(id);
+  if (!s) throw new ArgumentError(noSuchRun(id));
+  return statusResult(d, s);
+}
+
+/** The exit class an ended run's envelope names, when it has one. */
+function exitClassOf(s: RunStatus): string | undefined {
+  const first = s.record.raw?.content[0];
+  if (!first || first.type !== "text") return undefined;
+  try {
+    const env = JSON.parse(first.text) as { exitClass?: unknown };
+    return typeof env.exitClass === "string" ? env.exitClass : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * One run as the status and cancel tools report it. A running run is its
+ * record and progress. An ended one is the run tool's own result (the
+ * envelope, the deliverables, a failure class as an error) with the
+ * record's fields beside the envelope. A lost one is an error that says so.
+ */
+async function statusResult(d: Driver, s: RunStatus): Promise<ReturnType<typeof toolJSON>> {
+  const r = s.record;
+  const head = {
+    id: r.id,
+    state: r.state,
+    tool: r.tool,
+    what: r.what,
+    detached: r.detached,
+    startedAt: r.startedAt,
+    endedAt: r.endedAt,
+    outDir: r.outDir,
+    pid: r.state === "running" ? r.pid : undefined,
+    cancelRequested: r.cancelRequested,
+    progress: s.progress,
+    ...(s.note ? { note: s.note } : {}),
+  };
+  if (r.state === "running") {
+    return toolJSON({
+      ...head,
+      elapsedSeconds: Math.round((Date.now() - Date.parse(r.startedAt)) / 1000),
+      next: `${r.tool === "agentry_run" ? "agentry_run_status reports it again; " : ""}agentry_run_cancel stops it.`,
+    });
+  }
+  if (r.state === "lost" || !r.raw) {
+    return toolText(
+      `${JSON.stringify(head)}\n\nrun ${r.id} is lost: ${s.note ?? "its process is gone and it wrote no result"}.`,
+      true,
+    );
+  }
+  const finished = r.tool === "agentry_run" ? await decorateRun(r.raw, d.cwd) : runOutcome(r.raw);
+  const first = finished.content[0];
+  if (!first || first.type !== "text") return finished;
+  let envelope: unknown;
+  try {
+    envelope = JSON.parse(first.text);
+  } catch {
+    // The CLI left no JSON: the error names the class and quotes its last lines.
+    return {
+      ...finished,
+      content: [
+        { type: "text", text: `${JSON.stringify(head)}\n\n${first.text}` },
+        ...finished.content.slice(1),
+      ],
+    };
+  }
+  const merged =
+    envelope && typeof envelope === "object"
+      ? { ...head, ...(envelope as object) }
+      : { ...head, result: envelope };
+  return {
+    ...finished,
+    content: [{ type: "text", text: JSON.stringify(merged) }, ...finished.content.slice(1)],
+  };
 }

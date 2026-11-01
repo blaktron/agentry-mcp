@@ -19,7 +19,7 @@
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type {
@@ -43,13 +43,14 @@ import {
   type PlanRefusal,
 } from "./consent.js";
 import type { Driver } from "./driver.js";
-import { runOutcome, tail, toolText as text } from "./envelope.js";
+import { runOutcome, tail, toolJSON, toolText as text } from "./envelope.js";
 import {
   isReadiness,
   readiness as readinessOf,
   readinessWords,
   type Readiness,
 } from "./readiness.js";
+import { defaultOutDir, type RunRecord } from "./runs.js";
 
 /**
  * The budget the server assumes when neither the call nor the compiled plan
@@ -151,6 +152,7 @@ export interface RunArgs {
   confirm?: string;
   acceptUnsigned?: boolean;
   acceptUnscanned?: boolean;
+  detach?: boolean;
 }
 
 /** The compiled plan's fields the summary in words reads; everything else passes through. */
@@ -554,23 +556,70 @@ export async function runConsent(
   return { consent: ok, plan, timeoutSeconds };
 }
 
-/** agentry_run: the consent above, then one CLI process the server waits on. */
+/**
+ * agentry_run: the consent above, then one CLI process. Blocking, the
+ * server waits on it and a cancel from the host (the request's signal)
+ * sends the CLI SIGINT, so its teardown runs and its envelope is kept under
+ * the run's id for agentry_run_status. Detached, the run is started in its
+ * own process group and its id comes back at once. The consent is the same
+ * either way: `detach` is not among the digest's facts.
+ */
 export async function run(d: Driver, a: RunArgs, extra: Extra): Promise<CallToolResult> {
   const c = await runConsent(d, a, "autonomous", "agentry_run");
   if (!isRunConsent(c)) return c;
   const task = await taskInput(a);
+  const id = d.runs.newId();
+  // A detached run gets its output folder up front, so its status can be
+  // read from the folder whatever becomes of this server.
+  const out = a.out ?? (a.detach ? defaultOutDir(d.cwd, c.plan.ref, id) : undefined);
+  let started;
   try {
-    const r = await d.run("agentry_run", runArgv(a, c, "autonomous", task.path), {
+    started = await d.runs.start({
+      id,
+      tool: "agentry_run",
+      what: c.plan.ref,
+      argv: runArgv({ ...a, out }, c, "autonomous", task.path),
+      detached: a.detach === true,
+      // The record names the folder as the CLI will see it: resolved
+      // against the working folder every CLI process gets.
+      outDir: out === undefined ? undefined : resolve(d.cwd ?? process.cwd(), out),
       onStderrLine: progressSink(extra),
       // The CLI enforces --timeout itself; the server's own limit sits
       // past it so the CLI's teardown is what ends the run.
       timeoutMs: c.timeoutSeconds * 1000 + d.runTimeoutSlackMs,
       graceMs: TEARDOWN_GRACE_MS,
+      onEnd: () => task.done(),
     });
-    return await decorateRun(r, d.cwd);
-  } finally {
+  } catch (err) {
     await task.done();
+    throw err;
   }
+  if (a.detach) return detachedStart(started.record);
+  const onAbort = () => d.runs.cancel(id).catch(() => {});
+  if (extra.signal.aborted) onAbort();
+  else extra.signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    return await decorateRun(await started.done, d.cwd);
+  } finally {
+    extra.signal.removeEventListener("abort", onAbort);
+  }
+}
+
+/** What a detached start returns: the id to ask about, where the run writes, and the two tools that follow it. */
+export function detachedStart(r: RunRecord): CallToolResult {
+  return toolJSON({
+    id: r.id,
+    state: r.state,
+    detached: true,
+    tool: r.tool,
+    what: r.what,
+    startedAt: r.startedAt,
+    pid: r.pid,
+    outDir: r.outDir,
+    next:
+      "agentry_run_status with this id reports the run's progress and, once it ends, its result; " +
+      "agentry_run_cancel stops it. The run goes on if this server stops.",
+  });
 }
 
 /**
@@ -731,7 +780,7 @@ function describeSignIn(s: SignIn): string {
  * after it the files themselves, text inline and the rest as links. A run
  * whose exit class is not ok is a tool error carrying that envelope.
  */
-async function decorateRun(r: CallToolResult, cwd?: string): Promise<CallToolResult> {
+export async function decorateRun(r: CallToolResult, cwd?: string): Promise<CallToolResult> {
   if (r.isError) return r;
   const env = JSON.parse(textOf(r)) as {
     result?: { receipts?: { dir?: string }; resultFile?: string; outDir?: string };

@@ -11,6 +11,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { ArgumentError } from "./argv.js";
 import { ALL_FEATURES, runCli, type CliFeatures, type CliOptions } from "./cli.js";
 import { toToolResult } from "./envelope.js";
+import { RunRegistry } from "./runs.js";
 import type { ProtocolSession } from "./session.js";
 
 /**
@@ -26,7 +27,8 @@ export class Driver {
   constructor(
     readonly server: McpServer,
     readonly bin: string,
-    private readonly defaults: CliOptions = {},
+    /** The options every CLI process gets: the working directory, the extra environment, the tests' timeout. */
+    readonly defaults: CliOptions = {},
     /**
      * How long past a run's own --timeout the server waits before SIGINT:
      * the CLI's budget is what should end a run, the server's limit is the
@@ -38,6 +40,9 @@ export class Driver {
   ) {}
 
   readonly sessions: SessionSlot = { reserved: false };
+
+  /** The runs this server started, blocking and detached, by id. */
+  readonly runs = new RunRegistry(this);
 
   /** The extra environment and working directory every CLI process gets (including the session protocol process). */
   get env(): Record<string, string> | undefined {

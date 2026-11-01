@@ -11,7 +11,7 @@ import { guard, type Driver } from "../driver.js";
 import { runOutcome } from "../envelope.js";
 import { isReadiness, readiness, readinessWords, type Readiness } from "../readiness.js";
 import { fingerprint, localPackPaths } from "../snapshot.js";
-import { budgetWords, progressSink, TEARDOWN_GRACE_MS } from "../run.js";
+import { budgetWords, detachedStart, progressSink, TEARDOWN_GRACE_MS } from "../run.js";
 import { registerTool } from "../toolargs.js";
 
 const common = {
@@ -25,6 +25,13 @@ const common = {
     .string()
     .optional()
     .describe("Omit to preview the operation; after agreement, repeat with its digest."),
+  detach: z
+    .boolean()
+    .optional()
+    .describe(
+      "With `confirm`: start the build and return its id at once instead of waiting; follow it with " +
+        "agentry_run_status and stop it with agentry_run_cancel. The digest is the same as for a waited build.",
+    ),
 };
 const writes = { readOnlyHint: false, destructiveHint: false, openWorldHint: true };
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
@@ -163,14 +170,28 @@ async function execute(
   if (!isConsent(consent)) return consent;
   // These commands have no terminal capability gate and take no bypass
   // flags. A build that ends in a failure class is a tool error carrying
-  // the CLI's envelope.
-  return runOutcome(
-    await d.run(tool, argv, {
-      timeoutMs: a.timeoutSeconds * 1000 + d.runTimeoutSlackMs,
-      graceMs: TEARDOWN_GRACE_MS,
-      onStderrLine: progressSink(extra),
-    }),
-  );
+  // the CLI's envelope. A cancel from the host sends the CLI SIGINT and
+  // the envelope is kept under the run's id; a detached build returns its
+  // id at once.
+  const started = await d.runs.start({
+    tool,
+    what: BUILTIN[tool] ?? tool,
+    argv,
+    detached: a.detach === true,
+    outDir: resolve(d.cwd ?? process.cwd(), a.out),
+    timeoutMs: a.timeoutSeconds * 1000 + d.runTimeoutSlackMs,
+    graceMs: TEARDOWN_GRACE_MS,
+    onStderrLine: progressSink(extra),
+  });
+  if (a.detach) return detachedStart(started.record);
+  const onAbort = () => d.runs.cancel(started.record.id).catch(() => {});
+  if (extra.signal.aborted) onAbort();
+  else extra.signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    return runOutcome(await started.done);
+  } finally {
+    extra.signal.removeEventListener("abort", onAbort);
+  }
 }
 
 /** What each built-in is, in a phrase, for the summary. */
