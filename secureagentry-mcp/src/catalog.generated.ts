@@ -52,7 +52,7 @@ export const API_VERSION = "0.3.0";
 export const API_BASE_PATH = "/api/v1";
 
 /** sha256 of spec/openapi.yaml, so a drifted catalog is detectable. */
-export const SPEC_SHA256 = "9ddb373f017c61a0a891daea8c0a9664888fbe40285a3efd16ccf8791de22775";
+export const SPEC_SHA256 = "906e15a3bac2d148f20845b015958caba9b51443526e9472c585d0e178e757b0";
 
 export const ACTIONS: readonly Action[] = [
   {
@@ -257,7 +257,7 @@ export const ACTIONS: readonly Action[] = [
         "properties": {
           "description": {
             "type": "string",
-            "maxLength": 8192,
+            "maxLength": 24576,
             "description": "The person's description the draft was made from, as the Drafter read it. It is asked about as data, beside the draft."
           },
           "files": {
@@ -395,15 +395,16 @@ export const ACTIONS: readonly Action[] = [
             "type": "array",
             "description": "The run modes a release supports; at least one.",
             "minItems": 1,
-            "maxItems": 2,
+            "maxItems": 3,
             "uniqueItems": true,
             "items": {
               "title": "AgentMode",
               "type": "string",
-              "description": "A run mode a release supports. `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop. A release declares one or both.\n",
+              "description": "A run mode a release supports. `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop; `persistent` is a conversation the runner keeps between sessions, and is run only for the runner's own built-in agents, so a client withholds Run for a release that supports no other mode. A release declares at least one.\n",
               "enum": [
                 "autonomous",
-                "interactive"
+                "interactive",
+                "persistent"
               ]
             }
           },
@@ -914,7 +915,7 @@ export const ACTIONS: readonly Action[] = [
             "items": {
               "title": "Scope",
               "type": "string",
-              "description": "PAT scopes. A token can do only what its scopes allow; a\nsession acts with the account's full authority. `run:write` lets a\ntoken start, feed and cancel a hosted run of a QuickAgent and\n`run:read` lets it read a run, its log and its artefacts — both are\nconsumed only by a registry that mounts the runs extension, and\nunlock nothing on one that does not. `agent:manage` takes the owner\nactions on a QuickAgent the caller administers (make it public or\nprivate, retire, restore, delete), which `org:admin`\nalso covers, and reaches none of its other settings. `knowledge:read` and\n`knowledge:write` read and write the account's knowledge packs.\n`secret:write` sets and deletes the account's hosted-run secrets and\nnever lists or reads one; it is consumed only by a registry that\nmounts the vault extension. `voice:read` reads the account's Writing\nVoice and `voice:write` puts, restores, sets and deletes it.\n",
+              "description": "PAT scopes. A token can do only what its scopes allow; a\nsession acts with the account's full authority. `run:write` lets a\ntoken start, feed and cancel a hosted run of a QuickAgent and\n`run:read` lets it read a run, its log and its artefacts — both are\nconsumed only by a registry that mounts the runs extension, and\nunlock nothing on one that does not. `agent:manage` takes the owner\nactions on a QuickAgent the caller administers (make it public or\nprivate, retire, restore, delete), which `org:admin`\nalso covers, and reaches none of its other settings. `knowledge:read` and\n`knowledge:write` read and write the account's knowledge packs.\n`secret:write` sets and deletes the account's hosted-run secrets and\nnever lists or reads one; it is consumed only by a registry that\nmounts the vault extension. `voice:read` reads the account's Writing\nVoice and `voice:write` puts, restores, sets and deletes it.\n`credits:session` opens, renews and ends a credits session, which\npays for a run's model with the account's credits, and does nothing\nelse: it is minted with no other scope, and every other route\nrefuses a token carrying it. It is consumed only by a registry that\nmounts the credits extension.\n",
               "enum": [
                 "repo:read",
                 "repo:write",
@@ -931,7 +932,8 @@ export const ACTIONS: readonly Action[] = [
                 "knowledge:write",
                 "secret:write",
                 "voice:read",
-                "voice:write"
+                "voice:write",
+                "credits:session"
               ]
             }
           },
@@ -989,10 +991,11 @@ export const ACTIONS: readonly Action[] = [
         "properties": {
           "url": {
             "type": "string",
-            "description": "HTTPS endpoint (https is required)."
+            "description": "An absolute https:// URL with a host, and a port from 1 to 65535 if it names one."
           },
           "events": {
             "type": "array",
+            "description": "The events the endpoint subscribes to, by name, from the closed catalogue: agent.created, version.submitted, version.published, version.rejected, version.needs_review, version.yanked, agent.quarantined, agent.reinstated, advisory.published, agent.dependency_alert, scan.completed, member.added, member.removed, policy.updated and run.ended (a run of one of the organization's QuickAgents In Agentry ended; delivered only where the registry runs QuickAgents). A name outside the catalogue is refused with 422.\n",
             "items": {
               "type": "string"
             }
@@ -2015,6 +2018,26 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "200",
         "description": "Export status."
+      }
+    ]
+  },
+  {
+    "id": "getConnectors",
+    "method": "GET",
+    "path": "/connectors",
+    "tags": [
+      "meta"
+    ],
+    "summary": "Agentry's connectors and this deployment's public client ids.",
+    "description": "Every connector this build's catalogue holds: the vendor products whose servers Agentry has vetted. A connector whose app is a public client carries the `publicClientId` this deployment registered for it, which a client uses for a local sign-in to that connector's servers; it is absent where the deployment has configured none. No client secret is ever listed.",
+    "public": true,
+    "sessionOnly": false,
+    "deprecated": false,
+    "params": [],
+    "responses": [
+      {
+        "code": "200",
+        "description": "The connectors."
       }
     ]
   },
@@ -5015,10 +5038,11 @@ export const ACTIONS: readonly Action[] = [
         "schema": {
           "title": "AgentMode",
           "type": "string",
-          "description": "A run mode a release supports. `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop. A release declares one or both.\n",
+          "description": "A run mode a release supports. `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop; `persistent` is a conversation the runner keeps between sessions, and is run only for the runner's own built-in agents, so a client withholds Run for a release that supports no other mode. A release declares at least one.\n",
           "enum": [
             "autonomous",
-            "interactive"
+            "interactive",
+            "persistent"
           ]
         }
       },
@@ -5646,7 +5670,7 @@ export const ACTIONS: readonly Action[] = [
       "versions"
     ],
     "summary": "Submit a version for publication.",
-    "description": "Two sources: JSON {tag} submits an existing repo tag (git-tag source); multipart/form-data with an `archive` part (tar.zst) submits a client-built package (cli-upload source; the server re-validates, re-packs deterministically, and compares digests: client packing is never trusted). A deployment with an admission extension (the hosted product's subscription tiers) may refuse a submission after every core check has passed and before anything is stored: `402` with the problem type `credits-exhausted` carries `balance`, `resetsAt` and `account` — the handle whose balance is short, which is the submitter's own or, for a member of a paid organization, the organization's — at the top level of the problem body. `402 subscription-inactive` refuses one whose payer is an organization that is awaiting payment or has lapsed, and carries `account` the same way. `503 admission-unavailable` means the check could not be reached and nothing was recorded. A core registry never answers any of them. The gate's verdict never depends on admission.",
+    "description": "Two sources: JSON {tag} submits an existing repo tag (git-tag source); multipart/form-data with an `archive` part (tar.zst) submits a client-built package (cli-upload source; the server re-validates, re-packs deterministically, and compares digests: client packing is never trusted). A package that ships knowledge packs (the manifest's `knowledge.ships`) makes their contents readable by everyone who can download the release, so the upload must confirm it: the `knowledgeShipping` part, one entry for each pack shipped. Without it the upload is refused `422 knowledge-shipping-unacknowledged`, naming the packs. An entry may claim where the pack was laid down from (`origin`); a claim that is not true is refused `422 knowledge-shipping-invalid`, naming the pack. A tag submission (JSON {tag}) and a tag push carry no confirmation, and the version's record says it was published that way. A deployment with an admission extension (the hosted product's subscription tiers) may refuse a submission after every core check has passed and before anything is stored: `402` with the problem type `credits-exhausted` carries `balance`, `resetsAt` and `account` — the handle whose balance is short, which is the submitter's own or, for a member of a paid organization, the organization's — at the top level of the problem body. `402 subscription-inactive` refuses one whose payer is an organization that is awaiting payment or has lapsed, and carries `account` the same way. `503 admission-unavailable` means the check could not be reached and nothing was recorded. A core registry never answers any of them. The gate's verdict never depends on admission.",
     "public": false,
     "sessionOnly": false,
     "deprecated": false,
@@ -5694,6 +5718,10 @@ export const ACTIONS: readonly Action[] = [
       {
         "code": "402",
         "description": "Refused by the deployment's admission extension (problem type `credits-exhausted` with `balance`, `resetsAt` and `account`, or `subscription-inactive` with `account`); nothing was stored. Never answered by a core registry."
+      },
+      {
+        "code": "422",
+        "description": "The package or its confirmation was refused. Among the problem types, `knowledge-shipping-unacknowledged` (a package that ships packs with no confirmation, or one that leaves a pack out; `packs` names them at the top level of the problem) and `knowledge-shipping-invalid` (an entry names a pack the release does not ship, or claims an origin that is not true; `packs` names it)."
       },
       {
         "code": "503",
@@ -5983,12 +6011,16 @@ export const ACTIONS: readonly Action[] = [
             "maxLength": 140
           },
           "visibility": {
-            "description": "The namespace's administrators only. A token needs `org:admin`, or `agent:manage` when the body sets visibility and nothing else. `public` is refused on a retired agent (`409 agent-retired`): Restore is how a retired agent comes back. It is refused on a fork for good (`409 fork-stays-private`).",
+            "description": "The namespace's administrators only. A token needs `org:admin`, or `agent:manage` when the body sets visibility and nothing else. `public` is refused on a retired agent (`409 agent-retired`): Restore is how a retired agent comes back. It is refused on a fork for good (`409 fork-stays-private`). Making a QuickAgent public while one of its versions, other than a yanked or rejected one, ships a knowledge pack needs `acknowledgeShippedKnowledge: true`, or the answer is `409 shipped-knowledge-unacknowledged`, which names the packs and the versions that ship them.",
             "type": "string",
             "enum": [
               "public",
               "private"
             ]
+          },
+          "acknowledgeShippedKnowledge": {
+            "description": "The publisher's confirmation that the knowledge packs the QuickAgent's versions ship become readable by everyone who can download them once it is public, and hold no private data. Read only when `visibility` is `public`; it is not a setting and changes nothing else.",
+            "type": "boolean"
           },
           "autoPublishTags": {
             "type": "boolean"
@@ -6010,15 +6042,16 @@ export const ACTIONS: readonly Action[] = [
             "type": "array",
             "description": "The run modes a release supports; at least one.",
             "minItems": 1,
-            "maxItems": 2,
+            "maxItems": 3,
             "uniqueItems": true,
             "items": {
               "title": "AgentMode",
               "type": "string",
-              "description": "A run mode a release supports. `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop. A release declares one or both.\n",
+              "description": "A run mode a release supports. `autonomous` runs from its source files, writes its output and receipts, and ends; `interactive` starts from the same plan and controls but the run is a conversation with the user in the CLI or the desktop; `persistent` is a conversation the runner keeps between sessions, and is run only for the runner's own built-in agents, so a client withholds Run for a release that supports no other mode. A release declares at least one.\n",
               "enum": [
                 "autonomous",
-                "interactive"
+                "interactive",
+                "persistent"
               ]
             }
           }
@@ -6235,6 +6268,14 @@ export const ACTIONS: readonly Action[] = [
               "bugReports": {
                 "type": "boolean",
                 "description": "Platform staff marked a bug report the person filed complete (\"Reported bug fixed\"; the hosted product's bug-report mail, and a registry without bug reports sends none). Not required on a write: a client that predates the switch leaves it as it was rather than turning it off by omission.\n"
+              },
+              "runFailures": {
+                "type": "boolean",
+                "description": "A run of a QuickAgent In Agentry failed after it started or was refused by the queue: a run, a draft, a knowledge build or a scheduled fire (the hosted product's mail; a registry that runs no QuickAgents sends none). Off until the person turns it on. Not required on a write: a client that predates the switch leaves it as it was rather than changing it by omission.\n"
+              },
+              "runFinished": {
+                "type": "boolean",
+                "description": "A run of a QuickAgent In Agentry completed (the hosted product's mail; a registry that runs no QuickAgents sends none). Off until the person turns it on. Not required on a write: a client that predates the switch leaves it as it was rather than changing it by omission.\n"
               }
             }
           },
@@ -6304,7 +6345,7 @@ export const ACTIONS: readonly Action[] = [
           "design": {
             "title": "ReportDesign",
             "type": "object",
-            "description": "A report design, the theme document version 2. Defined by the core's pkg/reportdesign, whose JSON Schema this mirrors (a core test holds them equal). Beyond what the schema says, the accent must reach 4.5:1 contrast on white when it touches text (titleBlock `band`, headings `smallcaps` or `numbered`) and 3:1 otherwise, and `name` and `footer.text` are one line with no control or bidirectional formatting characters. The tint is derived: 12% of the accent over white. The five built-in themes are each a value of it. `logo` is optional and not counted in the 16 KB.",
+            "description": "A report design, the theme document version 2. Defined by the core's pkg/reportdesign, whose JSON Schema this mirrors (a core test holds them equal). Beyond what the schema says, the accent must reach 4.5:1 contrast on white when it touches text (titleBlock `band`, headings `smallcaps` or `numbered`) and 3:1 otherwise, and `name` and `footer.text` are one line with no control, line-break, bidirectional formatting or other invisible format characters. The tint is derived: 12% of the accent over white. The five built-in themes are each a value of it. `logo` is optional and not counted in the 16 KB; `\"logo\": null` is read as no logo.",
             "additionalProperties": false,
             "required": [
               "agentryTheme",
@@ -6587,7 +6628,8 @@ export const ACTIONS: readonly Action[] = [
         "type": "object",
         "properties": {
           "url": {
-            "type": "string"
+            "type": "string",
+            "description": "An absolute https:// URL with a host, and a port from 1 to 65535 if it names one."
           },
           "events": {
             "type": "array",
