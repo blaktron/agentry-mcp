@@ -35,12 +35,21 @@ test("each README row's CLI command appears in the tool's description", async ()
   for (const [name, runs] of readmeTools()) {
     // The row's first backticked `agentry …` span is the command the tool
     // runs; the description spells the same subcommand. A session's send
-    // and close run no command — they type into the open chat — and their
-    // descriptions say so.
+    // and close run no command — they type into the open chat — and the
+    // run status and cancel tools run none either — they read a run's
+    // record and signal its process — and their descriptions say so.
     const cmd = /`agentry ([a-z]+)/.exec(runs);
     if (!cmd) {
-      assert.match(runs, /chat/, `${name}: the README row names neither a command nor the chat`);
-      assert.match(described.get(name), /session/, `${name}: the description does not say session`);
+      assert.match(
+        runs,
+        /chat|run's record/,
+        `${name}: the README row names neither a command nor what it reads instead`,
+      );
+      assert.match(
+        described.get(name),
+        /session|this server started/,
+        `${name}: the description does not say what it acts on`,
+      );
       continue;
     }
     const want = name.startsWith("agentry_session") ? "--mode interactive" : `agentry ${cmd[1]}`;

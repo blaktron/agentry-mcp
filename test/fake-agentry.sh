@@ -40,6 +40,8 @@
 #   FAKE_DOCTOR_EXIT   doctor exits with this code whatever its checks say
 #   FAKE_RUN_FAIL      the run (not the plan) fails in the policy class, as with no model key; a draft or review in the gateway class
 #   FAKE_RUN_CLASS_WORDS  the failed run's envelope carries exitClassName, exitClassMeaning and retryLikelyHelps
+#   FAKE_RUN_PID       a file the autonomous run writes its process id to, so a test can tell whether it is still there
+#   FAKE_RUN_RESULT_FILE  set to make the autonomous run also write its envelope to result.json under --out, as the CLI does
 #   FAKE_NO_AGENTS     set to make `agent attach --help` print the parent's help (a CLI without attach)
 #   FAKE_AGENT_STATE   what `agent show` says the assistant is (default stopped)
 #   FAKE_AGENT_LINE_FILE  a file whose content, when it exists, is the share entry's consent sentence
@@ -235,6 +237,7 @@ print(out, end="")')
     else
       if [ -n "${FAKE_INTAKE_REQUIRED:-}" ] && ! has "--intake"; then echo 'agentry: intake question "audience" is required (answer it on a terminal or pass --intake audience=...)' >&2; exit 2; fi
       [ -n "${FAKE_WRITES:-}" ] && echo ran >> "$FAKE_WRITES"
+      [ -n "${FAKE_RUN_PID:-}" ] && echo $$ > "$FAKE_RUN_PID"
       echo "narration: verify ok" >&2; echo "narration: gateway up" >&2
       if [ -n "${FAKE_RUN_SLEEP:-}" ]; then
         # SIGINT: what the real CLI does: tear down,
@@ -256,7 +259,11 @@ print(out, end="")')
       rout="${FAKE_RUN_OUT:-/tmp/out}"; rextra=""
       [ -n "${FAKE_DELIVERABLES:-}" ] && rextra=",\"deliverables\":$FAKE_DELIVERABLES"
       [ -n "${FAKE_DELIVERIES:-}" ] && rextra="$rextra,\"deliveries\":$FAKE_DELIVERIES"
-      echo '{"status":"ok","exitCode":0,"exitClass":"ok","runId":"r1","ref":"acme/widget@1.0.0","result":"done","outDir":"'"$rout"'","resultFile":"'"$rout"'/result.json","receipts":{"dir":"'"$rout"'/receipts","runPlanSha256":"abc"},"usage":{"inputTokens":10}'"$rextra"'}'
+      renv='{"agentry":"fake","status":"ok","exitCode":0,"exitClass":"ok","runId":"r1","ref":"acme/widget@1.0.0","result":"done","outDir":"'"$rout"'","resultFile":"'"$rout"'/result.json","receipts":{"dir":"'"$rout"'/receipts","runPlanSha256":"abc"},"usage":{"inputTokens":10}'"$rextra"'}'
+      if [ -n "${FAKE_RUN_RESULT_FILE:-}" ]; then
+        prev=""; for a in "$@"; do if [ "$prev" = "--out" ]; then mkdir -p "$a" && printf '%s\n' "$renv" > "$a/result.json"; fi; prev="$a"; done
+      fi
+      echo "$renv"
     fi ;;
   *) echo "unknown command" >&2; exit 2 ;;
 esac

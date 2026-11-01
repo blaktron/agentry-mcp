@@ -106,12 +106,14 @@ person before the write.
 | `agentry_uninstall`      | `agentry uninstall --plan --json`, then `agentry uninstall --json`   | the preview with a `digest`, then what was removed                |
 | `agentry_list_installed` | `agentry list --json`                                                | every install record, with `present` (its directory still exists) |
 
-| Tool               | Runs                                                                                                                               | Returns                                                                                                                                                                                                                      |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agentry_setup`    | `agentry setup --json` (with or without the image pulls)                                                                           | the policy as configured — provider, model, the key's variable **name** — and whether the images are ready                                                                                                                   |
-| `agentry_run`      | `agentry run --plan --json` and `agentry doctor <ref> --json`, then `agentry run --mode autonomous --output-format json` consented | the summary in words, the readiness block and the run plan with a `digest`, then the CLI's result envelope with `receiptsDir`, `resultFile`, `outDir` beside it, and the run's deliverables; a failure class is a tool error |
-| `agentry_deliver`  | `agentry deliver RUN-FOLDER --json` consented                                                                                      | a preview of the run's deliverables, the folder and the destinations with a `digest`, then the CLI's deliveries                                                                                                              |
-| `agentry_validate` | `agentry validate DIR --json`                                                                                                      | the rules and scan findings as data, and whether publish would pass                                                                                                                                                          |
+| Tool                 | Runs                                                                                                                                 | Returns                                                                                                                                                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agentry_setup`      | `agentry setup --json` (with or without the image pulls)                                                                             | the policy as configured — provider, model, the key's variable **name** — and whether the images are ready                                                                                                                   |
+| `agentry_run`        | `agentry run --plan --json` and `agentry doctor <ref> --json`, then `agentry run --mode autonomous --output-format json` consented   | the summary in words, the readiness block and the run plan with a `digest`, then the CLI's result envelope with `receiptsDir`, `resultFile`, `outDir` beside it, and the run's deliverables; a failure class is a tool error |
+| `agentry_deliver`    | `agentry deliver RUN-FOLDER --json` consented                                                                                        | a preview of the run's deliverables, the folder and the destinations with a `digest`, then the CLI's deliveries                                                                                                              |
+| `agentry_run_status` | no command: reads the run's record, its narration and the envelope the CLI wrote (its stdout, or `result.json` in the output folder) | the run's state (running, ended, cancelled, lost), its progress, and once ended the run tool's own result; without an id, every run on record                                                                                |
+| `agentry_run_cancel` | no command: sends the run's record's process SIGINT, SIGKILL after a minute                                                          | the run as `agentry_run_status` reports it once it has ended, or still running if the teardown is not done                                                                                                                   |
+| `agentry_validate`   | `agentry validate DIR --json`                                                                                                        | the rules and scan findings as data, and whether publish would pass                                                                                                                                                          |
 
 `agentry_setup`'s `provider` is one of `anthropic`, `openai`, `google`,
 `vultr` (Vultr Serverless Inference, key variable `VULTR_INFERENCE_API_KEY`;
@@ -142,6 +144,27 @@ runner policy's own budget when the call names none: the CLI ends it, the
 server sends SIGINT 30 s later if the process is still there, and kills it
 60 s after that. Progress streams as MCP progress notifications when the
 host asks for them.
+
+A run blocks its tool call until it ends, which can be many minutes. When
+the host cancels the call, the server sends the CLI SIGINT, as Ctrl-C would,
+so its teardown runs and its receipts and envelope are written; MCP delivers
+no result for a cancelled call, so the envelope is kept under a run id and
+`agentry_run_status` (without an id) lists it. A confirm with `detach: true`
+starts the run in its own process group and returns its id at once; the run
+writes to `out`, or to `./agentry-out/<ns>-<name>-<id>` under the working
+folder, and goes on if the server stops. `agentry_run_status` reports its
+progress (the narration's line count and tail) while it runs and, once it
+ends, the same result the blocking call returns: the envelope, the
+deliverables, a failure class as a tool error. `agentry_run_cancel` sends it
+SIGINT and waits up to `waitSeconds` for the envelope. The digest is the same
+for a waited and a detached start: `detach` is not among the consent facts.
+`agentry_draft`, `agentry_review`, `agentry_knowledge_build` and
+`agentry_voice_build` take `detach` too. Every run leaves a record under
+`AGENTRY_MCP_STATE` (default `~/.agentry/mcp`), so a server started later
+reports a run it did not start by its process and its files: still running,
+ended with the envelope read from the run's stdout file or the output
+folder's `result.json`, or lost when its process is gone and it wrote no
+result. Records of ended runs are removed after 14 days.
 
 A run's deliverables, the files it was for, come back after the envelope.
 Text ones (Markdown, plain text, CSV, JSON, YAML, XML, HTML) are embedded
