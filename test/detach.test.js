@@ -126,11 +126,15 @@ test("a detached start needs the same digest as a waited one, returns the id at 
   assert.equal(argv[argv.indexOf("--out") + 1], d.outDir);
   assert.ok(argv.includes("--yes"));
   assert.ok(!argv.some((a) => /detach/.test(a)));
-  // Before the end: running, with the narration so far.
-  const running = JSON.parse((await status(client, d.id)).content[0].text);
-  assert.equal(running.state, "running");
-  assert.ok(running.progress.lines >= 1, "narration lines were counted");
-  assert.match(running.progress.tail, /gateway up/);
+  // While it runs: the narration so far, read from the run's log as the
+  // detached CLI writes it, on its own clock. The start reported the run
+  // as running; the narration is waited for, since the CLI may not have
+  // written it by the time the first status is read.
+  const progress = await until(async () => {
+    const o = JSON.parse((await status(client, d.id)).content[0].text);
+    return /gateway up/.test(o.progress.tail) ? o.progress : undefined;
+  });
+  assert.ok(progress.lines >= 1, "narration lines were counted");
   // After the end: the run tool's own result, the record's fields beside the envelope.
   const ended = await until(async () => {
     const s = await status(client, d.id);
