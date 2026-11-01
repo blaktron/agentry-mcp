@@ -48,6 +48,7 @@ import {
   isReadiness,
   readiness as readinessOf,
   readinessWords,
+  runhostReadiness,
   type Readiness,
 } from "./readiness.js";
 import { defaultOutDir, type RunRecord } from "./runs.js";
@@ -153,6 +154,8 @@ export interface RunArgs {
   acceptUnsigned?: boolean;
   acceptUnscanned?: boolean;
   detach?: boolean;
+  /** A remote runhost of this computer's to run on (`--on`). */
+  on?: string;
 }
 
 /** The compiled plan's fields the summary in words reads; everything else passes through. */
@@ -215,6 +218,50 @@ export interface RunPlan {
  * call's own for the preview, and for the run the one the preview resolved
  * (ns/name@version), never the floating ref the call carried.
  */
+/** What a run on a runhost does not carry yet, by argument; the CLI refuses the same. */
+const NOT_ON_A_RUNHOST: [keyof RunArgs, string][] = [
+  ["local", "local (a runhost runs a published release)"],
+  ["files", "files"],
+  ["knowledge", "knowledge"],
+  ["voice", "voice"],
+  ["voiceFile", "voiceFile"],
+  ["intake", "intake"],
+  ["intakeTokens", "intakeTokens"],
+  ["hostKeys", "target-host sign-ins"],
+  ["hostPasswords", "target-host sign-ins"],
+  ["hostPassphrases", "target-host sign-ins"],
+  ["hostSudoPasswords", "target-host sign-ins"],
+  ["deliverTo", "deliverTo"],
+  ["destinations", "destinations"],
+  ["reportTheme", "reportTheme"],
+];
+
+/** A runhost's name, as the CLI names them. */
+const RUNHOST_NAME = /^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/;
+
+/** Checks `on` and what it cannot carry, before anything is planned. */
+function checkOn(d: Driver, a: RunArgs): void {
+  if (a.on === undefined) return;
+  if (!d.features.runhosts)
+    throw new ArgumentError(
+      "this agentry CLI has no run --on; update the CLI to v0.6.1017 or later to run on a remote runhost",
+    );
+  if (!RUNHOST_NAME.test(a.on))
+    throw new ArgumentError(
+      `on ${JSON.stringify(a.on)} is not a runhost's name (see agentry_runhost_list)`,
+    );
+  for (const [k, what] of NOT_ON_A_RUNHOST) {
+    const v = a[k];
+    if (
+      v !== undefined &&
+      v !== false &&
+      !(Array.isArray(v) && v.length === 0) &&
+      !(typeof v === "object" && v !== null && !Array.isArray(v) && Object.keys(v).length === 0)
+    )
+      throw new ArgumentError(`a run on a runhost does not take ${what} yet`);
+  }
+}
+
 function target(a: RunArgs, resolvedRef?: string): string[] {
   if ((a.ref === undefined) === (a.local === undefined)) {
     throw new ArgumentError(
@@ -345,6 +392,13 @@ export function runSummary(
   const lines = [
     `${verb} ${p.ref} (${p.mode}; attestation ${p.attestation}${p.signed ? ", signed" : ""})` +
       `${budget ? `, ${budget}` : ""}.`,
+    ...(a.on !== undefined
+      ? [
+          `Where: the remote runhost ${a.on}, over SSH. This computer verifies the release and sends it with the ` +
+            `model key; the runhost verifies it again and runs it under gVisor, and seals the output to this ` +
+            `computer, which opens it into the output folder. The plan below is this computer's compile of the same release.`,
+        ]
+      : []),
     modelWords(p),
     `Network: ${network}${extras.length ? `; also ${extras.join("; ")}` : ""}.`,
     `Reads: ${reads}. Writes: ${writes}.` +
@@ -447,6 +501,7 @@ export async function runConsent(
     throw new ArgumentError("give destinations or noDestination, not both");
   // The flags only the run carries are checked before anything is planned.
   deliveryFlags([], a);
+  checkOn(d, a);
   const planArgv = ["run", ...target(a), "--plan", "--json"];
   commonFlags(planArgv, a, mode);
   const planned = await runPlan<RunPlan>(d, `${tool} (plan)`, planArgv);
@@ -500,16 +555,23 @@ export async function runConsent(
   // plan resolved (its install, its declared secrets), re-read at confirm
   // like every other fact, so a key set or an engine stopped between the
   // two calls changes the digest.
-  const ready = await readinessOf(d, tool, {
-    ...(a.local !== undefined ? { local: a.local } : { ref: plan.ref }),
-    policy: a.policy,
-    registry: a.registry,
-    adapter: a.adapter,
-  });
+  // On a runhost, the runhost's own doctor says whether it can run: its
+  // engine, gVisor and images. The model key travels from here, and the CLI
+  // refuses the run before anything is sent when it is not set.
+  const ready =
+    a.on !== undefined
+      ? await runhostReadiness(d, tool, a.on)
+      : await readinessOf(d, tool, {
+          ...(a.local !== undefined ? { local: a.local } : { ref: plan.ref }),
+          policy: a.policy,
+          registry: a.registry,
+          adapter: a.adapter,
+        });
   if (!isReadiness(ready)) return ready;
   const summary = runSummary(plan, a, mode, timeoutSeconds, sends, secrets, refusals, ready);
   const facts = {
     ...runFacts(plan, a, timeoutSeconds, refusals),
+    on: a.on ?? null,
     attachmentInputs,
     knowledgeState,
     voiceState: voice.plan,
@@ -544,7 +606,7 @@ export async function runConsent(
     acceptUnscanned: a.acceptUnscanned,
     refusals,
     ask:
-      `${mode === "interactive" ? "Start a session with" : "Run"} ${plan.ref} (${plan.mode}` +
+      `${mode === "interactive" ? "Start a session with" : "Run"} ${plan.ref}${a.on !== undefined ? ` on the remote runhost ${a.on}` : ""} (${plan.mode}` +
       `${mode === "interactive" ? "" : `, up to ${timeoutSeconds}s`})? Contract: ${canonical(plan.contract)}. ` +
       `${a.deliverTo !== undefined ? `Copies its deliverables to ${a.deliverTo}. ` : ""}` +
       `${sends.destinations.length ? `Sends its result and deliverables to ${sends.destinations.join(", ")}. ` : ""}` +
@@ -648,6 +710,7 @@ export function runArgv(a: RunArgs, c: RunConsent, mode: RunMode, inputPath?: st
   if (mode === "autonomous") argv.push("--output-format", "json");
   commonFlags(argv, a, mode);
   flag(argv, "pin", a.local === undefined ? c.plan.digest : undefined);
+  flag(argv, "on", a.on);
   flag(argv, "out", a.out);
   deliveryFlags(argv, a);
   if (inputPath !== undefined) argv.push("--input", value("inputFile", inputPath));

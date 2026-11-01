@@ -214,6 +214,37 @@ export function registerReadTools(d: Driver): void {
 
   registerTool(
     d.server,
+    "agentry_runhost_list",
+    {
+      description:
+        "List this computer's remote runhosts, the person's own Linux servers that run QuickAgents for them " +
+        "over SSH, with agentry runhost list --json: each one's name (what agentry_run's `on` takes), address, " +
+        "pinned host key fingerprint, owner, server CLI version, operating system and architecture. Setting " +
+        "one up (`agentry runhost add`), removing one, pairing a device and changing its settings stay in a " +
+        "terminal: they take an administrator's sign-in to the server, which this server never holds.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    () =>
+      guard("agentry_runhost_list", async () => {
+        const r = await d.run("agentry_runhost_list", ["runhost", "list", "--json"]);
+        const said = (r.content[0] as { text?: string } | undefined)?.text ?? "";
+        if (r.isError && /unknown command "runhost"/.test(said))
+          return {
+            content: [
+              {
+                type: "text",
+                text: "agentry_runhost_list: this agentry CLI has no runhost command; update the CLI to v0.6.1014 or later",
+              },
+            ],
+            isError: true,
+          };
+        return r;
+      }),
+  );
+
+  registerTool(
+    d.server,
     "agentry_doctor",
     {
       description:

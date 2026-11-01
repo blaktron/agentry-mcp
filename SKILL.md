@@ -149,6 +149,23 @@ envelope's `deliverables` lists each one, and a
 `withheld` entry is a file that no longer matches what the run wrote. Pass
 `deliverTo` with a folder the person chose to have a copy made there too.
 
+## Remote runhosts
+
+A person may have remote runhosts: their own Linux servers, set up from this
+computer, that run QuickAgents for them. `agentry_runhost_list` lists them.
+To run on one, pass its name as `agentry_run`'s `on`. Use it only when the
+person asked for that runhost by name or chose it. The preview's `summary`
+says where the run goes, and its `readiness` is the runhost's own doctor;
+show both. A run on a runhost takes a published release with no secrets,
+intake questions, target hosts or MCP servers, and no `files`, `knowledge`,
+voice, `reportTheme`, `deliverTo` or `destinations` yet. For those, run on
+this computer.
+
+Never try to set a runhost up, remove one, pair a device or change its
+settings: those take an administrator's sign-in to the person's server and
+stay in a terminal (`agentry runhost add`, `agentry runhost remove`). Tell
+the person the command to run themselves.
+
 ## Long runs: cancel and detach
 
 A run or a build holds its tool call until it ends, up to its budget (15

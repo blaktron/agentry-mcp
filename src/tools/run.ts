@@ -266,6 +266,17 @@ export function registerRunTools(d: Driver): void {
           .describe(
             "Only with `confirm`, only when the preview said unscanned (admitted without a scan), and only if the person accepted that nothing about its contents was checked.",
           ),
+        on: z
+          .string()
+          .optional()
+          .describe(
+            "Run on this remote runhost (`--on`; a name agentry_runhost_list gives) instead of this computer: the " +
+              "release is verified here and sent over SSH with the model key, verified again on the runhost and " +
+              "run there under gVisor, and its output is sealed to this computer and opened into `out`. The " +
+              "preview's readiness is the runhost's own doctor. A run on a runhost takes a published release " +
+              "with no secrets, intake, target hosts or MCP servers, and no files, knowledge, voice, report theme, " +
+              "deliverTo or destinations yet. Needs CLI v0.6.1017 or later.",
+          ),
         detach: z
           .boolean()
           .optional()

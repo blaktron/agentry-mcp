@@ -61,7 +61,7 @@ if [ "${1:-}" = "install" ] && [ "${2:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_PLAN:-}" ]; then echo "Flags: --yes --allow-unsigned --target"; else echo "Flags: --plan --yes --allow-unsigned --target"; fi; exit 0
 fi
 if [ "${1:-}" = "run" ] && [ "${2:-}" = "--help" ]; then
-  if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode ${FAKE_NO_PROTOCOL:+removed} ${FAKE_NO_PROTOCOL:---session-protocol} ${FAKE_NO_DELIVER:---deliver-to} ${FAKE_NO_DESTINATION:---destination}"; fi; exit 0
+  if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode ${FAKE_NO_PROTOCOL:+removed} ${FAKE_NO_PROTOCOL:---session-protocol} ${FAKE_NO_DELIVER:---deliver-to} ${FAKE_NO_DESTINATION:---destination} ${FAKE_NO_RUNHOST:---on}"; fi; exit 0
 fi
 if [ "${1:-}" = "knowledge" ] && [ "${2:-}" = "create" ] && [ "${3:-}" = "--help" ]; then
   echo "Flags: --file --brief-file --web --no-web ${FAKE_NO_SOURCES:---repo --url}"; exit 0
@@ -115,6 +115,19 @@ if [ "$1" = "agent" ]; then
       st=on; [ "${4:-}" = pause ] && st=paused
       printf '{"agent":"%s","tasks":[{"id":"t1","name":"Morning summary","cron":"0 8 * * 1-5","zone":"Europe/Oslo","instruction":"Summarise my day.","state":"%s","madeBy":"agent","lastResult":"Three meetings today."}]}\n' "$3" "$st" ;;
     *) echo "fake: agent $2" >&2; exit 2 ;;
+  esac
+  exit 0
+fi
+if [ "${1:-}" = "runhost" ]; then
+  [ -n "${FAKE_NO_RUNHOST:-}" ] && { echo 'Error: unknown command "runhost" for "agentry"' >&2; exit 1; }
+  case "${2:-}" in
+    list) echo '{"runhosts":[{"name":"lab","host":"192.0.2.10","port":22,"hostKey":"ssh-ed25519 AAAA","hostKeyFingerprint":"SHA256:abc","owner":{"kind":"devices"},"deviceID":"aaaa","cliVersion":"0.6.1017","arch":"amd64","os":"Debian GNU/Linux 13 (trixie)","gvisor":"20261026.0","addedAt":"2026-11-01T00:00:00Z"}]}' ;;
+    doctor)
+      if [ -n "${FAKE_RUNHOST_DOWN:-}" ]; then
+        printf '{"ref":"runhost %s","checks":[{"name":"docker","status":"ok","detail":"Docker Engine 29.0.0"},{"name":"runhost:gvisor","status":"fail","detail":"the policy runs containers under runc","remedy":"run agentry runhost add again"}]}\n' "$3"; exit 1
+      fi
+      printf '{"ref":"runhost %s","checks":[{"name":"policy","status":"ok","detail":"/var/lib/agentry/.agentry/runner/policy.yaml"},{"name":"docker","status":"ok","detail":"Docker Engine 29.0.0"},{"name":"runhost:gvisor","status":"ok","detail":"every container runs under runsc, the gateway under runsc-uds"}]}\n' "$3" ;;
+    *) echo "fake: runhost $2" >&2; exit 99 ;;
   esac
   exit 0
 fi
@@ -200,6 +213,8 @@ case "$1" in
       # refusal are reported, --allow-unsigned on a plan is a test failure.
       if has --allow-unsigned; then echo "fake: --allow-unsigned on a plan" >&2; exit 99; fi
       if has --allow-unscanned; then echo "fake: --allow-unscanned on a plan" >&2; exit 99; fi
+      # The CLI plans on this computer: --on never reaches a plan.
+      if has --on; then echo "fake: --on on a plan" >&2; exit 99; fi
       ratt="${FAKE_RUN_ATTEST:-verified}"; has --local && ratt=local
       rsigned=false; [ "$ratt" = verified ] && rsigned=true
       rref='acme/widget@1.0.0'; has --local && rref='fixtures/hello-report@1.0.0'
