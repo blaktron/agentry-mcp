@@ -195,6 +195,57 @@ export async function readiness(
   };
 }
 
+/**
+ * Whether a run on the remote runhost name can start, from
+ * `agentry runhost doctor <name> --json`: its policy, its engine, gVisor
+ * for every container, its images and its socket. Ready when no check
+ * failed and the engine was checked.
+ */
+export async function runhostReadiness(
+  d: Driver,
+  tool: string,
+  name: string,
+): Promise<Readiness | CallToolResult> {
+  const r = await d.run(
+    `${tool} (runhost readiness)`,
+    ["runhost", "doctor", value("on", name), "--json"],
+    {
+      timeoutMs: DOCTOR_TIMEOUT_MS,
+    },
+  );
+  const body = (r.content[0] as { text?: string } | undefined)?.text ?? "";
+  let report: { checks?: unknown; result?: { checks?: unknown } };
+  try {
+    report = JSON.parse(body) as typeof report;
+  } catch {
+    return r.isError
+      ? r
+      : text(`${tool}: the runhost's doctor report is not readable; nothing was done.`, true);
+  }
+  const checks = report.checks ?? report.result?.checks;
+  if (!Array.isArray(checks) || checks.length === 0 || !checks.every(isCheck)) {
+    return r.isError
+      ? r
+      : text(
+          `${tool}: the runhost's doctor report carries no checks this server can read; nothing was done. ` +
+            `Run \`agentry runhost doctor ${name}\` in a terminal.`,
+          true,
+        );
+  }
+  const failed = checks.some((c) => c.status === "fail");
+  return {
+    ready: !failed && checks.some((c) => c.name === "docker" || c.name.startsWith("docker:")),
+    checked: `the remote runhost ${name}`,
+    checks: checks.map((c) => ({
+      name: c.name,
+      status: c.status,
+      ...(c.detail !== undefined ? { detail: c.detail } : {}),
+      ...(c.remedy !== undefined ? { remedy: c.remedy } : {}),
+    })),
+    lines: readinessLines(checks),
+  };
+}
+
 export function isReadiness(v: Readiness | CallToolResult): v is Readiness {
   return !("content" in v);
 }

@@ -88,6 +88,22 @@ and the CLI's last stderr lines as `log`.
 | `agentry_model_signins_list` | `agentry model-signins list --json` | the model sign-ins local runs can spend, never a token                                                                                                                                                                                                |
 | `agentry_report_design_show` | `agentry report-design show --json` | the report design a run's PDFs would take, and what chose it                                                                                                                                                                                          |
 | `agentry_destinations_list`  | `agentry destinations list --json`  | the saved destinations (name, kind, host, on my network) and the QuickAgents each is a default for, never a secret                                                                                                                                    |
+| `agentry_runhost_list`       | `agentry runhost list --json`       | this computer's remote runhosts: name, address, host key fingerprint, owner, server CLI version, system                                                                                                                                               |
+
+`agentry_run` takes `on`, a remote runhost's name from `agentry_runhost_list`,
+to run there instead of on this computer (`agentry run --on`, CLI v0.6.1017 or
+later). The release is verified on this computer and sent over SSH with the
+model key; the runhost verifies it again, runs it under gVisor and seals the
+output to this computer, which opens it into the output folder. The preview's
+readiness is `agentry runhost doctor` for that runhost. A run on a runhost
+takes a published release with no secrets, intake questions, target hosts or
+MCP servers, and none of `files`, `knowledge`, the voice arguments,
+`reportTheme`, `deliverTo` or `destinations` yet.
+
+Setting a runhost up (`agentry runhost add`), removing it (`agentry runhost
+remove`), and later pairing another device, changing its settings and choosing
+its model stay in a terminal. Each takes an administrator's sign-in to the
+person's server or a sign-in in the browser, and a host agent never holds those.
 
 Writing and running tools take two calls. The first, without `confirm`, runs
 the CLI's plan mode, writes nothing and returns what consent would cover plus
