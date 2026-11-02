@@ -270,6 +270,10 @@ function checkOn(d: Driver, a: RunArgs, mode: RunMode): void {
     throw new ArgumentError(
       "this agentry CLI cannot run a session on a remote runhost (its run has no --detach); update the CLI, or start the session on this computer",
     );
+  if (given(a.adapter) && !d.features.runhostSignIns)
+    throw new ArgumentError(
+      "this agentry CLI's run --on takes no adapter; update the CLI to v0.7.6 or later, or leave adapter out",
+    );
   if (!d.features.runhostJobs)
     for (const [k, what] of ON_A_RUNHOST_WITH_JOBS)
       if (given(a[k]))
@@ -415,6 +419,12 @@ export function runSummary(
             `it again, runs it under gVisor, delivers to its destinations, deletes what it was sent, and seals the ` +
             `output to this computer, which opens it into the output folder. The plan below is this computer's ` +
             `compile of the same release.`,
+          ...(a.adapter === "claude" || a.adapter === "codex"
+            ? [
+                `On the runhost no harness runs as a host process: ${a.adapter} runs as its image, ${a.adapter}-image, ` +
+                  `in a container under gVisor.`,
+              ]
+            : []),
         ]
       : []),
     modelWords(p),
