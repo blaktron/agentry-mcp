@@ -163,9 +163,13 @@ intake answers and sends them, with the files, for that run alone, and the
 runhost deletes them when the run ends. A target host is reached from the
 runhost, with the sign-in this computer has, and only when this computer
 already knows the host's key (its known_hosts); otherwise the run is refused
-and the person runs once on this computer first. It does not take a
-destination on the person's own network, or a model sign-in or Agentry credits
-yet; for those, run on this computer.
+and the person runs once on this computer first. A run whose model is Agentry
+credits pays with the runhost's own credits token (CLI v0.7.3 or later). If
+the runhost has none, the run is refused: tell the person to run `agentry
+runhost model <name> --provider agentry` in a terminal, which asks them to
+approve the token in their browser. It does not take a destination on the
+person's own network, or a model sign-in, yet; for those, run on this
+computer.
 
 `agentry_session_start` takes `on` too: the session runs on the runhost and is
 driven from here with `agentry_session_send`, `agentry_session_add` and
@@ -176,8 +180,10 @@ with `agentry runhost attach <name> <job>`, and `agentry runhost jobs <name>`
 lists what is there.
 
 Never try to set a runhost up, remove one, pair a device or change its
-settings: those take an administrator's sign-in to the person's server and
-stay in a terminal (`agentry runhost add`, `agentry runhost remove`). Tell
+settings, or give it or take away its credits token: those take an
+administrator's sign-in to the person's server or the person's own approval
+in their browser, and stay in a terminal (`agentry runhost add`, `agentry
+runhost remove`, `agentry runhost model`, `agentry runhost store`). Tell
 the person the command to run themselves.
 
 ## Long runs: cancel and detach
