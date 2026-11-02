@@ -251,19 +251,25 @@ keep their conversation, and so do the persistent QuickAgents installed from a
 registry. Main runs only in Agentry Desktop. Read them with
 `agentry_agent_list` and `agentry_agent_show`. Name an agent by its short name
 (`assistant`, `coder`) or, for a registry agent, its `ns/name`; `show` returns
-its reference, version, persona, packs and subagent pins. The CLI lists no
-subagent runs.
+its reference, version, persona, packs and subagent pins, and with CLI v0.7.8
+or later `subagentRuns`, the runs it started of its subagents, newest first,
+each with its outcome and the run's own id.
 
 `agentry_agent_install` (CLI v0.7.4 or later) adds a persistent QuickAgent from
-a registry in two calls. Its preview lists what the agent may do beyond a run
+a registry in two calls, and with CLI v0.7.8 or later updates one already
+installed. Its preview lists what the agent may do beyond a run
 (`persistent`: clock, memory, skills, stored secrets, mail, the coding
 toolchain, web, helper tools and the rest), the knowledge it ships, each
-subagent with the reason it gives, the persona and the attestation verdict.
-Show the person all of it, say that a subagent runs as a QuickAgent of its own
-under its own contract, and confirm with the digest only once they agree. The
-CLI resolves each subagent's version while it installs; the result names them.
-The agent is left stopped (`agentry_agent_start`). An unsigned or unscanned
-release is refused, and updating an agent already installed stays in a terminal.
+subagent with the reason it gives, the persona of that version and the
+attestation verdict. With CLI v0.7.8 or later it also gives each subagent's pin
+(the version, what it reaches and its digest, or why it resolves to none) and,
+for an update, `installedAgent` and the widening in `diff`. Show the person all
+of it, say that a subagent runs as a QuickAgent of its own under its own
+contract, and confirm with the digest only once they agree; a pin that moved in
+between is refused. The agent is left stopped (`agentry_agent_start`). An
+unsigned or unscanned release is refused, and so is the update of a running
+agent. With an older CLI, the result names the pins and updating stays in a
+terminal.
 `agentry_agent_uninstall` is two calls too, and keeps the agent's conversation
 and files unless `removeData` is set; wiping them cannot be undone, so the
 confirm also needs `confirmRef`, the agent's reference as the preview names it,
