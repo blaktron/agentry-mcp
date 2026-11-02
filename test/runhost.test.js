@@ -70,8 +70,6 @@ test("a runhost whose doctor fails is not ready, and the summary says so", async
 test("what a run on a runhost does not carry yet, and a name that is not a runhost's, are refused before any plan", async () => {
   const { client, argvFile } = await connect();
   for (const args of [
-    { ref: "acme/widget", on: "lab", hostKeys: { box: "/tmp/k" } },
-    { ref: "acme/widget", on: "lab", hostPasswords: { box: "BOX_PASSWORD" } },
     { local: "/tmp/ws", on: "lab" },
     { ref: "acme/widget", on: "Lab Server" },
     { ref: "acme/widget", on: "lab; id" },
@@ -127,6 +125,7 @@ test("a CLI whose run --on carries a release alone is told to update before it i
     { ref: "acme/widget", on: "lab", intake: { repo: "https://example.com/r" } },
     { ref: "acme/widget", on: "lab", destinations: ["hook"] },
     { ref: "acme/widget", on: "lab", knowledge: ["notes"] },
+    { ref: "acme/widget", on: "lab", hostKeys: { box: "/tmp/k" } },
   ]) {
     const r = await client.callTool({ name: "agentry_run", arguments: args });
     assert.equal(r.isError, true, JSON.stringify(args));

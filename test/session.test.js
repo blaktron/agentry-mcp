@@ -16,6 +16,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, test } from "node:test";
 
+import { ALL_FEATURES } from "../dist/cli.js";
 import { connect as connectServer, receivedArgv, scratchArgv } from "./helpers.js";
 
 const clients = [];
@@ -329,4 +330,34 @@ test("the tool list includes the updated surface", async () => {
   const { tools } = await client.listTools();
   assert.equal(tools.length, 39);
   assert.ok(tools.find((t) => t.name === "agentry_session_start"));
+});
+
+test("a session on a runhost: the runhost's doctor is the readiness, the launch carries --on, and a turn and close work as here", async () => {
+  const { client, argvFile } = await connect();
+  const { preview, session } = await startSession(client, { on: "lab" });
+  assert.equal(preview.readiness.checked, "the remote runhost lab");
+  assert.match(preview.summary, /Where: the remote runhost lab/);
+  const started = await launchArgv(argvFile);
+  const i = started.indexOf("--on");
+  assert.ok(i > 0 && started[i + 1] === "lab", started.join(" "));
+  const t1 = await call(client, "agentry_session_send", {
+    sessionId: session.sessionId,
+    text: "hello",
+  });
+  assert.equal(t1.isError, undefined, t1.content[0].text);
+  assert.equal(JSON.parse(t1.content[0].text).reply, "echo: hello");
+  const c = await call(client, "agentry_session_close", { sessionId: session.sessionId });
+  assert.equal(c.isError, undefined, c.content[0].text);
+});
+
+test("a CLI that cannot run a session on a runhost is told to update before anything is planned", async () => {
+  const { client, argvFile } = await connectServer({}, {}, undefined, {
+    ...ALL_FEATURES,
+    runhostSessions: false,
+  });
+  clients.push(client);
+  const r = await call(client, "agentry_session_start", { ref: "acme/widget", on: "lab" });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /cannot run a session on a remote runhost/);
+  assert.ok(!receivedArgv(argvFile).some((a) => a[0] === "run"), "nothing was planned");
 });
