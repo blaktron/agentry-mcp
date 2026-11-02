@@ -328,7 +328,7 @@ test("no session result carries a secret value from the server's environment", a
 test("the tool list includes the updated surface", async () => {
   const { client } = await connect();
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 39);
+  assert.equal(tools.length, 41);
   assert.ok(tools.find((t) => t.name === "agentry_session_start"));
 });
 

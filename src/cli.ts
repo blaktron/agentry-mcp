@@ -32,6 +32,8 @@ export interface CliFeatures {
   tasks: boolean;
   /** `agent compact <name> --json`: an upkeep turn and a fresh conversation. */
   compact: boolean;
+  /** `agent install <ns/name>` and `agent uninstall <name>`: persistent agents from the registry. */
+  publishedAgents: boolean;
   /** `run --on <runhost>`: a run on one of the person's remote runhosts. */
   runhosts: boolean;
   /** `run --on` carrying the run's secrets, files and intake, not a bare release alone. */
@@ -49,6 +51,7 @@ export const ALL_FEATURES: CliFeatures = {
   agents: true,
   tasks: true,
   compact: true,
+  publishedAgents: true,
   runhosts: true,
   runhostJobs: true,
   runhostSessions: true,
@@ -323,6 +326,12 @@ export async function checkCli(
   const attachHelp = await runCli(bin, ["agent", "attach", "--help"], { timeoutMs: 10_000 });
   const tasksHelp = await runCli(bin, ["agent", "tasks", "--help"], { timeoutMs: 10_000 });
   const compactHelp = await runCli(bin, ["agent", "compact", "--help"], { timeoutMs: 10_000 });
+  const agentInstallHelp = await runCli(bin, ["agent", "install", "--help"], {
+    timeoutMs: 10_000,
+  });
+  const agentUninstallHelp = await runCli(bin, ["agent", "uninstall", "--help"], {
+    timeoutMs: 10_000,
+  });
   return {
     ...v,
     floorChecked: v.semver !== undefined,
@@ -334,6 +343,9 @@ export async function checkCli(
       agents: /attach <name> --json/.test(attachHelp.stdout + attachHelp.stderr),
       tasks: /tasks <name> \[pause\|resume/.test(tasksHelp.stdout + tasksHelp.stderr),
       compact: /compact <name>/.test(compactHelp.stdout + compactHelp.stderr),
+      publishedAgents:
+        /install <ns\/name\[@version\]>/.test(agentInstallHelp.stdout + agentInstallHelp.stderr) &&
+        /uninstall <name>/.test(agentUninstallHelp.stdout + agentUninstallHelp.stderr),
       runhosts: /--on\b/.test(runHelp),
       runhostJobs: /--on\b[^\n]*secrets, files and intake/.test(runHelp),
       runhostSessions: /--detach\b/.test(runHelp),

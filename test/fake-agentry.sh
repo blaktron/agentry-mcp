@@ -49,6 +49,11 @@
 #   FAKE_AGENT_NEEDS_FILE  a file whose content, when it exists, is the line `agent start` needs agreement to
 #   FAKE_AGENT_BUSY    an attached send is refused busy
 #   FAKE_AGENT_STALE   an attached send first sees the end of another chat's turn
+#   FAKE_AGENT_QUESTION  an attached send first puts this question to the person and waits for the answer
+#   FAKE_NO_AGENT_INSTALL  set to make `agent install --help` print the parent's help (a CLI without agent install)
+#   FAKE_MODES         the install plan's one mode (default autonomous)
+#   FAKE_INSTALLED_AS_AGENT  the install plan is refused because the release is installed as a persistent agent
+#   FAKE_INFO_VERSION  the latest version `info` reports (default 1.0.0)
 set -u
 if [ -n "${FAKE_ARGV:-}" ]; then
   printf '%s\n' "$@" >> "$FAKE_ARGV"
@@ -78,6 +83,12 @@ fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "compact" ] && [ "${3:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_COMPACT:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent compact <name> [flags]"; fi; exit 0
 fi
+if [ "${1:-}" = "agent" ] && [ "${2:-}" = "install" ] && [ "${3:-}" = "--help" ]; then
+  if [ -n "${FAKE_NO_AGENT_INSTALL:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent install <ns/name[@version]> | --local <folder> [flags]"; fi; exit 0
+fi
+if [ "${1:-}" = "agent" ] && [ "${2:-}" = "uninstall" ] && [ "${3:-}" = "--help" ]; then
+  if [ -n "${FAKE_NO_AGENT_INSTALL:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent uninstall <name> [flags]"; fi; exit 0
+fi
 if [ "${2:-}" = "--help" ]; then echo "Usage: agentry $1"; exit 0; fi
 echo "narration: running $1" >&2
 if [ -n "${FAKE_SLEEP:-}" ]; then sleep "$FAKE_SLEEP"; fi
@@ -97,6 +108,11 @@ if [ "$1" = "agent" ]; then
   case "$2" in
     list) echo '[{"agent":"main","displayName":"Agentry Helper","state":"desktop only","desktopOnly":true},{"agent":"assistant","displayName":"Assistant","state":"stopped"}]' ;;
     show)
+      case "$3" in
+        acme/widget|acme.widget|widget)
+          printf '{"agent":"acme.widget","ref":"acme/widget","version":"1.0.0","source":"registry","persona":{"name":"Wally","text":"Be brief.","editable":false},"packs":["handbook"],"subagents":[{"ref":"acme/summarizer","constraint":"^1.0.0","why":"Summarises long documents.","version":"1.2.0","reach":"nothing beyond its model"}],"displayName":"Wally","state":"%s","roster":[{"id":"subagent:acme/summarizer","kind":"subagent","name":"acme/summarizer@1.2.0","grantedBy":"release","state":"on","on":true,"line":"start acme/summarizer as a run of its own"},{"id":"subagent:acme/summarizer:ask","kind":"subagent","name":"Ask before each run of acme/summarizer","grantedBy":"you","state":"off","on":false,"line":"ask you before each run"}],"config":{"enabled":true,"consented":{}}}\n' "${FAKE_AGENT_STATE:-stopped}"
+          exit 0 ;;
+      esac
       [ "$3" = main ] && { echo '{"agent":"main","displayName":"Agentry Helper","state":"desktop only","desktopOnly":true}'; exit 0; }
       printf '{"agent":"%s","displayName":"Assistant","state":"%s","roster":[{"id":"data","kind":"folder","name":"its own files","grantedBy":"agent","state":"on","on":true,"line":"its own files","fixed":true},{"id":"share","kind":"folder","name":"share","grantedBy":"person","state":"off","on":false,"line":"%s"}],"config":{"enabled":true,"consented":{}}}\n' "$3" "${FAKE_AGENT_STATE:-stopped}" "$share_line" ;;
     start)
@@ -107,6 +123,21 @@ if [ "$1" = "agent" ]; then
         printf '{"agent":"%s","needsAgreement":[{"id":"share","line":"%s"}]}\n' "$3" "$need"
         echo "this needs the person's agreement" >&2; exit 11
       fi ;;
+    install)
+      if ! has --yes; then echo "fake: agent install asks at the terminal without --yes" >&2; exit 2; fi
+      [ -n "${FAKE_WRITES:-}" ] && echo agent-installed >> "$FAKE_WRITES"
+      echo '{"agent":"acme.widget","ref":"acme/widget","version":"1.0.0","source":"registry","digest":"sha256:aaaa","persona":"Wally","packs":["handbook"],"subagents":[{"ref":"acme/summarizer","constraint":"^1.0.0","why":"Summarises long documents.","version":"1.2.0","reach":"nothing beyond its model"}],"enabled":true,"recorded":true}' ;;
+    uninstall)
+      wiped=false
+      if has --remove-data; then
+        prev=""; conf=""; for a in "$@"; do if [ "$prev" = "--confirm" ]; then conf=$a; fi; prev=$a; done
+        if [ "$conf" != "acme/widget" ]; then echo "fake: the reference did not match; nothing was uninstalled" >&2; exit 2; fi
+        wiped=true
+        [ -n "${FAKE_WRITES:-}" ] && echo agent-wiped >> "$FAKE_WRITES"
+      else
+        [ -n "${FAKE_WRITES:-}" ] && echo agent-uninstalled >> "$FAKE_WRITES"
+      fi
+      printf '{"agent":"acme.widget","ref":"acme/widget","dataRemoved":%s,"release":{"ref":"acme/widget","plan":false,"installs":["/home/me/.agentry/runner/agents/acme/widget/1.0.0-aaaa"],"profiles":[],"consentRecord":true}}\n' "$wiped" ;;
     stop) echo '{"status":"ok","resultFile":"/home/me/.agentry/runner/agents/assistant/result.json"}' ;;
     compact) printf '{"agent":"%s","compacted":{"trigger":"manual","swapped":true,"factsBefore":6,"factsAfter":14,"handoffBytes":1326,"swap":"in-segment","swapMillis":30}}\n' "$3" ;;
     grant) printf '[{"id":"share","on":%s}]\n' "$( [ "$5" = on ] && echo true || echo false )" ;;
@@ -159,7 +190,7 @@ case "$1" in
     if [ -n "${FAKE_RUN_FAIL:-}" ]; then echo '{"status":"error","exitCode":13,"exitClass":"gateway","error":"the gateway did not start"}'; exit 13; fi
     echo '{"status":"ok","report":"report.json","reason":"example"}' ;;
   search) echo '{"results":[{"namespace":"acme","name":"widget","modes":["autonomous"],"summary":"x","installs30d":2,"quarantineState":"none"}],"facets":{},"total":1}' ;;
-  info) echo '{"agent":{"namespace":"acme","name":"widget"},"latest":{"version":"1.0.0","capabilities":{"network":{"egress":"none"}}},"run":{"intake":[{"id":"repo","type":"repository","required":false,"prompt":"The repository","personsOwn":false,"answer":"The repository'"'"'s https address"}],"takes":["code"],"inputView":"original","secrets":[],"modes":["autonomous"],"guide":{"overview":"Audits a repository."}}}' ;;
+  info) echo '{"agent":{"namespace":"acme","name":"widget"},"latest":{"version":"'"${FAKE_INFO_VERSION:-1.0.0}"'","capabilities":{"network":{"egress":"none"}},"manifest":{"persona":{"name":"Wally","file":"PERSONA.md","editable":false}}},"run":{"intake":[{"id":"repo","type":"repository","required":false,"prompt":"The repository","personsOwn":false,"answer":"The repository'"'"'s https address"}],"takes":["code"],"inputView":"original","secrets":[],"modes":["autonomous"],"guide":{"overview":"Audits a repository."}}}' ;;
   verify) echo '{"ref":"acme/widget@1.0.0","digestMatch":true,"attestation":{"state":"verified"}}' ;;
   doctor)
     # The report as the CLI prints it, with the ref when one was given:
@@ -184,7 +215,8 @@ case "$1" in
     if has --plan; then
       # A plan lifts nothing: a consent flag on it is a test failure.
       if has --allow-unsigned || has --allow-unscanned; then echo "fake: a consent flag on an install plan" >&2; exit 99; fi
-      printf '{"ref":"acme/widget@1.0.0","namespace":"acme","name":"widget","version":"1.0.0","digest":"sha256:aaaa","modes":["autonomous"],"contract":%s,"contractDigest":"sha256:cccc","attestation":"%s","signed":%s,"diff":{},"needsConfirmation":true,"reason":"a first install","target":"claude-skill","dir":"/home/me/.claude/skills/widget","managed":true%s}\n' "$contract" "$attest" "$signed" "$( [ -n "$refusal" ] && printf ',"refusal":%s' "$(printf '%s' "$refusal" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')" )"
+      if [ -n "${FAKE_INSTALLED_AS_AGENT:-}" ]; then echo "agentry: acme/widget is installed as a persistent agent: update it with agentry agent install acme/widget" >&2; exit 2; fi
+      printf '{"ref":"acme/widget@1.0.0","namespace":"acme","name":"widget","version":"1.0.0","digest":"sha256:aaaa","modes":["%s"],"contract":%s,"contractDigest":"sha256:cccc","attestation":"%s","signed":%s,"diff":{},"needsConfirmation":true,"reason":"a first install","target":"claude-skill","dir":"/home/me/.claude/skills/widget","managed":true%s}\n' "${FAKE_MODES:-autonomous}" "$contract" "$attest" "$signed" "$( [ -n "$refusal" ] && printf ',"refusal":%s' "$(printf '%s' "$refusal" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')" )"
     else
       [ -n "${FAKE_WRITES:-}" ] && echo written >> "$FAKE_WRITES"
       echo '{"ref":"acme/widget@1.0.0","namespace":"acme","name":"widget","version":"1.0.0","digest":"sha256:aaaa","target":"claude-skill","dir":"/home/me/.claude/skills/widget","managed":true,"attestation":"'"$attest"'","signed":'"$signed"',"contract":'"$contract"',"contractDigest":"sha256:cccc","recorded":true}'

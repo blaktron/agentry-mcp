@@ -19,7 +19,7 @@ import { registerSessionTools } from "./tools/session.js";
 import { registerWriteTools } from "./tools/write.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.7.3";
+export const SERVER_VERSION = "0.7.4";
 
 export function instructions(bin: string, cliVersion: string): string {
   return [
@@ -70,8 +70,13 @@ export function instructions(bin: string, cliVersion: string): string {
       "agentry_agent_list and agentry_agent_show read them, agentry_agent_start and agentry_agent_stop start and " +
       "stop one, agentry_agent_send is one turn in and the answer out, agentry_agent_grant switches a roster " +
       "entry, and agentry_agent_compact has an agent write a handoff and start a fresh conversation. " +
-      "Starting one that would be given something new, every switch and a compaction are the same two calls: show the " +
-      "person each consent sentence and confirm only once they agree. Main runs only in Agentry Desktop; enabling, " +
+      "agentry_agent_install adds a persistent QuickAgent from a registry (named by its ns/name everywhere an " +
+      "agent is named) and agentry_agent_uninstall removes it, keeping its conversation and files unless the " +
+      "person asks to remove them. An install shows the person what the agent may do, the persona, the knowledge " +
+      "it ships and its subagents. Installing or removing one, starting one that would be given something new, " +
+      "every switch and a compaction are the same two calls: show the " +
+      "person each consent sentence and confirm only once they agree. A question the agent puts to the person " +
+      "during a send is the person's to answer, never yours. Main runs only in Agentry Desktop; enabling, " +
       "configuring and resetting an agent stay with the person.",
     "",
     "Authoring: agentry_draft, agentry_review, agentry_knowledge_build and agentry_voice_build use " +

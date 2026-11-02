@@ -1,11 +1,13 @@
 /**
- * Persistent agents: the Assistant and the Coding agent run in the
- * background once started and keep their conversation across segments.
- * Starting one that would be given something the person has not agreed to
- * on this computer, and switching a roster entry, are the two-call consent
- * of src/consent.ts. A turn is one `agentry agent attach --json` process:
- * the send goes in on stdin, the agent's events come back on descriptor 3,
- * and the end detaches, leaving the agent running.
+ * Persistent agents: the Assistant, the Coding agent and the persistent
+ * QuickAgents installed from a registry run in the background once started
+ * and keep their conversation across segments. Installing or removing a
+ * registry agent, starting one that would be given something the person
+ * has not agreed to on this computer, and switching a roster entry, are the
+ * two-call consent of src/consent.ts. A turn is one
+ * `agentry agent attach --json` process: the send goes in on stdin, the
+ * agent's events come back on descriptor 3, and the end detaches, leaving
+ * the agent running.
  */
 
 import { spawn } from "node:child_process";
@@ -14,7 +16,17 @@ import type { Readable } from "node:stream";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { ArgumentError, flag, value } from "./argv.js";
-import { confirmed, consentedArgv, isConsent, previewText } from "./consent.js";
+import {
+  askPerson,
+  canonical,
+  confirmed,
+  consentedArgv,
+  isConsent,
+  planRefusals,
+  previewText,
+  runPlan,
+  type InstallPlan,
+} from "./consent.js";
 import type { Driver } from "./driver.js";
 import { tail, toolJSON as json, toolText as text } from "./envelope.js";
 
@@ -42,9 +54,52 @@ function envelopeOf<R>(r: CallToolResult): Envelope<R> | undefined {
   }
 }
 
-/** The agent's name as the CLI takes it. */
-function agentName(name: string): string {
-  return value("name", name);
+/** The manifest's name rules: a namespace and a name. */
+const NAMESPACE_RE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/;
+const NAME_RE = /^[a-z0-9](?:[a-z0-9-]{0,63}[a-z0-9])?$/;
+/** A version or range after `@` in a reference: no space, nothing a flag could start with. */
+const VERSION_RE = /^[A-Za-z0-9^~<>=*][A-Za-z0-9.+\-^~*<>=|]{0,63}$/;
+
+/**
+ * The agent as the CLI takes it: a built-in's short name (`assistant`), a
+ * published agent's `ns/name`, its key `ns.name`, or its bare name. Each
+ * part follows the manifest's name rules, so nothing that could be read as
+ * a flag, a path or a second argument gets through.
+ */
+export function agentName(name: string): string {
+  const v = value("name", name);
+  const bad = () =>
+    new ArgumentError(
+      `name must be a built-in agent's name (assistant, coder) or a published agent's ns/name, got ${JSON.stringify(v)}`,
+    );
+  const sep = v.includes("/") ? "/" : v.includes(".") ? "." : "";
+  if (sep === "") {
+    if (!NAME_RE.test(v)) throw bad();
+    return v;
+  }
+  const parts = v.split(sep);
+  const [ns, n] = parts;
+  if (parts.length !== 2 || !NAMESPACE_RE.test(ns ?? "") || !NAME_RE.test(n ?? "")) throw bad();
+  return v;
+}
+
+/** A registry reference: `ns/name`, optionally `@version` or `@range`. */
+function agentRelease(ref: string): { ns: string; name: string; version?: string } {
+  const v = value("ref", ref);
+  const at = v.indexOf("@");
+  const base = at < 0 ? v : v.slice(0, at);
+  const version = at < 0 ? undefined : v.slice(at + 1);
+  const [ns, name] = base.split("/");
+  if (
+    base.split("/").length !== 2 ||
+    !NAMESPACE_RE.test(ns ?? "") ||
+    !NAME_RE.test(name ?? "") ||
+    (version !== undefined && !VERSION_RE.test(version))
+  )
+    throw new ArgumentError(
+      `ref must be a published agent's ns/name, optionally with @version, got ${JSON.stringify(v)}`,
+    );
+  return { ns: ns!, name: name!, ...(version !== undefined ? { version } : {}) };
 }
 
 /** Refuses the call when the found CLI has no persistent agents for a program. */
@@ -174,8 +229,25 @@ interface RosterEntry {
   fixed?: boolean;
 }
 
+/** A subagent a published agent's release declares, as pinned at its install. */
+interface SubagentPin {
+  ref: string;
+  constraint: string;
+  why: string;
+  version?: string;
+  unresolved?: string;
+  reach?: string;
+}
+
 interface AgentState {
   agent: string;
+  /** A published agent's `ns/name`; the built-ins carry none of this. */
+  ref?: string;
+  version?: string;
+  source?: string;
+  persona?: { name: string; editable: boolean };
+  packs?: string[];
+  subagents?: SubagentPin[];
   state: string;
   desktopOnly?: boolean;
   roster?: RosterEntry[];
@@ -272,6 +344,8 @@ export async function agentGrant(d: Driver, a: AgentGrantArgs): Promise<CallTool
 interface AgentEvent {
   kind: string;
   refused?: string;
+  /** A question event's id. */
+  question?: string;
   text?: string;
   reason?: string;
   synthetic?: boolean;
@@ -322,6 +396,9 @@ export async function agentSend(d: Driver, a: AgentSendArgs): Promise<CallToolRe
 
   const toolCalls: string[] = [];
   const errors: string[] = [];
+  // Questions the agent put to the person during the turn, and what became of each.
+  const questions: { id: string; text: string; answer?: "yes" | "no" }[] = [];
+  let unaskable = false;
   const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   let seen = false;
   let reply: string | undefined;
@@ -379,6 +456,30 @@ export async function agentSend(d: Driver, a: AgentSendArgs): Promise<CallToolRe
               usage.totalTokens += ev.totalTokens ?? 0;
             }
             break;
+          case "question": {
+            // The agent asks the person, never the model: the person is asked
+            // through the host, and without that no answer is given.
+            if (!seen || !ev.question) break;
+            const q: { id: string; text: string; answer?: "yes" | "no" } = {
+              id: ev.question,
+              text: ev.text ?? "",
+            };
+            questions.push(q);
+            if (!d.server.server.getClientCapabilities()?.elicitation) {
+              unaskable = true;
+              resolve();
+              return;
+            }
+            void askPerson(d.server, `The ${name} agent asks: ${q.text}`).then(
+              ({ yes }) => {
+                q.answer = yes ? "yes" : "no";
+                if (!stopped)
+                  child.stdin?.write(JSON.stringify({ answer: { id: q.id, yes } }) + "\n");
+              },
+              () => {},
+            );
+            break;
+          }
           case "assistant_turn":
             if (seen) {
               reply = ev.text ?? "";
@@ -433,8 +534,31 @@ export async function agentSend(d: Driver, a: AgentSendArgs): Promise<CallToolRe
       true,
     );
   if (problem) return text(`agentry_agent_send: ${problem}`, true);
+  if (unaskable)
+    return json({
+      agent: name,
+      sent: true,
+      awaitingPerson: true,
+      questions,
+      toolCalls,
+      usage,
+      errors,
+      note:
+        "The agent asked the person a question this host cannot put to them, so nothing was answered and this " +
+        "call stopped waiting. The agent holds the question for ten minutes and then goes on as if the person " +
+        "had not answered. Tell the person; they answer in Agentry Desktop or `agentry agent chat`, and you can " +
+        "send the request again once they have it open.",
+    });
   if (reply !== undefined)
-    return json({ agent: name, sent: true, reply, toolCalls, usage, errors });
+    return json({
+      agent: name,
+      sent: true,
+      reply,
+      toolCalls,
+      usage,
+      errors,
+      ...(questions.length > 0 ? { questions } : {}),
+    });
   if (ended) return text(`agentry_agent_send: the ${name} agent's segment ended (${ended}).`, true);
   if (timedOut)
     return json({
@@ -444,6 +568,7 @@ export async function agentSend(d: Driver, a: AgentSendArgs): Promise<CallToolRe
       toolCalls,
       usage,
       errors,
+      ...(questions.length > 0 ? { questions } : {}),
       note: seen
         ? "The agent is still on this turn and finishes it on its own; read its answer later with agentry_agent_show and `transcript`."
         : "The agent had not taken the turn within the limit.",
@@ -562,3 +687,280 @@ export async function agentCompact(d: Driver, a: AgentCompactArgs): Promise<Call
 const COMPACT_SPENDS =
   "It uses the person's model plan for one upkeep turn (the agent runs at most 12 upkeep turns a day), " +
   "which can take a few minutes on a long conversation.";
+
+/** Refuses the call when the found CLI cannot install or remove a persistent agent from a registry. */
+function needsPublishedAgents(d: Driver, tool: string): CallToolResult | undefined {
+  if (d.features.publishedAgents) return undefined;
+  return text(
+    `${tool}: this agentry CLI has no \`agent install\` and \`agent uninstall\`. ` +
+      "Update the CLI (https://secureagentry.net/download); the server never updates it for you.",
+    true,
+  );
+}
+
+/** The persona a release names, as its registry manifest declares it. */
+interface ReleasePersona {
+  name: string;
+  editable: boolean;
+}
+
+/** What the capability contract of an install plan lists for a persistent agent. */
+interface PersistentContract {
+  persistent?: Record<string, unknown>;
+  knowledge?: string[];
+  subagents?: { ref: string; version?: string; why?: string }[];
+}
+
+/**
+ * The persona of the release a plan resolved, read from `agentry info`:
+ * the registry's manifest of the latest version. A persona is shown only
+ * when that version is the plan's own; for any other the CLI offers no
+ * read of its manifest, and the preview says so.
+ */
+async function releasePersona(
+  d: Driver,
+  ns: string,
+  name: string,
+  version: string,
+  registry: string | undefined,
+): Promise<ReleasePersona | null> {
+  const argv = ["info", `${ns}/${name}`, "--json"];
+  flag(argv, "registry", registry);
+  const r = await d.run("agentry_agent_install (info)", argv);
+  const env = envelopeOf<{
+    latest?: { version?: string; manifest?: { persona?: { name?: string; editable?: boolean } } };
+  }>(r);
+  if (!env || env.exitClass !== "ok") return null;
+  const latest = env.result.latest;
+  const p = latest?.manifest?.persona;
+  if (latest?.version !== version || !p || typeof p.name !== "string") return null;
+  return { name: p.name, editable: p.editable !== false };
+}
+
+export interface AgentInstallArgs {
+  ref: string;
+  registry?: string;
+  confirm?: string;
+}
+
+/**
+ * agentry_agent_install, in two calls. `agent install` has no preview of
+ * its own, so the preview is `install --plan --json`, which resolves the
+ * release, downloads it, checks its digest and attestation and reports its
+ * capability contract: the `persistent` keys, the knowledge packs it ships
+ * and the subagents it declares. The persona comes from `info`. The digest
+ * covers all of that and the confirm plans again, so a release, a contract
+ * or a verdict that moved is refused. The write names the resolved version
+ * the digest covered. The versions the subagents are pinned to are resolved
+ * by the CLI while it installs and come back in the result.
+ */
+export async function agentInstall(d: Driver, a: AgentInstallArgs): Promise<CallToolResult> {
+  const refused =
+    needsAgents(d, "agentry_agent_install") ?? needsPublishedAgents(d, "agentry_agent_install");
+  if (refused) return refused;
+  const rel = agentRelease(a.ref);
+  const ref = `${rel.ns}/${rel.name}${rel.version !== undefined ? `@${rel.version}` : ""}`;
+  const planArgv = ["install", ref, "--plan", "--json"];
+  flag(planArgv, "registry", a.registry);
+  const planned = await runPlan<InstallPlan>(d, "agentry_agent_install (plan)", planArgv);
+  if (!planned.ok) {
+    const first = planned.result.content[0] as { text?: string } | undefined;
+    if (planned.result.isError && /installed as a persistent agent/.test(first?.text ?? ""))
+      return text(
+        `${first?.text ?? ""}\n\nagentry_agent_install: ${rel.ns}/${rel.name} is installed already. The CLI previews ` +
+          "an update only with `agentry agent install` at a terminal, so the update stays there.",
+        true,
+      );
+    return planned.result;
+  }
+  const { plan, log } = planned;
+  if (!(plan.modes ?? []).includes("persistent"))
+    return text(
+      `agentry_agent_install: ${plan.ref} is not a persistent QuickAgent (its modes: ${(plan.modes ?? []).join(", ") || "none"}); ` +
+        "install it with agentry_install and run it with agentry_run.",
+      true,
+    );
+  // No acceptance lifts a refusal here: a persistent agent from a registry is a signed, scanned release.
+  const refusals = planRefusals(plan, { unsigned: false });
+  if (typeof refusals === "string") return text(`agentry_agent_install: ${refusals}`, true);
+  const contract = (plan.contract ?? {}) as PersistentContract;
+  const persona = await releasePersona(d, rel.ns, rel.name, plan.version, a.registry);
+  const declared = {
+    persistent: contract.persistent ?? {},
+    knowledge: contract.knowledge ?? [],
+    subagents: contract.subagents ?? [],
+    persona,
+  };
+  const facts = {
+    tool: "agentry_agent_install",
+    refusals,
+    ref: plan.ref,
+    version: plan.version,
+    archiveDigest: plan.digest,
+    yanked: plan.yanked === true,
+    attestation: plan.attestation,
+    contract: plan.contract,
+    contractDigest: plan.contractDigest,
+    persona,
+    registry: a.registry ?? "",
+  };
+  if (a.confirm === undefined) {
+    return previewText(
+      {
+        ref: plan.ref,
+        version: plan.version,
+        releaseDigest: plan.digest,
+        attestation: plan.attestation,
+        signed: plan.signed,
+        yanked: plan.yanked === true,
+        ...declared,
+        contract: plan.contract,
+        installed: plan.installed ?? null,
+        diff: plan.diff ?? {},
+        needsConfirmation: plan.needsConfirmation,
+        ...(plan.reason ? { reason: plan.reason } : {}),
+        refusals,
+        log: tail(log),
+        writes: false,
+        note:
+          "Show the person the persistent capabilities (what the agent may do beyond a run), the persona, the " +
+          "knowledge it ships and each subagent with the reason it gives; a subagent runs as a QuickAgent of its " +
+          "own under its own contract. " +
+          (persona === null
+            ? "The persona could not be read for this version; the CLI shows it only while installing. "
+            : "") +
+          "The version each subagent is pinned to, and what its contract reaches, are resolved by the CLI while " +
+          "it installs and come back in the result. The agent is enabled and left stopped; start it with " +
+          "agentry_agent_start. Confirm with this digest only once the person agrees.",
+      },
+      facts,
+    );
+  }
+  const ok = await confirmed(d.server, "agentry_agent_install", a.confirm, facts, {
+    unsigned: false,
+    refusals,
+    ask:
+      `Install ${plan.ref} as a persistent agent? It may: ${canonical(declared.persistent)}. ` +
+      `Knowledge it ships: ${declared.knowledge.join(", ") || "none"}. ` +
+      `Subagents: ${declared.subagents.map((s) => s.ref).join(", ") || "none"}. ` +
+      `Persona: ${persona?.name ?? "not shown"}. Attestation: ${plan.attestation}.`,
+  });
+  if (!isConsent(ok)) return ok;
+  const argv = ["agent", "install", plan.ref, "--json"];
+  flag(argv, "registry", a.registry);
+  return d.run("agentry_agent_install", consentedArgv(argv, ok), {
+    timeoutMs: INSTALL_TIMEOUT_MS,
+    graceMs: 30_000,
+  });
+}
+
+/** An install downloads the release and resolves its subagents. */
+const INSTALL_TIMEOUT_MS = 10 * 60_000;
+/** Removing the data removes the agent's volumes. */
+const UNINSTALL_TIMEOUT_MS = 4 * 60_000;
+
+export interface AgentUninstallArgs {
+  name: string;
+  removeData?: boolean;
+  confirmRef?: string;
+  confirm?: string;
+}
+
+/**
+ * agentry_agent_uninstall, in two calls. The preview reads the agent from
+ * `agent show --json` and says what goes and what stays: the release, its
+ * installed servers and the person's agreement go; the conversation, the
+ * files and the person's choices stay unless `removeData` asks to wipe them,
+ * and then the confirm must also carry the agent's reference as `confirmRef`,
+ * which is the CLI's own `--confirm`. The files in the agent's share folder
+ * stay either way.
+ */
+export async function agentUninstall(d: Driver, a: AgentUninstallArgs): Promise<CallToolResult> {
+  const refused =
+    needsAgents(d, "agentry_agent_uninstall") ?? needsPublishedAgents(d, "agentry_agent_uninstall");
+  if (refused) return refused;
+  const name = agentName(a.name);
+  const removeData = a.removeData === true;
+  if (!removeData && a.confirmRef !== undefined)
+    throw new ArgumentError("agentry_agent_uninstall: confirmRef goes with removeData");
+  const shown = await d.run("agentry_agent_uninstall (show)", ["agent", "show", name, "--json"]);
+  const env = envelopeOf<AgentState>(shown);
+  if (!env || env.exitClass !== "ok") return { ...shown, isError: true };
+  const st = env.result;
+  if (!st.source || !st.ref)
+    return text(
+      `agentry_agent_uninstall: the ${name} agent is built into Agentry and is not uninstalled; ` +
+        "disabling it stays with the person (`agentry agent disable`).",
+      true,
+    );
+  if (st.state === "running")
+    return text(
+      `agentry_agent_uninstall: ${st.ref} is running; stop it first (agentry_agent_stop).`,
+      true,
+    );
+  const ref = agentName(st.ref);
+  const facts = {
+    tool: "agentry_agent_uninstall",
+    agent: st.agent,
+    ref,
+    version: st.version ?? "",
+    source: st.source,
+    removeData,
+  };
+  const removes = [
+    "its release",
+    "the servers installed for it",
+    "the person's agreement to what it declares",
+    ...(removeData
+      ? ["its conversation", "its files and volumes", "everything the person chose for it"]
+      : []),
+  ];
+  const keeps = removeData
+    ? ["the files in its share folder"]
+    : [
+        "its conversation",
+        "its files",
+        "everything the person chose for it",
+        "the files in its share folder",
+      ];
+  if (a.confirm === undefined) {
+    return previewText(
+      {
+        agent: st.agent,
+        ref,
+        version: st.version ?? "",
+        source: st.source,
+        dataRemoved: removeData,
+        removes,
+        keeps,
+        writes: false,
+        note: removeData
+          ? `This also wipes the agent's conversation and files, which cannot be undone. Show the person ` +
+            `this; confirm with this digest and \`confirmRef\` set to ${ref}, only once they agree and have typed or approved that reference.`
+          : `The conversation and files are kept: installing ${ref} again takes them up. Show the person this; ` +
+            "confirm with this digest only once they agree.",
+      },
+      facts,
+    );
+  }
+  if (removeData && a.confirmRef !== ref) {
+    return text(
+      `agentry_agent_uninstall: removing the data needs \`confirmRef\` set to the agent's reference, ${ref}, ` +
+        "as the person confirmed it; nothing was removed.",
+      true,
+    );
+  }
+  const ok = await confirmed(d.server, "agentry_agent_uninstall", a.confirm, facts, {
+    unsigned: false,
+    ask: removeData
+      ? `Uninstall ${ref} and wipe its conversation, its files and everything you chose for it? The files in its share folder are kept.`
+      : `Uninstall ${ref}? Its conversation and files are kept; installing it again takes them up.`,
+  });
+  if (!isConsent(ok)) return ok;
+  // The CLI's uninstall asks nothing on a program's behalf; a matched digest and the
+  // reference are what let this line run.
+  const argv = ["agent", "uninstall", ref];
+  if (removeData) argv.push("--remove-data", "--confirm", ref);
+  argv.push("--json");
+  return d.run("agentry_agent_uninstall", argv, { timeoutMs: UNINSTALL_TIMEOUT_MS });
+}
