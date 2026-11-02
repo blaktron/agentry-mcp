@@ -108,8 +108,13 @@ credits token, a token that can only pay for model use, which the person
 gives the runhost in a terminal with `agentry runhost model <name> --provider
 agentry`, approving it in their browser; `agentry runhost store <name>
 --remove credits` and `agentry runhost remove` revoke it. Both stay terminal
-commands. A destination on the person's own network and a model sign-in are
-not taken on a runhost yet.
+commands. With CLI v0.7.6 or later a run whose model is a Claude, ChatGPT or
+Copilot plan uses the runhost's own sign-in, which the person makes in a
+terminal with `agentry runhost model <name> --sign-in claude|chatgpt|copilot`
+from their browser, and `adapter` may be given with `on`: `claude` and `codex`
+run there as their images, `claude-image` and `codex-image`, since a runhost
+runs no harness as a host process. A destination on the person's own network
+is not taken on a runhost yet.
 
 `agentry_session_start` takes `on` as well, with a CLI whose `run` has
 `--detach`: the session runs on the runhost and the session tools drive it as

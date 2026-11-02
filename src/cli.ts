@@ -40,6 +40,8 @@ export interface CliFeatures {
   runhostJobs: boolean;
   /** `run --on` with `--detach`: jobs that outlive the connection, and sessions on a runhost. */
   runhostSessions: boolean;
+  /** `run --on` on the runhost's own plan sign-in, with an adapter: claude and codex as their images. */
+  runhostSignIns: boolean;
 }
 
 /** The features of a CLI that has them all (the tests' fake, a current CLI). */
@@ -55,6 +57,7 @@ export const ALL_FEATURES: CliFeatures = {
   runhosts: true,
   runhostJobs: true,
   runhostSessions: true,
+  runhostSignIns: true,
 };
 
 /** What `agentry --version` said, parsed. */
@@ -349,6 +352,7 @@ export async function checkCli(
       runhosts: /--on\b/.test(runHelp),
       runhostJobs: /--on\b[^\n]*secrets, files and intake/.test(runHelp),
       runhostSessions: /--detach\b/.test(runHelp),
+      runhostSignIns: /--on\b[^\n]*runhost model --sign-in/.test(runHelp),
     },
   };
 }
