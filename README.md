@@ -124,9 +124,16 @@ listing, collecting and cancelling a runhost's jobs (`agentry runhost jobs`,
 `collect`, `cancel`), are terminal commands.
 
 Setting a runhost up (`agentry runhost add`), removing it (`agentry runhost
-remove`), and later pairing another device, changing its settings and choosing
-its model stay in a terminal. Each takes an administrator's sign-in to the
-person's server or a sign-in in the browser, and a host agent never holds those.
+remove`), pairing another computer with it or taking this one off (`agentry
+runhost pair`, `agentry runhost unpair`), changing its settings and choosing its
+model stay in a terminal. Each takes an administrator's sign-in to the person's
+server, a sign-in in the browser, or a change only the person decides on, and a
+host agent never holds those. So does `agentry runhost update`, which installs
+this computer's CLI on the person's server; the CLI also does it by itself on
+the first runhost command after it updates. A run on a runhost whose CLI is not
+this computer's version is refused, naming both versions: the person runs
+`agentry runhost update <name>` in a terminal, or updates this computer's CLI
+when the runhost's is newer.
 
 Writing and running tools take two calls. The first, without `confirm`, runs
 the CLI's plan mode, writes nothing and returns what consent would cover plus
