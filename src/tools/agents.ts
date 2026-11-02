@@ -55,9 +55,11 @@ export function registerAgentTools(d: Driver): void {
         "Show one persistent agent (`agentry agent show <name> --json`): its state and, for one installed from a " +
         "registry, its `ref`, `version`, `source`, persona (name, whether the person may replace its text), the " +
         "knowledge packs its release ships and its `subagents` as pinned at install (ref, constraint, why, the " +
-        "version it resolved to or why it resolved to none, what its contract reaches). The CLI lists no " +
-        "subagent runs; a subagent's roster entries, `subagent:<ns>/<name>` and its `:ask` switch, say whether " +
-        "it is on. It also returns its running segment, its " +
+        "version it resolved to or why it resolved to none, what its contract reaches, its digest). " +
+        "`subagentRuns` lists the runs it started of its subagents, newest first, at most 50: the subagent's " +
+        "exact version, who granted it, when it started and ended, its outcome or error and the run's own id " +
+        "(CLI v0.7.8 or later). A subagent's roster entries, `subagent:<ns>/<name>` and its `:ask` switch, say " +
+        "whether it is on. It also returns its running segment, its " +
         "roster (each entry's id, kind, what it gives the agent, whether it is on, and what it waits for: its " +
         "folders, memory, heartbeat, skills, stored secrets by name (never a value), git host accounts, the " +
         "servers it is offered and the person's own), the servers it suggests, its share folder, its usage and, " +
@@ -85,20 +87,22 @@ export function registerAgentTools(d: Driver): void {
     "agentry_agent_install",
     {
       description:
-        "Install a persistent QuickAgent from a registry as a persistent agent (`agentry agent install <ns/name> " +
-        "--json`), in two calls. Without `confirm`: a preview from `agentry install --plan --json` of the " +
-        "resolved version and its archive digest, the attestation verdict and the capability contract: " +
-        "`persistent` (what the agent may do beyond a run: its clock, memory, skills, stored secrets, mail, " +
-        "coding toolchain, web, helper tools and the rest), the `knowledge` packs it ships and the `subagents` it " +
-        "declares with the reason each gives, the persona when the registry's manifest names one for that " +
-        "version, the diff against what this computer agreed to before, and any refusal, plus a `digest`; " +
-        "nothing is written. Show the person all of it and only when they agree call again with `confirm` set to " +
-        "that digest: the server plans again, refuses if anything changed, and installs the version the preview " +
-        "named. The result carries the subagents pinned to the versions their constraints resolved to, with " +
-        "what each reaches. The agent is enabled and left stopped; agentry_agent_start starts it. A release " +
-        "that is unsigned or unscanned, declares files or a target host, or is not persistent is refused. An " +
-        "update of an agent already installed is previewed by the CLI only at a terminal. Stop an agent before " +
-        "installing a new version of it.",
+        "Install or update a persistent QuickAgent from a registry as a persistent agent (`agentry agent " +
+        "install <ns/name> --json`), in two calls. Without `confirm`: a preview from `agentry agent install " +
+        "--plan --json` of the resolved version and its archive digest, the attestation verdict and the " +
+        "capability contract: `persistent` (what the agent may do beyond a run: its clock, memory, skills, " +
+        "stored secrets, mail, coding toolchain, web, helper tools and the rest), the `knowledge` packs it " +
+        "ships, that version's persona (name, file, whether the person may replace its text), and each of its " +
+        "`subagents` with the reason it gives, pinned to the version the install would pin, with what that " +
+        "version reaches and its digest, or why it resolves to none. For an agent already installed, " +
+        "`installedAgent` is its installed release with its pins and `diff` what the update widens. Any " +
+        "refusal (a running agent's among them) comes with a `digest`; nothing is written. Show the person all " +
+        "of it and only when they agree call again with `confirm` set to that digest: the server plans again, " +
+        "refuses if anything changed (a pin included), and installs the version the preview named. The agent " +
+        "is enabled and left stopped; agentry_agent_start starts it. A release that is unsigned or unscanned, " +
+        "declares files or a target host, or is not persistent is refused. Stop an agent before updating it. " +
+        "A CLI older than v0.7.8 is previewed from `agentry install --plan` and `agentry info`, without the " +
+        "pins, and an update stays at its terminal.",
       inputSchema: {
         ref: z
           .string()
