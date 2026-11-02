@@ -54,6 +54,10 @@
 #   FAKE_MODES         the install plan's one mode (default autonomous)
 #   FAKE_INSTALLED_AS_AGENT  the install plan is refused because the release is installed as a persistent agent
 #   FAKE_INFO_VERSION  the latest version `info` reports (default 1.0.0)
+#   FAKE_NO_AGENT_PLAN  set to make `agent install --help` omit --plan (a CLI without agent install --plan)
+#   FAKE_PIN_VERSION   the version `agent install --plan` pins acme/summarizer to (default 1.2.0; "none" resolves to none)
+#   FAKE_PIN_FILE      a file whose content, when it exists, is FAKE_PIN_VERSION (so a test can move the pin between calls)
+#   FAKE_AGENT_RUNNING  `agent install --plan` reports the running agent as its refusal
 set -u
 if [ -n "${FAKE_ARGV:-}" ]; then
   printf '%s\n' "$@" >> "$FAKE_ARGV"
@@ -84,7 +88,7 @@ if [ "${1:-}" = "agent" ] && [ "${2:-}" = "compact" ] && [ "${3:-}" = "--help" ]
   if [ -n "${FAKE_NO_COMPACT:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent compact <name> [flags]"; fi; exit 0
 fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "install" ] && [ "${3:-}" = "--help" ]; then
-  if [ -n "${FAKE_NO_AGENT_INSTALL:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent install <ns/name[@version]> | --local <folder> [flags]"; fi; exit 0
+  if [ -n "${FAKE_NO_AGENT_INSTALL:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent install <ns/name[@version]> | --local <folder> [flags]"; [ -z "${FAKE_NO_AGENT_PLAN:-}" ] && echo "      --plan   preview only"; fi; exit 0
 fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "uninstall" ] && [ "${3:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_AGENT_INSTALL:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent uninstall <name> [flags]"; fi; exit 0
@@ -124,6 +128,26 @@ if [ "$1" = "agent" ]; then
         echo "this needs the person's agreement" >&2; exit 11
       fi ;;
     install)
+      if has --plan; then
+        if has --yes; then echo "fake: --yes on an agent install plan" >&2; exit 99; fi
+        pin="${FAKE_PIN_VERSION:-1.2.0}"
+        [ -n "${FAKE_PIN_FILE:-}" ] && [ -f "$FAKE_PIN_FILE" ] && pin=$(cat "$FAKE_PIN_FILE")
+        if [ "$pin" = none ]; then
+          sub='{"ref":"acme/summarizer","constraint":"^1.0.0","why":"Summarises long documents.","unresolved":"not in the registry, or private where the people who install this release cannot run it"}'
+        else
+          sub='{"ref":"acme/summarizer","constraint":"^1.0.0","why":"Summarises long documents.","version":"'"$pin"'","reach":"nothing beyond its model: no network, no programs, no server","digest":"sha256:5555'"$pin"'"}'
+        fi
+        prior=""; inst=""; diff='{}'; reason="a first install"
+        if [ -n "${FAKE_INSTALLED_AS_AGENT:-}" ]; then
+          prior=',"installed":{"version":"0.9.0","dir":"/home/me/.agentry/runner/agents/acme/widget"}'
+          inst=',"installed":{"version":"0.9.0","source":"registry","digest":"sha256:9999","subagents":[{"ref":"acme/summarizer","constraint":"^1.0.0","why":"Summarises long documents.","version":"1.1.0","digest":"sha256:5555old"}]}'
+          diff='{"widened":["declares the persistent key memory"]}'; reason="this update widens the declared capabilities"
+        fi
+        [ -n "${FAKE_AGENT_RUNNING:-}" ] && [ -z "$refusal" ] && refusal="acme/widget is running in the CLI (pid 42): stop it first (agentry agent stop acme/widget), then install again"
+        [ -n "$refusal" ] && refusal=',"refusal":'"$(printf '%s' "$refusal" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')"
+        printf '{"ref":"acme/widget@1.0.0","namespace":"acme","name":"widget","version":"1.0.0","digest":"sha256:aaaa","modes":["%s"],"contract":%s,"contractDigest":"sha256:cccc","attestation":"%s","signed":%s%s,"diff":%s,"needsConfirmation":true,"reason":"%s","target":"runner","dir":"/home/me/.agentry/runner/agents/acme/widget","managed":true%s,"agent":{"agent":"acme.widget","persistent":["clock","memory","secrets"],"persona":{"name":"Wally","file":"PERSONA.md","locked":true},"packs":["handbook"],"subagents":[%s],"runsSubagents":true%s}}\n' "${FAKE_MODES:-autonomous}" "$contract" "$attest" "$signed" "$prior" "$diff" "$reason" "$refusal" "$sub" "$inst"
+        exit 0
+      fi
       if ! has --yes; then echo "fake: agent install asks at the terminal without --yes" >&2; exit 2; fi
       [ -n "${FAKE_WRITES:-}" ] && echo agent-installed >> "$FAKE_WRITES"
       echo '{"agent":"acme.widget","ref":"acme/widget","version":"1.0.0","source":"registry","digest":"sha256:aaaa","persona":"Wally","packs":["handbook"],"subagents":[{"ref":"acme/summarizer","constraint":"^1.0.0","why":"Summarises long documents.","version":"1.2.0","reach":"nothing beyond its model"}],"enabled":true,"recorded":true}' ;;

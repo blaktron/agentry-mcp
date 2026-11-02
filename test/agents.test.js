@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import { connect, envelope, receivedArgv } from "./helpers.js";
+import { ALL_FEATURES } from "../dist/cli.js";
 
 const call = (client, name, args = {}) => client.callTool({ name, arguments: args });
 
@@ -323,6 +324,8 @@ const AGENT_CONTRACT = JSON.stringify({
   subagents: [{ ref: "acme/summarizer", version: "^1.0.0", why: "Summarises long documents." }],
 });
 const PERSISTENT = { FAKE_MODES: "persistent", FAKE_CONTRACT: AGENT_CONTRACT };
+/** A CLI from before `agent install --plan`. */
+const OLD_AGENT_PLAN = { ...ALL_FEATURES, agentPlans: false };
 
 test("every agent tool takes a built-in's name or a published agent's ns/name, and nothing else", async () => {
   const { client, argvFile } = await connect();
@@ -399,8 +402,8 @@ test("a subagent's ask switch is a roster entry a grant previews and then switch
   ]);
 });
 
-test("an install previews the persistent keys, pack, subagents and persona, and the confirm installs the version it showed", async () => {
-  const { client, argvFile } = await connect(PERSISTENT);
+test("a CLI without agent install --plan previews from install --plan and info, and the confirm installs the version it showed", async () => {
+  const { client, argvFile } = await connect(PERSISTENT, {}, undefined, OLD_AGENT_PLAN);
   const p = envelope(await call(client, "agentry_agent_install", { ref: "acme/widget" }));
   assert.equal(p.json.writes, false);
   assert.equal(p.json.ref, "acme/widget@1.0.0");
@@ -474,18 +477,129 @@ test("an install of a release that is not persistent, unsigned or unscanned is r
   assert.equal(existsSync(writes), false);
 });
 
-test("an install of an agent already installed says the update stays at a terminal", async () => {
-  const { client } = await connect({ ...PERSISTENT, FAKE_INSTALLED_AS_AGENT: "1" });
+test("with a CLI without agent install --plan, an install of an agent already installed says the update stays at a terminal", async () => {
+  const { client } = await connect(
+    { ...PERSISTENT, FAKE_INSTALLED_AS_AGENT: "1" },
+    {},
+    undefined,
+    OLD_AGENT_PLAN,
+  );
   const r = await call(client, "agentry_agent_install", { ref: "acme/widget" });
   assert.equal(r.isError, true);
   assert.match(r.content[0].text, /installed already/);
 });
 
-test("a persona of another version than the plan's is not shown, and the preview says so", async () => {
-  const { client } = await connect({ ...PERSISTENT, FAKE_INFO_VERSION: "2.0.0" });
+test("with a CLI without agent install --plan, a persona of another version than the plan's is not shown, and the preview says so", async () => {
+  const { client } = await connect(
+    { ...PERSISTENT, FAKE_INFO_VERSION: "2.0.0" },
+    {},
+    undefined,
+    OLD_AGENT_PLAN,
+  );
   const p = envelope(await call(client, "agentry_agent_install", { ref: "acme/widget@1.0.0" }));
   assert.equal(p.json.persona, null);
   assert.match(p.json.note, /persona could not be read/);
+});
+
+test("an install previews from agent install --plan: the persona, the packs and each subagent's pin, with no info call", async () => {
+  const { client, argvFile } = await connect(PERSISTENT);
+  const p = envelope(await call(client, "agentry_agent_install", { ref: "acme/widget" }));
+  assert.equal(p.json.writes, false);
+  assert.equal(p.json.ref, "acme/widget@1.0.0");
+  assert.deepEqual(p.json.persona, { name: "Wally", file: "PERSONA.md", editable: false });
+  assert.deepEqual(p.json.knowledge, ["handbook"]);
+  const [pin] = p.json.subagents;
+  assert.equal(pin.ref, "acme/summarizer");
+  assert.equal(pin.version, "1.2.0");
+  assert.equal(pin.digest, "sha256:55551.2.0");
+  assert.match(pin.reach, /nothing beyond its model/);
+  assert.equal(p.json.installedAgent, null);
+  assert.match(p.json.note, /pinned to until the agent is updated/);
+  assert.deepEqual(receivedArgv(argvFile), [
+    ["agent", "install", "acme/widget", "--plan", "--json"],
+  ]);
+  const r = envelope(
+    await call(client, "agentry_agent_install", { ref: "acme/widget", confirm: p.json.digest }),
+  );
+  assert.equal(r.json.exitClass, "ok");
+  const argv = receivedArgv(argvFile);
+  assert.deepEqual(argv.at(-2), ["agent", "install", "acme/widget", "--plan", "--json"]);
+  assert.deepEqual(argv.at(-1), ["agent", "install", "acme/widget@1.0.0", "--json", "--yes"]);
+});
+
+test("an update of an installed agent is previewed with its widening and the pins it replaces, and installs on confirm", async () => {
+  const { client, argvFile, elicitations } = await connect(
+    { ...PERSISTENT, FAKE_INSTALLED_AS_AGENT: "1" },
+    {},
+    "accept",
+  );
+  const p = envelope(await call(client, "agentry_agent_install", { ref: "acme/widget" }));
+  assert.equal(p.json.installed.version, "0.9.0");
+  assert.equal(p.json.installedAgent.version, "0.9.0");
+  assert.equal(p.json.installedAgent.subagents[0].version, "1.1.0");
+  assert.deepEqual(p.json.diff.widened, ["declares the persistent key memory"]);
+  assert.match(p.json.note, /This updates the installed 0\.9\.0/);
+  const r = envelope(
+    await call(client, "agentry_agent_install", { ref: "acme/widget", confirm: p.json.digest }),
+  );
+  assert.equal(r.json.exitClass, "ok");
+  assert.match(
+    elicitations[0],
+    /Update the persistent agent acme\/widget@1\.0\.0 \(installed: 0\.9\.0\)/,
+  );
+  assert.match(elicitations[0], /acme\/summarizer@1\.2\.0/);
+  assert.deepEqual(receivedArgv(argvFile).at(-1), [
+    "agent",
+    "install",
+    "acme/widget@1.0.0",
+    "--json",
+    "--yes",
+  ]);
+});
+
+test("a subagent pin that moved between the preview and the confirm writes nothing", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "agentry-mcp-agent-"));
+  const writes = join(dir, "writes");
+  const pinFile = join(dir, "pin");
+  writeFileSync(pinFile, "1.2.0");
+  const { client, argvFile } = await connect({
+    ...PERSISTENT,
+    FAKE_PIN_FILE: pinFile,
+    FAKE_WRITES: writes,
+  });
+  const p = envelope(await call(client, "agentry_agent_install", { ref: "acme/widget" }));
+  for (const moved of ["1.3.0", "none"]) {
+    writeFileSync(pinFile, moved);
+    const r = await call(client, "agentry_agent_install", {
+      ref: "acme/widget",
+      confirm: p.json.digest,
+    });
+    assert.equal(r.isError, true, moved);
+    assert.match(r.content[0].text, /does not match this preview/);
+  }
+  assert.equal(existsSync(writes), false);
+  for (const a of receivedArgv(argvFile)) assert.ok(!a.includes("--yes"), a.join(" "));
+});
+
+test("a running agent's update is the plan's refusal, and the confirm writes nothing", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "agentry-mcp-agent-"));
+  const writes = join(dir, "writes");
+  const { client } = await connect({
+    ...PERSISTENT,
+    FAKE_INSTALLED_AS_AGENT: "1",
+    FAKE_AGENT_RUNNING: "1",
+    FAKE_WRITES: writes,
+  });
+  const p = envelope(await call(client, "agentry_agent_install", { ref: "acme/widget" }));
+  assert.equal(p.json.refusals.length, 1);
+  assert.match(p.json.refusals[0].reason ?? JSON.stringify(p.json.refusals[0]), /stop it first/);
+  const c = await call(client, "agentry_agent_install", {
+    ref: "acme/widget",
+    confirm: p.json.digest,
+  });
+  assert.equal(c.isError, true);
+  assert.match(c.content[0].text, /the CLI would refuse this/);
+  assert.equal(existsSync(writes), false);
 });
 
 test("the person declining the host's question stops an install", async () => {

@@ -701,6 +701,8 @@ function needsPublishedAgents(d: Driver, tool: string): CallToolResult | undefin
 /** The persona a release names, as its registry manifest declares it. */
 interface ReleasePersona {
   name: string;
+  /** The persona's file in the release, when the CLI's plan names it. */
+  file?: string;
   editable: boolean;
 }
 
@@ -711,11 +713,34 @@ interface PersistentContract {
   subagents?: { ref: string; version?: string; why?: string }[];
 }
 
+/** A subagent as `agent install --plan` pins it: a version, or why none. */
+interface SubagentPin {
+  ref: string;
+  constraint: string;
+  why: string;
+  version?: string;
+  unresolved?: string;
+  reach?: string;
+  digest?: string;
+}
+
+/** The `agent` block `agent install --plan --json` adds to an install plan. */
+interface AgentPlan {
+  agent: string;
+  persistent?: string[];
+  persona?: { name: string; file: string; locked: boolean };
+  packs?: string[];
+  subagents?: SubagentPin[];
+  runsSubagents: boolean;
+  installed?: { version: string; source: string; digest: string; subagents?: SubagentPin[] };
+}
+
 /**
  * The persona of the release a plan resolved, read from `agentry info`:
  * the registry's manifest of the latest version. A persona is shown only
  * when that version is the plan's own; for any other the CLI offers no
- * read of its manifest, and the preview says so.
+ * read of its manifest, and the preview says so. A CLI with
+ * `agent install --plan` names the planned version's own persona instead.
  */
 async function releasePersona(
   d: Driver,
@@ -744,15 +769,17 @@ export interface AgentInstallArgs {
 }
 
 /**
- * agentry_agent_install, in two calls. `agent install` has no preview of
- * its own, so the preview is `install --plan --json`, which resolves the
- * release, downloads it, checks its digest and attestation and reports its
- * capability contract: the `persistent` keys, the knowledge packs it ships
- * and the subagents it declares. The persona comes from `info`. The digest
- * covers all of that and the confirm plans again, so a release, a contract
- * or a verdict that moved is refused. The write names the resolved version
- * the digest covered. The versions the subagents are pinned to are resolved
- * by the CLI while it installs and come back in the result.
+ * agentry_agent_install, in two calls. The preview is
+ * `agent install --plan --json`, which resolves the release, downloads it,
+ * checks its digest and attestation and reports its capability contract,
+ * with what installing it as a persistent agent adds: the persistent keys,
+ * the persona of that version, the knowledge packs it ships, each subagent
+ * pinned to the version, reach and digest the install would pin, and the
+ * installed release when this is an update. A CLI without it is previewed
+ * with `install --plan --json`, which has no pins and no update, and the
+ * persona comes from `info`. The facts cover all of that and the confirm
+ * plans again, so a release, a contract, a pin or a verdict that moved is
+ * refused. The write names the resolved version the digest covered.
  */
 export async function agentInstall(d: Driver, a: AgentInstallArgs): Promise<CallToolResult> {
   const refused =
@@ -760,15 +787,27 @@ export async function agentInstall(d: Driver, a: AgentInstallArgs): Promise<Call
   if (refused) return refused;
   const rel = agentRelease(a.ref);
   const ref = `${rel.ns}/${rel.name}${rel.version !== undefined ? `@${rel.version}` : ""}`;
-  const planArgv = ["install", ref, "--plan", "--json"];
+  const agentPlans = d.features.agentPlans;
+  const planArgv = agentPlans
+    ? ["agent", "install", ref, "--plan", "--json"]
+    : ["install", ref, "--plan", "--json"];
   flag(planArgv, "registry", a.registry);
-  const planned = await runPlan<InstallPlan>(d, "agentry_agent_install (plan)", planArgv);
+  const planned = await runPlan<InstallPlan & { agent?: AgentPlan }>(
+    d,
+    "agentry_agent_install (plan)",
+    planArgv,
+  );
   if (!planned.ok) {
     const first = planned.result.content[0] as { text?: string } | undefined;
-    if (planned.result.isError && /installed as a persistent agent/.test(first?.text ?? ""))
+    if (
+      !agentPlans &&
+      planned.result.isError &&
+      /installed as a persistent agent/.test(first?.text ?? "")
+    )
       return text(
-        `${first?.text ?? ""}\n\nagentry_agent_install: ${rel.ns}/${rel.name} is installed already. The CLI previews ` +
-          "an update only with `agentry agent install` at a terminal, so the update stays there.",
+        `${first?.text ?? ""}\n\nagentry_agent_install: ${rel.ns}/${rel.name} is installed already. This CLI previews ` +
+          "an update only with `agentry agent install` at a terminal, so the update stays there; a newer CLI " +
+          "previews it here.",
         true,
       );
     return planned.result;
@@ -780,15 +819,28 @@ export async function agentInstall(d: Driver, a: AgentInstallArgs): Promise<Call
         "install it with agentry_install and run it with agentry_run.",
       true,
     );
+  const ap = plan.agent;
+  if (agentPlans && !ap)
+    return text(
+      "agentry_agent_install: the CLI's `agent install --plan` answered no agent block, so there is nothing " +
+        "faithful to show; nothing was installed.",
+      true,
+    );
   // No acceptance lifts a refusal here: a persistent agent from a registry is a signed, scanned release.
   const refusals = planRefusals(plan, { unsigned: false });
   if (typeof refusals === "string") return text(`agentry_agent_install: ${refusals}`, true);
   const contract = (plan.contract ?? {}) as PersistentContract;
-  const persona = await releasePersona(d, rel.ns, rel.name, plan.version, a.registry);
+  const persona: ReleasePersona | null = ap
+    ? ap.persona
+      ? { name: ap.persona.name, file: ap.persona.file, editable: !ap.persona.locked }
+      : null
+    : await releasePersona(d, rel.ns, rel.name, plan.version, a.registry);
+  const subagents = ap ? (ap.subagents ?? []) : (contract.subagents ?? []);
+  const installed = ap?.installed ?? null;
   const declared = {
     persistent: contract.persistent ?? {},
     knowledge: contract.knowledge ?? [],
-    subagents: contract.subagents ?? [],
+    subagents,
     persona,
   };
   const facts = {
@@ -803,8 +855,28 @@ export async function agentInstall(d: Driver, a: AgentInstallArgs): Promise<Call
     contractDigest: plan.contractDigest,
     persona,
     registry: a.registry ?? "",
+    ...(ap
+      ? {
+          pins: (ap.subagents ?? []).map((s) => ({
+            ref: s.ref,
+            version: s.version ?? null,
+            digest: s.digest ?? null,
+          })),
+          installedVersion: installed?.version ?? null,
+          installedDigest: installed?.digest ?? null,
+        }
+      : {}),
   };
   if (a.confirm === undefined) {
+    const pinNote = ap
+      ? "Each subagent shows the version it would be pinned to until the agent is updated, what that version's " +
+        "contract reaches and its digest, or why it resolves to no version it can run. "
+      : "The version each subagent is pinned to, and what its contract reaches, are resolved by the CLI while " +
+        "it installs and come back in the result. ";
+    const updateNote = installed
+      ? `This updates the installed ${installed.version}: show what the update widens (diff) and the pins it ` +
+        "replaces (installedAgent.subagents); stop the agent first if it runs. "
+      : "The agent is enabled and left stopped; start it with agentry_agent_start. ";
     return previewText(
       {
         ref: plan.ref,
@@ -816,6 +888,7 @@ export async function agentInstall(d: Driver, a: AgentInstallArgs): Promise<Call
         ...declared,
         contract: plan.contract,
         installed: plan.installed ?? null,
+        ...(ap ? { installedAgent: installed } : {}),
         diff: plan.diff ?? {},
         needsConfirmation: plan.needsConfirmation,
         ...(plan.reason ? { reason: plan.reason } : {}),
@@ -826,23 +899,31 @@ export async function agentInstall(d: Driver, a: AgentInstallArgs): Promise<Call
           "Show the person the persistent capabilities (what the agent may do beyond a run), the persona, the " +
           "knowledge it ships and each subagent with the reason it gives; a subagent runs as a QuickAgent of its " +
           "own under its own contract. " +
-          (persona === null
+          (persona === null && !ap
             ? "The persona could not be read for this version; the CLI shows it only while installing. "
             : "") +
-          "The version each subagent is pinned to, and what its contract reaches, are resolved by the CLI while " +
-          "it installs and come back in the result. The agent is enabled and left stopped; start it with " +
-          "agentry_agent_start. Confirm with this digest only once the person agrees.",
+          pinNote +
+          updateNote +
+          "Confirm with this digest only once the person agrees.",
       },
       facts,
     );
   }
+  const pinWords = subagents
+    .map((s) =>
+      ap ? `${s.ref}${s.version ? `@${s.version}` : " (resolves to no version)"}` : s.ref,
+    )
+    .join(", ");
   const ok = await confirmed(d.server, "agentry_agent_install", a.confirm, facts, {
     unsigned: false,
     refusals,
     ask:
-      `Install ${plan.ref} as a persistent agent? It may: ${canonical(declared.persistent)}. ` +
+      (installed
+        ? `Update the persistent agent ${plan.ref} (installed: ${installed.version})? `
+        : `Install ${plan.ref} as a persistent agent? `) +
+      `It may: ${canonical(declared.persistent)}. ` +
       `Knowledge it ships: ${declared.knowledge.join(", ") || "none"}. ` +
-      `Subagents: ${declared.subagents.map((s) => s.ref).join(", ") || "none"}. ` +
+      `Subagents: ${pinWords || "none"}. ` +
       `Persona: ${persona?.name ?? "not shown"}. Attestation: ${plan.attestation}.`,
   });
   if (!isConsent(ok)) return ok;
