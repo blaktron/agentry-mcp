@@ -158,3 +158,32 @@ test("agentry_runhost_list passes the CLI's list through, and says when the CLI 
   assert.equal(r2.isError, true);
   assert.match(r2.content[0].text, /no runhost command; update the CLI to v0\.6\.1014/);
 });
+
+test("a run on a runhost passes its adapter, and says claude runs as its image there", async () => {
+  const { client, argvFile } = await connect();
+  const p = await preview(client, { ref: "acme/widget", on: "lab", adapter: "claude" });
+  assert.match(p.summary, /claude runs as its image, claude-image, in a container under gVisor/);
+  const r = await client.callTool({
+    name: "agentry_run",
+    arguments: { ref: "acme/widget", on: "lab", adapter: "claude", confirm: p.digest },
+  });
+  assert.equal(r.isError, undefined, r.content[0].text);
+  const run = runArgv(argvFile).at(-1).join(" ");
+  assert.ok(run.includes("--on lab") && run.includes("--adapter claude"), run);
+});
+
+test("a CLI whose run --on takes no adapter is told to update before anything is planned", async () => {
+  const { client, argvFile } = await connect({}, {}, undefined, {
+    ...ALL_FEATURES,
+    runhostSignIns: false,
+  });
+  const r = await client.callTool({
+    name: "agentry_run",
+    arguments: { ref: "acme/widget", on: "lab", adapter: "codex" },
+  });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /update the CLI to v0\.7\.6/);
+  assert.equal(runArgv(argvFile).length, 0, "nothing was planned");
+  const here = await preview(client, { ref: "acme/widget", adapter: "codex" });
+  assert.doesNotMatch(here.summary, /Where: the remote runhost/);
+});

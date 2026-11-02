@@ -167,9 +167,13 @@ and the person runs once on this computer first. A run whose model is Agentry
 credits pays with the runhost's own credits token (CLI v0.7.3 or later). If
 the runhost has none, the run is refused: tell the person to run `agentry
 runhost model <name> --provider agentry` in a terminal, which asks them to
-approve the token in their browser. It does not take a destination on the
-person's own network, or a model sign-in, yet; for those, run on this
-computer.
+approve the token in their browser. A run whose model is a Claude, ChatGPT or
+Copilot plan uses the runhost's own sign-in (CLI v0.7.6 or later); if the
+runhost has none, the run is refused: tell the person to run `agentry runhost
+model <name> --sign-in claude`, `chatgpt` or `copilot` in a terminal, which
+signs the runhost in from their browser. `adapter` may go with `on` then:
+`claude` and `codex` run on the runhost as their images. It does not take a
+destination on the person's own network yet; for that, run on this computer.
 
 `agentry_session_start` takes `on` too: the session runs on the runhost and is
 driven from here with `agentry_session_send`, `agentry_session_add` and
