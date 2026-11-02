@@ -102,9 +102,14 @@ later a run on a runhost takes what a run on this computer takes: `files`,
 this computer and sent with the files for that run alone; the runhost delivers
 to the destinations and deletes everything it was sent when the run ends. A
 target host is reached from the runhost with this computer's sign-in, and
-only when this computer already knows the host's key. A destination on the
-person's own network, a model sign-in and Agentry credits are not taken on a
-runhost yet.
+only when this computer already knows the host's key. With CLI v0.7.3 or
+later a run whose model is Agentry credits pays with the runhost's own
+credits token, a token that can only pay for model use, which the person
+gives the runhost in a terminal with `agentry runhost model <name> --provider
+agentry`, approving it in their browser; `agentry runhost store <name>
+--remove credits` and `agentry runhost remove` revoke it. Both stay terminal
+commands. A destination on the person's own network and a model sign-in are
+not taken on a runhost yet.
 
 `agentry_session_start` takes `on` as well, with a CLI whose `run` has
 `--detach`: the session runs on the runhost and the session tools drive it as
