@@ -183,12 +183,17 @@ connection goes on on the runhost; the person follows it again in a terminal
 with `agentry runhost attach <name> <job>`, and `agentry runhost jobs <name>`
 lists what is there.
 
-Never try to set a runhost up, remove one, pair a device or change its
-settings, or give it or take away its credits token: those take an
-administrator's sign-in to the person's server or the person's own approval
-in their browser, and stay in a terminal (`agentry runhost add`, `agentry
-runhost remove`, `agentry runhost model`, `agentry runhost store`). Tell
-the person the command to run themselves.
+Never try to set a runhost up, remove one, pair or unpair a computer, update
+its CLI or change its settings, or give it or take away its credits token:
+those take an administrator's sign-in to the person's server, the person's own
+approval in their browser, or a change to their server only they decide on,
+and stay in a terminal (`agentry runhost add`, `agentry runhost remove`,
+`agentry runhost pair`, `agentry runhost unpair`, `agentry runhost update`,
+`agentry runhost model`, `agentry runhost store`). Tell the person the command
+to run themselves. A run refused because the runhost's CLI is another version
+than this computer's names both versions: tell the person to run `agentry
+runhost update <name>`, or to update this computer's CLI when the runhost's is
+the newer one.
 
 ## Long runs: cancel and detach
 
