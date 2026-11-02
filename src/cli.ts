@@ -36,6 +36,8 @@ export interface CliFeatures {
   runhosts: boolean;
   /** `run --on` carrying the run's secrets, files and intake, not a bare release alone. */
   runhostJobs: boolean;
+  /** `run --on` with `--detach`: jobs that outlive the connection, and sessions on a runhost. */
+  runhostSessions: boolean;
 }
 
 /** The features of a CLI that has them all (the tests' fake, a current CLI). */
@@ -49,6 +51,7 @@ export const ALL_FEATURES: CliFeatures = {
   compact: true,
   runhosts: true,
   runhostJobs: true,
+  runhostSessions: true,
 };
 
 /** What `agentry --version` said, parsed. */
@@ -333,6 +336,7 @@ export async function checkCli(
       compact: /compact <name>/.test(compactHelp.stdout + compactHelp.stderr),
       runhosts: /--on\b/.test(runHelp),
       runhostJobs: /--on\b[^\n]*secrets, files and intake/.test(runHelp),
+      runhostSessions: /--detach\b/.test(runHelp),
     },
   };
 }

@@ -271,11 +271,12 @@ export function registerRunTools(d: Driver): void {
           .optional()
           .describe(
             "Run on this remote runhost (`--on`; a name agentry_runhost_list gives) instead of this computer: the " +
-              "release is verified here and sent over SSH with the model key, verified again on the runhost and " +
-              "run there under gVisor, and its output is sealed to this computer and opened into `out`. The " +
-              "preview's readiness is the runhost's own doctor. A run on a runhost takes a published release " +
-              "with no secrets, intake, target hosts or MCP servers, and no files, knowledge, voice, report theme, " +
-              "deliverTo or destinations yet. Needs CLI v0.6.1017 or later.",
+              "release is verified here and sent over SSH with the model key, the secrets and intake answers " +
+              "gathered here and the run's files; it is verified again on the runhost and run there under gVisor, " +
+              "and its output is sealed to this computer and opened into `out`. The preview's readiness is the " +
+              "runhost's own doctor. Not taken on a runhost yet: target-host sign-ins, a destination on the " +
+              "person's own network, a model sign-in or Agentry credits. Needs CLI v0.6.1017 or later, and " +
+              "v0.6.1019 or later for files, intake and the rest.",
           ),
         detach: z
           .boolean()

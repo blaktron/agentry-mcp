@@ -61,7 +61,7 @@ if [ "${1:-}" = "install" ] && [ "${2:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_PLAN:-}" ]; then echo "Flags: --yes --allow-unsigned --target"; else echo "Flags: --plan --yes --allow-unsigned --target"; fi; exit 0
 fi
 if [ "${1:-}" = "run" ] && [ "${2:-}" = "--help" ]; then
-  if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode ${FAKE_NO_PROTOCOL:+removed} ${FAKE_NO_PROTOCOL:---session-protocol} ${FAKE_NO_DELIVER:---deliver-to} ${FAKE_NO_DESTINATION:---destination} ${FAKE_NO_RUNHOST:---on}${FAKE_NO_RUNHOST:+}${FAKE_OLD_RUNHOST:- carrying the secrets, files and intake}"; fi; exit 0
+  if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode ${FAKE_NO_PROTOCOL:+removed} ${FAKE_NO_PROTOCOL:---session-protocol} ${FAKE_NO_DELIVER:---deliver-to} ${FAKE_NO_DESTINATION:---destination} ${FAKE_NO_RUNHOST:---on}${FAKE_NO_RUNHOST:+}${FAKE_OLD_RUNHOST:- carrying the secrets, files and intake}${FAKE_NO_RUNHOST_SESSIONS:- --detach}"; fi; exit 0
 fi
 if [ "${1:-}" = "knowledge" ] && [ "${2:-}" = "create" ] && [ "${3:-}" = "--help" ]; then
   echo "Flags: --file --brief-file --web --no-web ${FAKE_NO_SOURCES:---repo --url}"; exit 0

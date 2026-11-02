@@ -160,10 +160,20 @@ show both. A run on a runhost takes everything a run on this computer
 takes, `files`, `knowledge`, the voice, `intake`, `reportTheme`, `deliverTo`
 and `destinations` among them: this computer gathers the secrets and the
 intake answers and sends them, with the files, for that run alone, and the
-runhost deletes them when the run ends. It does not take a release with
-target hosts, the target-host sign-ins, a destination on the person's own
-network, or a model sign-in or Agentry credits yet; for those, run on this
-computer.
+runhost deletes them when the run ends. A target host is reached from the
+runhost, with the sign-in this computer has, and only when this computer
+already knows the host's key (its known_hosts); otherwise the run is refused
+and the person runs once on this computer first. It does not take a
+destination on the person's own network, or a model sign-in or Agentry credits
+yet; for those, run on this computer.
+
+`agentry_session_start` takes `on` too: the session runs on the runhost and is
+driven from here with `agentry_session_send`, `agentry_session_add` and
+`agentry_session_close` as a session here is. If the connection drops, the
+session stays on the runhost until its idle timeout. A run that loses its
+connection goes on on the runhost; the person follows it again in a terminal
+with `agentry runhost attach <name> <job>`, and `agentry runhost jobs <name>`
+lists what is there.
 
 Never try to set a runhost up, remove one, pair a device or change its
 settings: those take an administrator's sign-in to the person's server and
