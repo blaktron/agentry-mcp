@@ -243,8 +243,35 @@ The CLI's pipe protocol is unavailable on Windows; use a terminal session there.
 ## Persistent agents
 
 The Assistant and the Coding agent run in the background once started and
-keep their conversation. Main runs only in Agentry Desktop. Read them with
-`agentry_agent_list` and `agentry_agent_show`. `agentry_agent_start` starts at
+keep their conversation, and so do the persistent QuickAgents installed from a
+registry. Main runs only in Agentry Desktop. Read them with
+`agentry_agent_list` and `agentry_agent_show`. Name an agent by its short name
+(`assistant`, `coder`) or, for a registry agent, its `ns/name`; `show` returns
+its reference, version, persona, packs and subagent pins. The CLI lists no
+subagent runs.
+
+`agentry_agent_install` (CLI v0.7.4 or later) adds a persistent QuickAgent from
+a registry in two calls. Its preview lists what the agent may do beyond a run
+(`persistent`: clock, memory, skills, stored secrets, mail, the coding
+toolchain, web, helper tools and the rest), the knowledge it ships, each
+subagent with the reason it gives, the persona and the attestation verdict.
+Show the person all of it, say that a subagent runs as a QuickAgent of its own
+under its own contract, and confirm with the digest only once they agree. The
+CLI resolves each subagent's version while it installs; the result names them.
+The agent is left stopped (`agentry_agent_start`). An unsigned or unscanned
+release is refused, and updating an agent already installed stays in a terminal.
+`agentry_agent_uninstall` is two calls too, and keeps the agent's conversation
+and files unless `removeData` is set; wiping them cannot be undone, so the
+confirm also needs `confirmRef`, the agent's reference as the preview names it,
+and only after the person agreed to the wipe. A subagent is a roster entry
+(`subagent:<ns>/<name>`, and its `:ask` switch, which asks the person before
+each run): `agentry_agent_grant` switches either.
+
+A question the agent asks the person while you send it a turn (a run of a
+subagent they asked to be asked about, an install or a first run it wants) is
+theirs to answer. The server asks them through the host and sends what they
+say; when the host cannot ask, the send returns `awaitingPerson` with the
+question: tell the person, and never answer for them. `agentry_agent_start` starts at
 once when there is nothing new to agree to; otherwise it returns
 `needsAgreement` and a digest. Show the person every line and confirm only once
 they agree. `agentry_agent_grant` switches a roster entry (`share`,

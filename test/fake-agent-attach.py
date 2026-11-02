@@ -23,6 +23,16 @@ for line in sys.stdin:
         event('user_turn', text='another chat')
         event('assistant_turn', text='echo: another chat')
     event('user_turn', text=text)
+    question = os.getenv('FAKE_AGENT_QUESTION')
+    if question:
+        event('question', question='q-1', text=question)
+        # The person's answer comes back as a command; none comes when the
+        # client leaves, and the turn goes on as if unanswered.
+        reply = sys.stdin.readline()
+        answer = json.loads(reply).get('answer') if reply.strip() else None
+        if answer is None:
+            break
+        text = text + (' [answered yes]' if answer['yes'] else ' [answered no]')
     event('tool_call', text='read_share')
     event('usage', inputTokens=10, outputTokens=4, totalTokens=14)
     time.sleep(float(os.getenv('FAKE_TURN_DELAY', '0')))

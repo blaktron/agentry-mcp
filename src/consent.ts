@@ -71,6 +71,7 @@ export interface InstallPlan {
   ref: string;
   version: string;
   digest: string;
+  modes?: string[];
   yanked?: boolean;
   contract: unknown;
   contractDigest: string;
@@ -158,7 +159,7 @@ function installFacts(p: InstallPlan, refusals: PlanRefusal[]) {
  * host without it gets the two-call shape alone. "accept" with the box
  * ticked is yes; decline, cancel or an unticked box is no.
  */
-async function askPerson(
+export async function askPerson(
   server: McpServer,
   message: string,
 ): Promise<{ asked: boolean; yes: boolean }> {
