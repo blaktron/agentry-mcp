@@ -58,6 +58,15 @@ export function registerSessionTools(d: Driver): void {
           .describe("Knowledge pack names or directories to attach read-only."),
         voice: z.boolean().optional().describe("Attach this computer's Writing Voice."),
         noVoice: z.boolean().optional().describe("Skip the Writing Voice for this run."),
+        on: z
+          .string()
+          .optional()
+          .describe(
+            "Start the session on this remote runhost (`--on`; a name agentry_runhost_list gives) instead of this " +
+              "computer: the session runs there under gVisor, its turns and added files go over SSH, and its " +
+              "output is sealed to this computer and opened into `out` when it ends. A lost connection leaves " +
+              "the session there to its idle timeout. The preview's readiness is the runhost's own doctor.",
+          ),
         voiceFile: z
           .string()
           .optional()

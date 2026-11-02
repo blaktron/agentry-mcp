@@ -221,10 +221,6 @@ export interface RunPlan {
 /** What a run on a runhost does not carry yet, by argument; the CLI refuses the same. */
 const NOT_ON_A_RUNHOST: [keyof RunArgs, string][] = [
   ["local", "local (a runhost runs a published release)"],
-  ["hostKeys", "target-host sign-ins"],
-  ["hostPasswords", "target-host sign-ins"],
-  ["hostPassphrases", "target-host sign-ins"],
-  ["hostSudoPasswords", "target-host sign-ins"],
 ];
 
 /** What only a CLI whose `--on` carries the whole job takes on a runhost. */
@@ -238,6 +234,10 @@ const ON_A_RUNHOST_WITH_JOBS: [keyof RunArgs, string][] = [
   ["deliverTo", "deliverTo"],
   ["destinations", "destinations"],
   ["reportTheme", "reportTheme"],
+  ["hostKeys", "target-host sign-ins"],
+  ["hostPasswords", "target-host sign-ins"],
+  ["hostPassphrases", "target-host sign-ins"],
+  ["hostSudoPasswords", "target-host sign-ins"],
 ];
 
 /** Whether a call gave argument v at all. */
@@ -254,7 +254,7 @@ function given(v: unknown): boolean {
 const RUNHOST_NAME = /^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/;
 
 /** Checks `on` and what it cannot carry, before anything is planned. */
-function checkOn(d: Driver, a: RunArgs): void {
+function checkOn(d: Driver, a: RunArgs, mode: RunMode): void {
   if (a.on === undefined) return;
   if (!d.features.runhosts)
     throw new ArgumentError(
@@ -266,6 +266,10 @@ function checkOn(d: Driver, a: RunArgs): void {
     );
   for (const [k, what] of NOT_ON_A_RUNHOST)
     if (given(a[k])) throw new ArgumentError(`a run on a runhost does not take ${what} yet`);
+  if (mode === "interactive" && !d.features.runhostSessions)
+    throw new ArgumentError(
+      "this agentry CLI cannot run a session on a remote runhost (its run has no --detach); update the CLI, or start the session on this computer",
+    );
   if (!d.features.runhostJobs)
     for (const [k, what] of ON_A_RUNHOST_WITH_JOBS)
       if (given(a[k]))
@@ -515,7 +519,7 @@ export async function runConsent(
     throw new ArgumentError("give destinations or noDestination, not both");
   // The flags only the run carries are checked before anything is planned.
   deliveryFlags([], a);
-  checkOn(d, a);
+  checkOn(d, a, mode);
   const planArgv = ["run", ...target(a), "--plan", "--json"];
   commonFlags(planArgv, a, mode);
   const planned = await runPlan<RunPlan>(d, `${tool} (plan)`, planArgv);

@@ -101,9 +101,17 @@ later a run on a runhost takes what a run on this computer takes: `files`,
 `deliverTo` and `destinations`. The secrets and intake answers are gathered on
 this computer and sent with the files for that run alone; the runhost delivers
 to the destinations and deletes everything it was sent when the run ends. A
-release with target hosts, the target-host sign-ins, a destination on the
-person's own network, and a model sign-in or Agentry credits are not taken on
-a runhost yet.
+target host is reached from the runhost with this computer's sign-in, and
+only when this computer already knows the host's key. A destination on the
+person's own network, a model sign-in and Agentry credits are not taken on a
+runhost yet.
+
+`agentry_session_start` takes `on` as well, with a CLI whose `run` has
+`--detach`: the session runs on the runhost and the session tools drive it as
+they drive one here. A dropped connection leaves it there to its idle timeout.
+Following a run whose connection dropped (`agentry runhost attach`), and
+listing, collecting and cancelling a runhost's jobs (`agentry runhost jobs`,
+`collect`, `cancel`), are terminal commands.
 
 Setting a runhost up (`agentry runhost add`), removing it (`agentry runhost
 remove`), and later pairing another device, changing its settings and choosing
