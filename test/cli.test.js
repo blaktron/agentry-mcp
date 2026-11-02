@@ -136,3 +136,13 @@ test("checkCli reports whether the CLI builds from sources and takes voice addre
     delete process.env.FAKE_NO_VOICE_URL;
   }
 });
+
+test("checkCli reports whether the CLI installs and uninstalls persistent agents", async () => {
+  assert.equal((await checkCli(FAKE)).features.publishedAgents, true);
+  process.env.FAKE_NO_AGENT_INSTALL = "1";
+  try {
+    assert.equal((await checkCli(FAKE)).features.publishedAgents, false);
+  } finally {
+    delete process.env.FAKE_NO_AGENT_INSTALL;
+  }
+});

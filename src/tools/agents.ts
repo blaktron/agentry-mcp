@@ -1,9 +1,10 @@
 /**
- * The persistent-agent tools: list, show, start, stop, send, grant, tasks
- * and compact. The
- * Assistant and the Coding agent run in the background once started; Main
- * runs only in Agentry Desktop. Enabling, configuring and resetting an
- * agent stay with the person, in a terminal or the desktop.
+ * The persistent-agent tools: list, show, install, uninstall, start, stop,
+ * send, grant, tasks and compact. The Assistant, the Coding agent and the
+ * persistent QuickAgents installed from a registry run in the background
+ * once started; Main runs only in Agentry Desktop. Enabling, configuring
+ * and resetting an agent stay with the person, in a terminal or the
+ * desktop.
  */
 
 import { z } from "zod";
@@ -11,12 +12,14 @@ import { z } from "zod";
 import {
   agentCompact,
   agentGrant,
+  agentInstall,
   agentList,
   agentSend,
   agentShow,
   agentStart,
   agentStop,
   agentTasks,
+  agentUninstall,
   DEFAULT_AGENT_TURN_SECONDS,
   TASK_OPS,
 } from "../agents.js";
@@ -25,7 +28,9 @@ import { registerTool } from "../toolargs.js";
 
 const name = z
   .string()
-  .describe("The agent: `assistant` or `coder` (agentry_agent_list names them).");
+  .describe(
+    "The agent: `assistant` or `coder`, or a published agent's `ns/name` (agentry_agent_list names them; a name no other agent has also works alone).",
+  );
 
 export function registerAgentTools(d: Driver): void {
   registerTool(
@@ -47,7 +52,12 @@ export function registerAgentTools(d: Driver): void {
     "agentry_agent_show",
     {
       description:
-        "Show one persistent agent (`agentry agent show <name> --json`): its state, its running segment, its " +
+        "Show one persistent agent (`agentry agent show <name> --json`): its state and, for one installed from a " +
+        "registry, its `ref`, `version`, `source`, persona (name, whether the person may replace its text), the " +
+        "knowledge packs its release ships and its `subagents` as pinned at install (ref, constraint, why, the " +
+        "version it resolved to or why it resolved to none, what its contract reaches). The CLI lists no " +
+        "subagent runs; a subagent's roster entries, `subagent:<ns>/<name>` and its `:ask` switch, say whether " +
+        "it is on. It also returns its running segment, its " +
         "roster (each entry's id, kind, what it gives the agent, whether it is on, and what it waits for: its " +
         "folders, memory, heartbeat, skills, stored secrets by name (never a value), git host accounts, the " +
         "servers it is offered and the person's own), the servers it suggests, its share folder, its usage and, " +
@@ -68,6 +78,89 @@ export function registerAgentTools(d: Driver): void {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     (a) => guard("agentry_agent_show", () => agentShow(d, a)),
+  );
+
+  registerTool(
+    d.server,
+    "agentry_agent_install",
+    {
+      description:
+        "Install a persistent QuickAgent from a registry as a persistent agent (`agentry agent install <ns/name> " +
+        "--json`), in two calls. Without `confirm`: a preview from `agentry install --plan --json` of the " +
+        "resolved version and its archive digest, the attestation verdict and the capability contract: " +
+        "`persistent` (what the agent may do beyond a run: its clock, memory, skills, stored secrets, mail, " +
+        "coding toolchain, web, helper tools and the rest), the `knowledge` packs it ships and the `subagents` it " +
+        "declares with the reason each gives, the persona when the registry's manifest names one for that " +
+        "version, the diff against what this computer agreed to before, and any refusal, plus a `digest`; " +
+        "nothing is written. Show the person all of it and only when they agree call again with `confirm` set to " +
+        "that digest: the server plans again, refuses if anything changed, and installs the version the preview " +
+        "named. The result carries the subagents pinned to the versions their constraints resolved to, with " +
+        "what each reaches. The agent is enabled and left stopped; agentry_agent_start starts it. A release " +
+        "that is unsigned or unscanned, declares files or a target host, or is not persistent is refused. An " +
+        "update of an agent already installed is previewed by the CLI only at a terminal. Stop an agent before " +
+        "installing a new version of it.",
+      inputSchema: {
+        ref: z
+          .string()
+          .describe("The persistent QuickAgent: namespace/name, optionally @version or @range."),
+        registry: z
+          .string()
+          .optional()
+          .describe("Registry base URL; the CLI's configured default when omitted."),
+        confirm: z
+          .string()
+          .optional()
+          .describe("The `digest` a preview of this exact call returned. Omit to preview."),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    (a) => guard("agentry_agent_install", () => agentInstall(d, a)),
+  );
+
+  registerTool(
+    d.server,
+    "agentry_agent_uninstall",
+    {
+      description:
+        "Uninstall a persistent agent that was installed from a registry (`agentry agent uninstall <name> " +
+        "--json`), in two calls. Without `confirm`: what goes (its release, the servers installed for it, the " +
+        "person's agreement) and what stays (its conversation, its files and everything the person chose for it, " +
+        "which installing it again takes up; the files in its share folder always stay), plus a `digest`; " +
+        "nothing is removed. With `removeData: true` it also wipes its conversation, files and volumes, which " +
+        "cannot be undone: the confirm then needs `confirmRef` set to the agent's reference (`ns/name`, as the " +
+        "preview names it), the CLI's own `--confirm`. Show the person which of the two it is and confirm only " +
+        "once they agree. The result says whether the data was removed. The built-in agents are disabled, not " +
+        "uninstalled, and a running agent is stopped first.",
+      inputSchema: {
+        name,
+        removeData: z
+          .boolean()
+          .optional()
+          .describe("Also remove its conversation, files and volumes. Default: keep them."),
+        confirmRef: z
+          .string()
+          .optional()
+          .describe(
+            "With removeData and `confirm`: the agent's reference, as the preview names it.",
+          ),
+        confirm: z
+          .string()
+          .optional()
+          .describe("The `digest` a preview of this exact call returned. Omit to preview."),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    (a) => guard("agentry_agent_uninstall", () => agentUninstall(d, a)),
   );
 
   registerTool(
@@ -173,7 +266,7 @@ export function registerAgentTools(d: Driver): void {
         entry: z
           .string()
           .describe(
-            "The roster entry's id, as agentry_agent_show lists it: `share`, `knowledge:<pack>`, `server:<id>` (the person's or an offered one) and an offered server's `server:<id>:writes`, `skill:<name>`, `secret:<NAME>`, the Assistant's `heartbeat`, `meetings` (which needs `heartbeat` on first) and `calendar:<name>` (a calendar feed), and the Coding agent's `account:<host>`, `commands`, `egress`, `browser`, `dependency-scan`, `devhost` and `port:<name>`.",
+            "The roster entry's id, as agentry_agent_show lists it: `share`, `knowledge:<pack>`, `server:<id>` (the person's or an offered one) and an offered server's `server:<id>:writes`, `skill:<name>`, `secret:<NAME>`, a registry agent's subagent `subagent:<ns>/<name>` and its `subagent:<ns>/<name>:ask` switch (which asks the person before each run), the Assistant's `heartbeat`, `meetings` (which needs `heartbeat` on first) and `calendar:<name>` (a calendar feed), and the Coding agent's `account:<host>`, `commands`, `egress`, `browser`, `dependency-scan`, `devhost` and `port:<name>`.",
           ),
         on: z.boolean().describe("true switches it on, false off."),
         confirm: z

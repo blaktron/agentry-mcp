@@ -243,8 +243,26 @@ the terminal CLI because the pipe protocol is unavailable there.
 | `agentry_session_close` | a JSON end command to the open chat session, then the CLI's teardown                                                                                         | why the session ended, the envelope's status and result, the transcript, the receipts directory; a failure class is a tool error |
 
 Persistent agents run in the background once started and keep their
-conversation from one start to the next: the Assistant and the Coding agent.
-Main runs only in Agentry Desktop. A start that would give the agent something
+conversation from one start to the next: the Assistant, the Coding agent and
+the persistent QuickAgents installed from a registry. Main runs only in Agentry
+Desktop. Every tool that names an agent takes a built-in's name (`assistant`,
+`coder`) or a published agent's `ns/name`. Installing a registry agent
+and uninstalling it (CLI v0.7.4 or later) are two calls like an install: the
+install preview is `agentry install --plan --json` plus the persona from
+`agentry info`, and lists the agent's persistent capabilities (what it may do
+beyond a run), the knowledge it ships, its subagents with the reason each
+gives and its persona, with a `digest`; the CLI resolves the version each
+subagent is pinned to while it installs, and the result names them. A release
+that is unsigned, unscanned or not persistent is refused, and an update of an
+agent already installed stays at a terminal, where the CLI previews it. The
+uninstall preview says what goes and what stays: the conversation and files stay
+unless `removeData` is set, which also needs the agent's reference as
+`confirmRef` (the CLI's `--confirm`). A subagent is a roster entry
+(`subagent:<ns>/<name>`, with a `:ask` switch that asks the person before each
+run), switched with `agentry_agent_grant`. A question the agent puts to the
+person during a send is asked through the host's elicitation and answered with
+what the person says; a host that cannot ask leaves it unanswered and the send
+reports `awaitingPerson`. A start that would give the agent something
 the person has not agreed to on this computer, and every roster switch, are
 two calls like an install: the preview lists each consent sentence with a
 `digest`, and the confirm re-reads them and refuses any change. A send is one
@@ -270,16 +288,18 @@ assistant --history`, `--keep-credentials`, and plain `reset`) stay in a
 terminal or the desktop: each takes a file, a value or a sign-in that belongs on
 the person's own screen, or removes what the person set up.
 
-| Tool                    | Runs                                                                                 | Returns                                                                            |
-| ----------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `agentry_agent_list`    | `agentry agent list --json`                                                          | each agent and whether it is running, stopped, disabled or desktop only            |
-| `agentry_agent_show`    | `agentry agent show <name> --json`                                                   | its state, segment, roster, share folder, usage and the transcript's end           |
-| `agentry_agent_start`   | `agentry agent start <name> --json`, consented with `--yes` when agreement is needed | the running status, or what needs agreement with a `digest`                        |
-| `agentry_agent_stop`    | `agentry agent stop <name> --json`                                                   | the stop's status and the segment's result file                                    |
-| `agentry_agent_send`    | `agentry agent attach <name> --json`, one turn over the session protocol             | the agent's reply, the tools it called and the usage, or busy                      |
-| `agentry_agent_grant`   | `agentry agent show <name> --json`, then `agentry agent grant` consented             | the entry and its sentence with a `digest`, then the changed roster                |
-| `agentry_agent_tasks`   | `agentry agent tasks <name> [pause\|resume <task>] --json`                           | each task's schedule, state, next and last fire, or the changed tasks              |
-| `agentry_agent_compact` | `agentry agent show <name> --json`, then `agentry agent compact <name> --json`       | what it does and spends with a `digest`, then whether a fresh conversation started |
+| Tool                      | Runs                                                                                                                                           | Returns                                                                                                                                                                                  |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agentry_agent_list`      | `agentry agent list --json`                                                                                                                    | each agent and whether it is running, stopped, disabled or desktop only                                                                                                                  |
+| `agentry_agent_show`      | `agentry agent show <name> --json`                                                                                                             | its state, segment, roster, share folder, usage and the transcript's end; for a registry agent its reference, version, persona, packs and subagent pins (the CLI lists no subagent runs) |
+| `agentry_agent_install`   | `agentry install <ns/name> --plan --json` and `agentry info <ns/name> --json`, then `agentry agent install <ns/name@version> --json` consented | the capabilities, persona, knowledge and subagents with a `digest`, then the agent's record with its subagent pins                                                                       |
+| `agentry_agent_uninstall` | `agentry agent show <name> --json`, then `agentry agent uninstall <name> [--remove-data --confirm <ns/name>] --json`                           | what goes and what stays with a `digest`, then whether the data was removed                                                                                                              |
+| `agentry_agent_start`     | `agentry agent start <name> --json`, consented with `--yes` when agreement is needed                                                           | the running status, or what needs agreement with a `digest`                                                                                                                              |
+| `agentry_agent_stop`      | `agentry agent stop <name> --json`                                                                                                             | the stop's status and the segment's result file                                                                                                                                          |
+| `agentry_agent_send`      | `agentry agent attach <name> --json`, one turn over the session protocol                                                                       | the agent's reply, the tools it called and the usage, or busy                                                                                                                            |
+| `agentry_agent_grant`     | `agentry agent show <name> --json`, then `agentry agent grant` consented                                                                       | the entry and its sentence with a `digest`, then the changed roster                                                                                                                      |
+| `agentry_agent_tasks`     | `agentry agent tasks <name> [pause\|resume <task>] --json`                                                                                     | each task's schedule, state, next and last fire, or the changed tasks                                                                                                                    |
+| `agentry_agent_compact`   | `agentry agent show <name> --json`, then `agentry agent compact <name> --json`                                                                 | what it does and spends with a `digest`, then whether a fresh conversation started                                                                                                       |
 
 Authoring tools use operation previews, since the CLI offers no compiled plan
 mode for them. The preview names the command, input fingerprints, output, web
@@ -315,7 +335,8 @@ destinations and default sets, importing or resetting the report design,
 Knowledge import/upload/download/export/delete, Voice
 set/attach/delete and account upload/download, enabling, configuring and
 resetting a persistent agent (`agentry agent enable`, `configure`, `reset`;
-the Assistant's mail providers and its three resets among them),
+the Assistant's mail providers and its three resets among them), installing a
+persistent agent from a folder (`agentry agent install --local`),
 `agentry files ensure`,
 Unsafe Mode and vulnerable-server lifts, and a build's source tokens. Those
 stay in a terminal.
