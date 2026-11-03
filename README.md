@@ -123,6 +123,17 @@ Following a run whose connection dropped (`agentry runhost attach`), and
 listing, collecting and cancelling a runhost's jobs (`agentry runhost jobs`,
 `collect`, `cancel`), are terminal commands.
 
+The persistent agent tools take `on` too (CLI v0.7.14 or later):
+`agentry_agent_list`, `agentry_agent_show`, `agentry_agent_start`,
+`agentry_agent_stop`, `agentry_agent_send` and `agentry_agent_tasks` drive the
+agent on that runhost (`agentry agent … --on <name>`), where it runs under the
+runhost's service on the runhost's own model. `agentry_agent_grant` names the
+runhost `runhost`, because its `on` is the switch. Giving the runhost its
+agents' model (`agentry runhost model <name> --provider …`, an API key) and
+storing an agent's secret or git host account there (`agentry agent secret set
+--on`, `agentry agent configure --account --on`) stay in a terminal, because
+they take a key or a secret.
+
 Setting a runhost up (`agentry runhost add`), removing it (`agentry runhost
 remove`), pairing another computer with it or taking this one off (`agentry
 runhost pair`, `agentry runhost unpair`), changing its settings and choosing its

@@ -183,6 +183,16 @@ connection goes on on the runhost; the person follows it again in a terminal
 with `agentry runhost attach <name> <job>`, and `agentry runhost jobs <name>`
 lists what is there.
 
+A persistent agent may run on a runhost too (CLI v0.7.14 or later): pass `on`
+to `agentry_agent_list`, `agentry_agent_show`, `agentry_agent_start`,
+`agentry_agent_stop`, `agentry_agent_send` and `agentry_agent_tasks`, and
+`runhost` to `agentry_agent_grant` (whose `on` is the switch), when the person
+named that runhost or the agent runs there. Its model is the runhost's own: if a
+start says the runhost has none, tell the person to run `agentry runhost model
+<name> --provider <provider>` in a terminal. Storing the agent's secret or git
+host account on the runhost (`agentry agent secret set … --on`, `agentry agent
+configure … --account … --on`) also stays in a terminal.
+
 Never try to set a runhost up, remove one, pair or unpair a computer, update
 its CLI or change its settings, or give it or take away its credits token:
 those take an administrator's sign-in to the person's server, the person's own
