@@ -189,8 +189,11 @@ those take an administrator's sign-in to the person's server, the person's own
 approval in their browser, or a change to their server only they decide on,
 and stay in a terminal (`agentry runhost add`, `agentry runhost remove`,
 `agentry runhost pair`, `agentry runhost unpair`, `agentry runhost update`,
-`agentry runhost model`, `agentry runhost store`). Tell the person the command
-to run themselves. A run refused because the runhost's CLI is another version
+`agentry runhost model`, `agentry runhost store`), and never make a schedule on
+one (`agentry schedule add --on`): its consent names everything the runhost's
+store will keep. Tell the person the command to run themselves.
+`agentry_schedule_list` with `on` lists a runhost's schedules and their runs'
+jobs (CLI v0.7.11 or later). A run refused because the runhost's CLI is another version
 than this computer's names both versions: tell the person to run `agentry
 runhost update <name>`, or to update this computer's CLI when the runhost's is
 the newer one.

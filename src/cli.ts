@@ -44,6 +44,8 @@ export interface CliFeatures {
   runhostSessions: boolean;
   /** `run --on` on the runhost's own plan sign-in, with an adapter: claude and codex as their images. */
   runhostSignIns: boolean;
+  /** `runhost schedules <name> --json`: the schedules a runhost runs with nobody present. */
+  runhostSchedules: boolean;
 }
 
 /** The features of a CLI that has them all (the tests' fake, a current CLI). */
@@ -61,6 +63,7 @@ export const ALL_FEATURES: CliFeatures = {
   runhostJobs: true,
   runhostSessions: true,
   runhostSignIns: true,
+  runhostSchedules: true,
 };
 
 /** What `agentry --version` said, parsed. */
@@ -338,6 +341,9 @@ export async function checkCli(
   const agentUninstallHelp = await runCli(bin, ["agent", "uninstall", "--help"], {
     timeoutMs: 10_000,
   });
+  const schedulesHelp = await runCli(bin, ["runhost", "schedules", "--help"], {
+    timeoutMs: 10_000,
+  });
   return {
     ...v,
     floorChecked: v.semver !== undefined,
@@ -359,6 +365,7 @@ export async function checkCli(
       runhostJobs: /--on\b[^\n]*secrets, files and intake/.test(runHelp),
       runhostSessions: /--detach\b/.test(runHelp),
       runhostSignIns: /--on\b[^\n]*runhost model --sign-in/.test(runHelp),
+      runhostSchedules: /schedules <name>/.test(schedulesHelp.stdout + schedulesHelp.stderr),
     },
   };
 }
