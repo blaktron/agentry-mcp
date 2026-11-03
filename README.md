@@ -83,7 +83,7 @@ and the CLI's last stderr lines as `log`.
 | `agentry_knowledge_list`     | `agentry knowledge list --json`     | local packs or an organization's shared packs                                                                                                                                                                                                         |
 | `agentry_voice_status`       | `agentry voice status --json`       | local and account Voice metadata and review                                                                                                                                                                                                           |
 | `agentry_doctor`             | `agentry doctor --json`             | machine readiness: policy, provider key **name**, docker, images, exec catalog                                                                                                                                                                        |
-| `agentry_schedule_list`      | `agentry schedule list --json`      | the schedules on this computer: repeat, next run, output folder, paused                                                                                                                                                                               |
+| `agentry_schedule_list`      | `agentry schedule list --json`      | the schedules on this computer: repeat, next run, output folder, paused; with `on`, a runhost's (`agentry runhost schedules <on> --json`, CLI v0.7.11 or later): next run, what each keeps in its store, its runs' jobs                               |
 | `agentry_connections_list`   | `agentry connections list --json`   | the OAuth connections kept for QuickAgent versions' MCP servers, never a token                                                                                                                                                                        |
 | `agentry_model_signins_list` | `agentry model-signins list --json` | the model sign-ins local runs can spend, never a token                                                                                                                                                                                                |
 | `agentry_report_design_show` | `agentry report-design show --json` | the report design a run's PDFs would take, and what chose it                                                                                                                                                                                          |
@@ -128,7 +128,9 @@ remove`), pairing another computer with it or taking this one off (`agentry
 runhost pair`, `agentry runhost unpair`), changing its settings and choosing its
 model stay in a terminal. Each takes an administrator's sign-in to the person's
 server, a sign-in in the browser, or a change only the person decides on, and a
-host agent never holds those. So does `agentry runhost update`, which installs
+host agent never holds those. So does making a schedule there (`agentry schedule
+add --on`), whose consent names what the runhost's store will keep; listing a
+runhost's schedules is `agentry_schedule_list` with `on`. So does `agentry runhost update`, which installs
 this computer's CLI on the person's server; the CLI also does it by itself on
 the first runhost command after it updates. A run on a runhost whose CLI is not
 this computer's version is refused, naming both versions: the person runs

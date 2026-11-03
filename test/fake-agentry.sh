@@ -182,6 +182,12 @@ if [ "${1:-}" = "runhost" ]; then
         printf '{"ref":"runhost %s","checks":[{"name":"docker","status":"ok","detail":"Docker Engine 29.0.0"},{"name":"runhost:gvisor","status":"fail","detail":"the policy runs containers under runc","remedy":"run agentry runhost add again"}]}\n' "$3"; exit 1
       fi
       printf '{"ref":"runhost %s","checks":[{"name":"policy","status":"ok","detail":"/var/lib/agentry/.agentry/runner/policy.yaml"},{"name":"docker","status":"ok","detail":"Docker Engine 29.0.0"},{"name":"runhost:gvisor","status":"ok","detail":"every container runs under runsc, the gateway under runsc-uds"}]}\n' "$3" ;;
+    schedules)
+      if [ "${3:-}" = "--help" ]; then
+        [ -n "${FAKE_NO_RUNHOST_SCHEDULES:-}" ] && { echo "Usage: agentry runhost [command]"; exit 0; }
+        echo "Usage: agentry runhost schedules <name> [--run <id>] [flags]"; exit 0
+      fi
+      printf '{"runhost":"%s","schedules":[{"id":"y34k0ku5us","name":"earn-check","ref":"acme/widget@1.0.0","device":"aaaa","when":{"kind":"daily","time":"07:00","zone":"UTC"},"created":"2026-11-02T00:00:00Z","entries":[{"kind":"model-key","name":"anthropic"}]}]}\n' "$3" ;;
     *) echo "fake: runhost $2" >&2; exit 99 ;;
   esac
   exit 0
