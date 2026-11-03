@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 
-import { bool, flag, value } from "../argv.js";
+import { ArgumentError, bool, flag, value } from "../argv.js";
 import { guard, type Driver } from "../driver.js";
 import { registerTool } from "../toolargs.js";
 
@@ -36,13 +36,6 @@ export function registerReadTools(d: Driver): void {
       "agentry_voice_status",
       ["voice", "status"],
       "Read the local and account Writing Voice metadata and review with agentry voice status --json.",
-    ],
-    [
-      "agentry_schedule_list",
-      ["schedule", "list"],
-      "List the QuickAgents scheduled to run on this computer, with their repeat, next run, output folder and " +
-        "whether each is paused, with agentry schedule list --json. Adding, editing, pausing or removing a " +
-        "schedule stays in a terminal (`agentry schedule`) or the desktop.",
     ],
     [
       "agentry_connections_list",
@@ -84,6 +77,40 @@ export function registerReadTools(d: Driver): void {
         }),
     );
   }
+  registerTool(
+    d.server,
+    "agentry_schedule_list",
+    {
+      description:
+        "List the QuickAgents scheduled to run on this computer, with their repeat, next run, output folder and " +
+        "whether each is paused, with agentry schedule list --json. With `on`, a remote runhost's schedules " +
+        "instead (agentry runhost schedules <on> --json): each one's next run, what it keeps in the runhost's " +
+        "encrypted store (never a value), and its latest runs' jobs. Adding, editing, pausing or removing a " +
+        "schedule, here or on a runhost (`agentry schedule add --on`), stays in a terminal or the desktop.",
+      inputSchema: {
+        on: z
+          .string()
+          .optional()
+          .describe("A remote runhost's name (see agentry_runhost_list): list its schedules."),
+      },
+      annotations: readOnly,
+    },
+    (a) =>
+      guard("agentry_schedule_list", async () => {
+        if (a.on === undefined)
+          return d.run("agentry_schedule_list", ["schedule", "list", "--json"]);
+        if (!/^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/.test(a.on))
+          throw new ArgumentError(
+            `on ${JSON.stringify(a.on)} is not a runhost's name (see agentry_runhost_list)`,
+          );
+        if (!d.features.runhostSchedules)
+          throw new ArgumentError(
+            "this agentry CLI lists no runhost's schedules; update the CLI to v0.7.11 or later",
+          );
+        return d.run("agentry_schedule_list", ["runhost", "schedules", a.on, "--json"]);
+      }),
+  );
+
   registerTool(
     d.server,
     "agentry_knowledge_list",

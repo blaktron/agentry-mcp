@@ -187,3 +187,23 @@ test("a CLI whose run --on takes no adapter is told to update before anything is
   const here = await preview(client, { ref: "acme/widget", adapter: "codex" });
   assert.doesNotMatch(here.summary, /Where: the remote runhost/);
 });
+
+test("agentry_schedule_list takes on and lists that runhost's schedules", async () => {
+  const { client, argvFile } = await connect();
+  const r = await client.callTool({ name: "agentry_schedule_list", arguments: { on: "lab" } });
+  assert.equal(r.isError, undefined, r.content[0].text);
+  assert.match(r.content[0].text, /"kind":\s*"model-key"/);
+  assert.ok(receivedArgv(argvFile).some((a) => a.join(" ") === "runhost schedules lab --json"));
+  const bad = await client.callTool({
+    name: "agentry_schedule_list",
+    arguments: { on: "Lab Server" },
+  });
+  assert.equal(bad.isError, true);
+
+  const old = await connect({}, {}, undefined, { ...ALL_FEATURES, runhostSchedules: false });
+  const r2 = await old.client.callTool({ name: "agentry_schedule_list", arguments: { on: "lab" } });
+  assert.equal(r2.isError, true);
+  assert.match(r2.content[0].text, /update the CLI to v0\.7\.11/);
+  const here = await old.client.callTool({ name: "agentry_schedule_list", arguments: {} });
+  assert.equal(here.isError, undefined, here.content[0].text);
+});
