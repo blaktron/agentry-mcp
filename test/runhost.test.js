@@ -207,3 +207,43 @@ test("agentry_schedule_list takes on and lists that runhost's schedules", async 
   const here = await old.client.callTool({ name: "agentry_schedule_list", arguments: {} });
   assert.equal(here.isError, undefined, here.content[0].text);
 });
+
+test("the agent tools take on and drive the agent on that runhost", async () => {
+  const { client, argvFile } = await connect();
+  for (const [name, args] of [
+    ["agentry_agent_list", { on: "lab" }],
+    ["agentry_agent_show", { name: "assistant", on: "lab" }],
+    ["agentry_agent_stop", { name: "assistant", on: "lab" }],
+    ["agentry_agent_tasks", { name: "assistant", on: "lab" }],
+  ]) {
+    await client.callTool({ name, arguments: args });
+  }
+  const sent = receivedArgv(argvFile).filter((a) => a[0] === "agent");
+  for (const sub of ["list", "show", "stop", "tasks"]) {
+    const a = sent.find((x) => x[1] === sub);
+    assert.ok(a, `agent ${sub} was not run`);
+    const i = a.indexOf("--on");
+    assert.ok(i > 0 && a[i + 1] === "lab", a.join(" "));
+  }
+  const bad = await client.callTool({
+    name: "agentry_agent_show",
+    arguments: { name: "assistant", on: "Lab Server" },
+  });
+  assert.equal(bad.isError, true);
+  const withPolicy = await client.callTool({
+    name: "agentry_agent_start",
+    arguments: { name: "assistant", on: "lab", policy: "/etc/x.yaml" },
+  });
+  assert.equal(withPolicy.isError, true);
+  assert.match(withPolicy.content[0].text, /policy names a file on this computer/);
+
+  const old = await connect({}, {}, undefined, { ...ALL_FEATURES, runhostAgents: false });
+  const r = await old.client.callTool({
+    name: "agentry_agent_show",
+    arguments: { name: "assistant", on: "lab" },
+  });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /update the CLI to v0\.7\.14/);
+  const here = await old.client.callTool({ name: "agentry_agent_list", arguments: {} });
+  assert.equal(here.isError, undefined, here.content[0].text);
+});

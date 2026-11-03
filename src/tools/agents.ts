@@ -32,6 +32,13 @@ const name = z
     "The agent: `assistant` or `coder`, or a published agent's `ns/name` (agentry_agent_list names them; a name no other agent has also works alone).",
   );
 
+const on = z
+  .string()
+  .optional()
+  .describe(
+    "A remote runhost's name (agentry_runhost_list names them): the agent there, which runs on that server under its service. Needs CLI v0.7.14 or later.",
+  );
+
 export function registerAgentTools(d: Driver): void {
   registerTool(
     d.server,
@@ -41,10 +48,10 @@ export function registerAgentTools(d: Driver): void {
         "List the persistent agents on this computer with the installed agentry CLI (`agentry agent list --json`): " +
         "each agent's name, the name it goes by, and whether it is running, stopped, disabled or runs only in " +
         "Agentry Desktop, with who runs it and since when.",
-      inputSchema: {},
+      inputSchema: { on },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    () => guard("agentry_agent_list", () => agentList(d)),
+    (a) => guard("agentry_agent_list", () => agentList(d, a)),
   );
 
   registerTool(
@@ -69,6 +76,7 @@ export function registerAgentTools(d: Driver): void {
         "(-1 when not counted); the Assistant's `lastConsolidation` is its memory's newest daily tidy.",
       inputSchema: {
         name,
+        on,
         transcript: z
           .number()
           .int()
@@ -181,6 +189,7 @@ export function registerAgentTools(d: Driver): void {
         "person, in a terminal (`agentry agent enable`) or the desktop.",
       inputSchema: {
         name,
+        on,
         policy: z
           .string()
           .optional()
@@ -208,7 +217,7 @@ export function registerAgentTools(d: Driver): void {
         "Stop a running persistent agent (`agentry agent stop <name> --json`): its segment ends and its " +
         "conversation, its files and its share folder are kept for the next start. Returns the segment's " +
         "result file. Stop only when the person asked: other chats (a terminal, the desktop) may be using it.",
-      inputSchema: { name },
+      inputSchema: { name, on },
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -233,6 +242,7 @@ export function registerAgentTools(d: Driver): void {
         "share folder. Text is sent as JSON data; slash-prefixed text is literal.",
       inputSchema: {
         name,
+        on,
         text: z.string().describe("The person's message; multiline text is preserved."),
         turnTimeoutSeconds: z
           .number()
@@ -267,6 +277,7 @@ export function registerAgentTools(d: Driver): void {
         "stay in a terminal or the desktop.",
       inputSchema: {
         name,
+        runhost: on,
         entry: z
           .string()
           .describe(
@@ -300,6 +311,7 @@ export function registerAgentTools(d: Driver): void {
         "terminal or the desktop. Its heartbeat (the `heartbeat` entry, agentry_agent_grant) runs them while it runs.",
       inputSchema: {
         name,
+        on,
         task: z.string().optional().describe("The task's id, as the list gives it; with `op`."),
         op: z.enum(TASK_OPS).optional().describe("pause or resume the task; with `task`."),
       },
