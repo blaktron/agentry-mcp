@@ -83,6 +83,26 @@ export function agentName(name: string): string {
   return v;
 }
 
+/** A runhost's name, as `agentry runhost list` names it. */
+const RUNHOST_NAME = /^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/;
+
+/**
+ * argv with `--on <runhost>` when one is named: the agent command runs on
+ * that remote runhost, where the agent runs.
+ */
+function onRunhost(d: Driver, argv: string[], on: string | undefined, arg = "on"): string[] {
+  if (on === undefined) return argv;
+  if (!RUNHOST_NAME.test(on))
+    throw new ArgumentError(
+      `${arg} ${JSON.stringify(on)} is not a runhost's name (see agentry_runhost_list)`,
+    );
+  if (!d.features.runhostAgents)
+    throw new ArgumentError(
+      "this agentry CLI runs no persistent agent on a runhost; update the CLI to v0.7.14 or later",
+    );
+  return [...argv, "--on", on];
+}
+
 /** A registry reference: `ns/name`, optionally `@version` or `@range`. */
 function agentRelease(ref: string): { ns: string; name: string; version?: string } {
   const v = value("ref", ref);
@@ -112,15 +132,21 @@ function needsAgents(d: Driver, tool: string): CallToolResult | undefined {
   );
 }
 
-export async function agentList(d: Driver): Promise<CallToolResult> {
+export interface AgentListArgs {
+  on?: string;
+}
+
+export async function agentList(d: Driver, a: AgentListArgs = {}): Promise<CallToolResult> {
   return (
-    needsAgents(d, "agentry_agent_list") ?? d.run("agentry_agent_list", ["agent", "list", "--json"])
+    needsAgents(d, "agentry_agent_list") ??
+    d.run("agentry_agent_list", onRunhost(d, ["agent", "list", "--json"], a.on))
   );
 }
 
 export interface AgentShowArgs {
   name: string;
   transcript?: number;
+  on?: string;
 }
 
 export async function agentShow(d: Driver, a: AgentShowArgs): Promise<CallToolResult> {
@@ -128,19 +154,24 @@ export async function agentShow(d: Driver, a: AgentShowArgs): Promise<CallToolRe
   if (refused) return refused;
   const argv = ["agent", "show", agentName(a.name), "--json"];
   flag(argv, "transcript", a.transcript);
-  return d.run("agentry_agent_show", argv);
+  return d.run("agentry_agent_show", onRunhost(d, argv, a.on));
 }
 
 export interface AgentStopArgs {
   name: string;
+  on?: string;
 }
 
 export async function agentStop(d: Driver, a: AgentStopArgs): Promise<CallToolResult> {
   const refused = needsAgents(d, "agentry_agent_stop");
   if (refused) return refused;
-  return d.run("agentry_agent_stop", ["agent", "stop", agentName(a.name), "--json"], {
-    timeoutMs: STOP_TIMEOUT_MS,
-  });
+  return d.run(
+    "agentry_agent_stop",
+    onRunhost(d, ["agent", "stop", agentName(a.name), "--json"], a.on),
+    {
+      timeoutMs: STOP_TIMEOUT_MS,
+    },
+  );
 }
 
 /** What `agent start --json` prints without consent when the person must agree first. */
@@ -164,6 +195,7 @@ export interface AgentStartArgs {
   name: string;
   policy?: string;
   confirm?: string;
+  on?: string;
 }
 
 /**
@@ -176,8 +208,13 @@ export interface AgentStartArgs {
 export async function agentStart(d: Driver, a: AgentStartArgs): Promise<CallToolResult> {
   const refused = needsAgents(d, "agentry_agent_start");
   if (refused) return refused;
-  const argv = ["agent", "start", agentName(a.name), "--json"];
+  if (a.on !== undefined && a.policy !== undefined)
+    throw new ArgumentError(
+      "policy names a file on this computer, which a runhost does not read: leave it out with on",
+    );
+  let argv = ["agent", "start", agentName(a.name), "--json"];
   flag(argv, "policy", a.policy);
+  argv = onRunhost(d, argv, a.on);
   const opts = { timeoutMs: START_TIMEOUT_MS, graceMs: 30_000 };
   const first = await d.run("agentry_agent_start", argv, opts);
   const env = envelopeOf<unknown>(first);
@@ -201,7 +238,10 @@ export async function agentStart(d: Driver, a: AgentStartArgs): Promise<CallTool
         log: tail(env.log),
         writes: false,
         note:
-          "The agent would be given these for the first time on this computer. Show the person each line; " +
+          (a.on === undefined
+            ? "The agent would be given these for the first time on this computer. "
+            : `The agent would be given these for the first time on runhost ${a.on}. `) +
+          "Show the person each line; " +
           "start it with `confirm` set to this digest only once they agree.",
       },
       facts,
@@ -210,7 +250,7 @@ export async function agentStart(d: Driver, a: AgentStartArgs): Promise<CallTool
   const ok = await confirmed(d.server, "agentry_agent_start", a.confirm, facts, {
     unsigned: false,
     ask:
-      `Start the ${env.result.agent} agent? It would be given, for the first time on this computer: ` +
+      `Start the ${env.result.agent} agent? It would be given, for the first time on ${a.on === undefined ? "this computer" : `runhost ${a.on}`}: ` +
       env.result.needsAgreement.map((e) => e.line).join(" "),
   });
   if (!isConsent(ok)) return ok;
@@ -259,6 +299,8 @@ export interface AgentGrantArgs {
   entry: string;
   on: boolean;
   confirm?: string;
+  /** The runhost the agent runs on; `on` is the switch. */
+  runhost?: string;
 }
 
 /**
@@ -273,7 +315,10 @@ export async function agentGrant(d: Driver, a: AgentGrantArgs): Promise<CallTool
   if (refused) return refused;
   const name = agentName(a.name);
   const id = value("entry", a.entry);
-  const shown = await d.run("agentry_agent_grant (show)", ["agent", "show", name, "--json"]);
+  const shown = await d.run(
+    "agentry_agent_grant (show)",
+    onRunhost(d, ["agent", "show", name, "--json"], a.runhost, "runhost"),
+  );
   const env = envelopeOf<AgentState>(shown);
   if (!env || env.exitClass !== "ok") return { ...shown, isError: true };
   const st = env.result;
@@ -336,7 +381,15 @@ export async function agentGrant(d: Driver, a: AgentGrantArgs): Promise<CallTool
   if (!isConsent(ok)) return ok;
   return d.run(
     "agentry_agent_grant",
-    consentedArgv(["agent", "grant", name, id, a.on ? "on" : "off", "--json"], ok),
+    consentedArgv(
+      onRunhost(
+        d,
+        ["agent", "grant", name, id, a.on ? "on" : "off", "--json"],
+        a.runhost,
+        "runhost",
+      ),
+      ok,
+    ),
   );
 }
 
@@ -358,6 +411,7 @@ export interface AgentSendArgs {
   name: string;
   text: string;
   turnTimeoutSeconds?: number;
+  on?: string;
 }
 
 /**
@@ -379,7 +433,7 @@ export async function agentSend(d: Driver, a: AgentSendArgs): Promise<CallToolRe
   const name = agentName(a.name);
   if (a.text.trim() === "") throw new ArgumentError("text must not be empty");
   const limitMs = (a.turnTimeoutSeconds ?? DEFAULT_AGENT_TURN_SECONDS) * 1000;
-  const child = spawn(d.bin, ["agent", "attach", name, "--json"], {
+  const child = spawn(d.bin, onRunhost(d, ["agent", "attach", name, "--json"], a.on), {
     cwd: d.cwd,
     env: { ...process.env, ...d.env },
     stdio: ["pipe", "pipe", "pipe", "pipe"],
@@ -589,6 +643,7 @@ export interface AgentTasksArgs {
   name: string;
   task?: string;
   op?: (typeof TASK_OPS)[number];
+  on?: string;
 }
 
 /**
@@ -618,7 +673,7 @@ export async function agentTasks(d: Driver, a: AgentTasksArgs): Promise<CallTool
     argv.push(a.op, value("task", a.task));
   }
   argv.push("--json");
-  return d.run("agentry_agent_tasks", argv);
+  return d.run("agentry_agent_tasks", onRunhost(d, argv, a.on));
 }
 
 /** How long a compaction may take: the CLI's own bound, and a margin. */

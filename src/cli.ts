@@ -46,6 +46,8 @@ export interface CliFeatures {
   runhostSignIns: boolean;
   /** `runhost schedules <name> --json`: the schedules a runhost runs with nobody present. */
   runhostSchedules: boolean;
+  /** `agent … --on <runhost>`: the persistent agents on a remote runhost. */
+  runhostAgents: boolean;
 }
 
 /** The features of a CLI that has them all (the tests' fake, a current CLI). */
@@ -64,6 +66,7 @@ export const ALL_FEATURES: CliFeatures = {
   runhostSessions: true,
   runhostSignIns: true,
   runhostSchedules: true,
+  runhostAgents: true,
 };
 
 /** What `agentry --version` said, parsed. */
@@ -366,6 +369,9 @@ export async function checkCli(
       runhostSessions: /--detach\b/.test(runHelp),
       runhostSignIns: /--on\b[^\n]*runhost model --sign-in/.test(runHelp),
       runhostSchedules: /schedules <name>/.test(schedulesHelp.stdout + schedulesHelp.stderr),
+      runhostAgents: /--on string\s+run the command on the remote runhost/.test(
+        attachHelp.stdout + attachHelp.stderr,
+      ),
     },
   };
 }
