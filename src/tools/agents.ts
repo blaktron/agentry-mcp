@@ -108,7 +108,8 @@ export function registerAgentTools(d: Driver): void {
         "of it and only when they agree call again with `confirm` set to that digest: the server plans again, " +
         "refuses if anything changed (a pin included), and installs the version the preview named. The agent " +
         "is enabled and left stopped; agentry_agent_start starts it. A release that is unsigned or unscanned, " +
-        "declares files or a target host, or is not persistent is refused. Stop an agent before updating it. " +
+        "declares files or a target host, or is not persistent is refused. A running agent takes an update at " +
+        "its next turn, its conversation continuing (CLI v0.7.19 or later; an older CLI refuses it while it runs). " +
         "A CLI older than v0.7.8 is previewed from `agentry install --plan` and `agentry info`, without the " +
         "pins, and an update stays at its terminal.",
       inputSchema: {
@@ -147,7 +148,7 @@ export function registerAgentTools(d: Driver): void {
         "cannot be undone: the confirm then needs `confirmRef` set to the agent's reference (`ns/name`, as the " +
         "preview names it), the CLI's own `--confirm`. Show the person which of the two it is and confirm only " +
         "once they agree. The result says whether the data was removed. The built-in agents are disabled, not " +
-        "uninstalled, and a running agent is stopped first.",
+        "uninstalled, and a running agent is stopped first (CLI v0.7.19 or later; an older CLI refuses it).",
       inputSchema: {
         name,
         removeData: z
