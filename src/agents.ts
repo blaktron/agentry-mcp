@@ -930,7 +930,10 @@ export async function agentInstall(d: Driver, a: AgentInstallArgs): Promise<Call
         "it installs and come back in the result. ";
     const updateNote = installed
       ? `This updates the installed ${installed.version}: show what the update widens (diff) and the pins it ` +
-        "replaces (installedAgent.subagents); stop the agent first if it runs. "
+        "replaces (installedAgent.subagents); " +
+        (d.features.runningUpdates
+          ? "if the agent runs, it takes the update at its next turn and its conversation continues. "
+          : "stop the agent first if it runs. ")
       : "The agent is enabled and left stopped; start it with agentry_agent_start. ";
     return previewText(
       {
@@ -1029,9 +1032,11 @@ export async function agentUninstall(d: Driver, a: AgentUninstallArgs): Promise<
         "disabling it stays with the person (`agentry agent disable`).",
       true,
     );
-  if (st.state === "running")
+  const running = st.state === "running";
+  if (running && !d.features.runningUpdates)
     return text(
-      `agentry_agent_uninstall: ${st.ref} is running; stop it first (agentry_agent_stop).`,
+      `agentry_agent_uninstall: ${st.ref} is running and this agentry CLI uninstalls only a stopped agent; ` +
+        "stop it first (agentry_agent_stop), or update the CLI to v0.7.19 or later, which stops it itself.",
       true,
     );
   const ref = agentName(st.ref);
@@ -1042,6 +1047,7 @@ export async function agentUninstall(d: Driver, a: AgentUninstallArgs): Promise<
     version: st.version ?? "",
     source: st.source,
     removeData,
+    running,
   };
   const removes = [
     "its release",
@@ -1069,12 +1075,15 @@ export async function agentUninstall(d: Driver, a: AgentUninstallArgs): Promise<
         dataRemoved: removeData,
         removes,
         keeps,
+        running,
         writes: false,
-        note: removeData
-          ? `This also wipes the agent's conversation and files, which cannot be undone. Show the person ` +
-            `this; confirm with this digest and \`confirmRef\` set to ${ref}, only once they agree and have typed or approved that reference.`
-          : `The conversation and files are kept: installing ${ref} again takes them up. Show the person this; ` +
-            "confirm with this digest only once they agree.",
+        note:
+          (running ? "The agent is running: the uninstall stops it first. " : "") +
+          (removeData
+            ? `This also wipes the agent's conversation and files, which cannot be undone. Show the person ` +
+              `this; confirm with this digest and \`confirmRef\` set to ${ref}, only once they agree and have typed or approved that reference.`
+            : `The conversation and files are kept: installing ${ref} again takes them up. Show the person this; ` +
+              "confirm with this digest only once they agree."),
       },
       facts,
     );
@@ -1089,8 +1098,8 @@ export async function agentUninstall(d: Driver, a: AgentUninstallArgs): Promise<
   const ok = await confirmed(d.server, "agentry_agent_uninstall", a.confirm, facts, {
     unsigned: false,
     ask: removeData
-      ? `Uninstall ${ref} and wipe its conversation, its files and everything you chose for it? The files in its share folder are kept.`
-      : `Uninstall ${ref}? Its conversation and files are kept; installing it again takes them up.`,
+      ? `${running ? "Stop and u" : "U"}ninstall ${ref} and wipe its conversation, its files and everything you chose for it? The files in its share folder are kept.`
+      : `${running ? "Stop and u" : "U"}ninstall ${ref}? Its conversation and files are kept; installing it again takes them up.`,
   });
   if (!isConsent(ok)) return ok;
   // The CLI's uninstall asks nothing on a program's behalf; a matched digest and the

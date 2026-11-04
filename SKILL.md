@@ -284,14 +284,18 @@ attestation verdict. With CLI v0.7.8 or later it also gives each subagent's pin
 for an update, `installedAgent` and the widening in `diff`. Show the person all
 of it, say that a subagent runs as a QuickAgent of its own under its own
 contract, and confirm with the digest only once they agree; a pin that moved in
-between is refused. The agent is left stopped (`agentry_agent_start`). An
-unsigned or unscanned release is refused, and so is the update of a running
-agent. With an older CLI, the result names the pins and updating stays in a
+between is refused. A new install is left stopped (`agentry_agent_start`). An
+unsigned or unscanned release is refused. With CLI v0.7.19 or later a running
+agent takes an update at its next turn, its conversation continuing, so the
+person need not stop it; an older CLI refuses the update of a running agent.
+With a CLI older than v0.7.8, the result names the pins and updating stays in a
 terminal.
 `agentry_agent_uninstall` is two calls too, and keeps the agent's conversation
 and files unless `removeData` is set; wiping them cannot be undone, so the
 confirm also needs `confirmRef`, the agent's reference as the preview names it,
-and only after the person agreed to the wipe. A subagent is a roster entry
+and only after the person agreed to the wipe. With CLI v0.7.19 or later it stops
+a running agent first, and the preview says so; an older CLI refuses it until
+the agent is stopped. A subagent is a roster entry
 (`subagent:<ns>/<name>`, and its `:ask` switch, which asks the person before
 each run): `agentry_agent_grant` switches either.
 
@@ -310,7 +314,8 @@ and the Coding agent's `account:<host>`, `commands`, `egress`, `browser`,
 Show the entry's sentence, and say that a running agent restarts with the
 change at its next turn; the Assistant's `heartbeat` and `meetings` take
 effect at once and restart nothing. An entry that reads `needs-set-up` waits for a secret, an account or a
-sign-in the person gives in a terminal or the desktop. The Assistant's mail
+sign-in the person gives in a terminal or the desktop; none of those needs the
+agent stopped with CLI v0.7.19 or later, which takes each at its next turn. The Assistant's mail
 servers (Google Workspace, `server:gog`; Microsoft 365 and Outlook.com, `server:ms365`; Fastmail, `server:url-api-fastmail-com-mcp`) are on its roster only while their mail
 provider is enabled; a grant of one that is not names the command the person
 runs.

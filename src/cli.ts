@@ -36,6 +36,8 @@ export interface CliFeatures {
   publishedAgents: boolean;
   /** `agent install --plan`: the persona, the subagent pins and an update, previewed by the CLI. */
   agentPlans: boolean;
+  /** `agent install` of a running agent, taken at its next turn, and `agent uninstall` stopping one. */
+  runningUpdates: boolean;
   /** `run --on <runhost>`: a run on one of the person's remote runhosts. */
   runhosts: boolean;
   /** `run --on` carrying the run's secrets, files and intake, not a bare release alone. */
@@ -61,6 +63,7 @@ export const ALL_FEATURES: CliFeatures = {
   compact: true,
   publishedAgents: true,
   agentPlans: true,
+  runningUpdates: true,
   runhosts: true,
   runhostJobs: true,
   runhostSessions: true,
@@ -364,6 +367,9 @@ export async function checkCli(
       agentPlans:
         /install <ns\/name\[@version\]>/.test(agentInstallHelp.stdout + agentInstallHelp.stderr) &&
         /--plan\b/.test(agentInstallHelp.stdout + agentInstallHelp.stderr),
+      runningUpdates: /A running agent takes the update\s+at its next turn/.test(
+        agentInstallHelp.stdout + agentInstallHelp.stderr,
+      ),
       runhosts: /--on\b/.test(runHelp),
       runhostJobs: /--on\b[^\n]*secrets, files and intake/.test(runHelp),
       runhostSessions: /--detach\b/.test(runHelp),
