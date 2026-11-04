@@ -19,7 +19,7 @@ import { registerSessionTools } from "./tools/session.js";
 import { registerWriteTools } from "./tools/write.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.7.10";
+export const SERVER_VERSION = "0.7.11";
 
 export function instructions(bin: string, cliVersion: string): string {
   return [
@@ -58,7 +58,8 @@ export function instructions(bin: string, cliVersion: string): string {
       "agentry_voice_build.",
     "",
     "To read this computer's state: agentry_schedule_list, agentry_connections_list, " +
-      "agentry_model_signins_list, agentry_report_design_show and agentry_destinations_list. Changing any of " +
+      "agentry_model_signins_list, agentry_report_design_show, agentry_report_design_list and " +
+      "agentry_destinations_list. Changing any of " +
       "them stays with the person, in a terminal or the desktop.",
     "",
     "An interactive session is the same consent, then agentry_session_start opens the QuickAgent's " +
