@@ -205,8 +205,17 @@ export function registerRunTools(d: Driver): void {
           .string()
           .optional()
           .describe(
-            "The built-in report theme the run's PDFs take (`--report-theme`): plain, classic, modern, editorial " +
-              "or technical; the account's report design, else the config's, when omitted.",
+            "The built-in report theme the run's PDFs take (`--report-theme`): plain, classic, modern, editorial, " +
+              "technical, boardroom, studio, field, civic or lumen; the account's default report design, else " +
+              "the config's, when omitted. Not with reportDesign.",
+          ),
+        reportDesign: z
+          .string()
+          .optional()
+          .describe(
+            "The report design the run's PDFs take (`--report-design`, CLI v0.7.22 or later): the name or id of a " +
+              "design of the account's library (agentry_report_design_list), or the path of a file holding one. " +
+              "Not with reportTheme.",
           ),
         intakeTokens: z
           .record(z.string(), z.string())

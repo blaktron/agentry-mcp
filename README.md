@@ -86,6 +86,7 @@ and the CLI's last stderr lines as `log`.
 | `agentry_schedule_list`      | `agentry schedule list --json`      | the schedules on this computer: repeat, next run, output folder, paused; with `on`, a runhost's (`agentry runhost schedules <on> --json`, CLI v0.7.11 or later): next run, what each keeps in its store, its runs' jobs                               |
 | `agentry_connections_list`   | `agentry connections list --json`   | the OAuth connections kept for QuickAgent versions' MCP servers, never a token                                                                                                                                                                        |
 | `agentry_model_signins_list` | `agentry model-signins list --json` | the model sign-ins local runs can spend, never a token                                                                                                                                                                                                |
+| `agentry_report_design_list` | `agentry report-design list --json` | the account's report design library: each design's name, the built-in it started from, which is the default and which images it carries (CLI v0.7.22 or later)                                                                                        |
 | `agentry_report_design_show` | `agentry report-design show --json` | the report design a run's PDFs would take, and what chose it                                                                                                                                                                                          |
 | `agentry_destinations_list`  | `agentry destinations list --json`  | the saved destinations (name, kind, host, on my network) and the QuickAgents each is a default for, never a secret                                                                                                                                    |
 | `agentry_runhost_list`       | `agentry runhost list --json`       | this computer's remote runhosts: name, address, host key fingerprint, owner, server CLI version, system                                                                                                                                               |
@@ -97,7 +98,7 @@ model key; the runhost verifies it again, runs it under gVisor and seals the
 output to this computer, which opens it into the output folder. The preview's
 readiness is `agentry runhost doctor` for that runhost. With CLI v0.6.1019 or
 later a run on a runhost takes what a run on this computer takes: `files`,
-`knowledge`, the voice arguments, `intake` and `intakeTokens`, `reportTheme`,
+`knowledge`, the voice arguments, `intake` and `intakeTokens`, `reportTheme` or `reportDesign`,
 `deliverTo` and `destinations`. The secrets and intake answers are gathered on
 this computer and sent with the files for that run alone; the runhost delivers
 to the destinations and deletes everything it was sent when the run ends. A
@@ -243,7 +244,9 @@ and the saved destinations, the call's `destinations` or else the default set
 the person saved for that QuickAgent (`noDestination` sends to none). The
 default set is in the digest, so one changed between the preview and the
 confirm refuses the confirm. `reportTheme` picks a built-in theme for the
-run's PDFs. An input source's token and a target host's password, passphrase
+run's PDFs, and `reportDesign` a design of the person's library by name or
+id, or a file holding one (`agentry_report_design_list` lists the library;
+CLI v0.7.22 or later). An input source's token and a target host's password, passphrase
 or sudo password are passed as the **name** of an environment variable
 (`intakeTokens`, `hostPasswords`, `hostPassphrases`, `hostSudoPasswords`) and
 a host key as a file path (`hostKeys`); otherwise the CLI uses what the
@@ -361,7 +364,7 @@ model-signins add`), publishing (`agentry publish`), shipping a Knowledge
 pack with a QuickAgent (`agentry knowledge ship`, `agentry draft --ship`, and
 the per-pack confirmation `agentry publish` asks), forking and yanking,
 adding, editing, pausing or removing schedules, saving or removing
-destinations and default sets, importing or resetting the report design,
+destinations and default sets, adding, replacing, picking the default or deleting a report design,
 Knowledge import/upload/download/export/delete, Voice
 set/attach/delete and account upload/download, enabling, configuring and
 resetting a persistent agent (`agentry agent enable`, `configure`, `reset`;

@@ -143,6 +143,7 @@ export interface RunArgs {
   destinations?: string[];
   noDestination?: boolean;
   reportTheme?: string;
+  reportDesign?: string;
   intakeTokens?: Record<string, string>;
   hostKeys?: Record<string, string>;
   hostPasswords?: Record<string, string>;
@@ -234,6 +235,7 @@ const ON_A_RUNHOST_WITH_JOBS: [keyof RunArgs, string][] = [
   ["deliverTo", "deliverTo"],
   ["destinations", "destinations"],
   ["reportTheme", "reportTheme"],
+  ["reportDesign", "reportDesign"],
   ["hostKeys", "target-host sign-ins"],
   ["hostPasswords", "target-host sign-ins"],
   ["hostPassphrases", "target-host sign-ins"],
@@ -480,6 +482,7 @@ function runFacts(p: RunPlan, a: RunArgs, timeoutSeconds: number, refusals: Plan
     destinations: a.destinations ?? [],
     noDestination: a.noDestination ?? false,
     reportTheme: a.reportTheme ?? "",
+    reportDesign: a.reportDesign ?? "",
     intakeTokens: a.intakeTokens ?? {},
     hostKeys: a.hostKeys ?? {},
     hostPasswords: a.hostPasswords ?? {},
@@ -527,6 +530,8 @@ export async function runConsent(
     );
   if (a.destinations?.length && a.noDestination)
     throw new ArgumentError("give destinations or noDestination, not both");
+  if (a.reportTheme && a.reportDesign)
+    throw new ArgumentError("give reportTheme or reportDesign, not both");
   // The flags only the run carries are checked before anything is planned.
   deliveryFlags([], a);
   checkOn(d, a, mode);
@@ -779,6 +784,7 @@ function deliveryFlags(argv: string[], a: RunArgs): void {
   for (const name of a.destinations ?? []) argv.push("--destination", value("destinations", name));
   bool(argv, "no-destination", a.noDestination);
   flag(argv, "report-theme", a.reportTheme);
+  flag(argv, "report-design", a.reportDesign);
   idFlags(argv, "intake-token", "intakeTokens", a.intakeTokens, envName);
   idFlags(argv, "host-key", "hostKeys", a.hostKeys, value);
   idFlags(argv, "host-password", "hostPasswords", a.hostPasswords, envName);
