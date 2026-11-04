@@ -278,8 +278,11 @@ install preview is `agentry install --plan --json` plus the persona from
 beyond a run), the knowledge it ships, its subagents with the reason each
 gives and its persona, with a `digest`; the CLI resolves the version each
 subagent is pinned to while it installs, and the result names them. A release
-that is unsigned, unscanned or not persistent is refused, and an update of an
-agent already installed stays at a terminal, where the CLI previews it. The
+that is unsigned, unscanned or not persistent is refused, and before CLI v0.7.8
+an update of an agent already installed stays at a terminal, where the CLI
+previews it. With CLI v0.7.19 or later a running agent takes an update at its
+next turn, its conversation continuing, and an uninstall stops it first; an
+older CLI refuses both while it runs. The
 uninstall preview says what goes and what stays: the conversation and files stay
 unless `removeData` is set, which also needs the agent's reference as
 `confirmRef` (the CLI's `--confirm`). A subagent is a roster entry
@@ -311,7 +314,9 @@ needs CLI v0.6.205 or later), exporting the memory,
 removing a task and the Assistant's three resets (`agentry agent reset
 assistant --history`, `--keep-credentials`, and plain `reset`) stay in a
 terminal or the desktop: each takes a file, a value or a sign-in that belongs on
-the person's own screen, or removes what the person set up.
+the person's own screen, or removes what the person set up. With CLI v0.7.19 or
+later none of them needs the agent stopped: a running agent takes each at its
+next turn.
 
 | Tool                      | Runs                                                                                                                                                                              | Returns                                                                                                                                                                                              |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

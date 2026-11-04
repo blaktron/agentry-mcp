@@ -3,7 +3,7 @@
 // digest covers the consent sentences; a send is one attach process whose
 // answer is the reply to its own turn, and busy is said as busy.
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -581,15 +581,48 @@ test("a subagent pin that moved between the preview and the confirm writes nothi
   for (const a of receivedArgv(argvFile)) assert.ok(!a.includes("--yes"), a.join(" "));
 });
 
-test("a running agent's update is the plan's refusal, and the confirm writes nothing", async () => {
+test("a running agent's update goes through, taken at its next turn", async () => {
   const dir = mkdtempSync(join(tmpdir(), "agentry-mcp-agent-"));
   const writes = join(dir, "writes");
-  const { client } = await connect({
+  const { client, argvFile } = await connect({
     ...PERSISTENT,
     FAKE_INSTALLED_AS_AGENT: "1",
     FAKE_AGENT_RUNNING: "1",
     FAKE_WRITES: writes,
   });
+  const p = envelope(await call(client, "agentry_agent_install", { ref: "acme/widget" }));
+  assert.deepEqual(p.json.refusals, []);
+  assert.match(p.json.note, /if the agent runs, it takes the update at its next turn/);
+  assert.doesNotMatch(p.json.note, /stop the agent first/);
+  const c = envelope(
+    await call(client, "agentry_agent_install", { ref: "acme/widget", confirm: p.json.digest }),
+  );
+  assert.equal(c.json.result.version, "1.0.0");
+  assert.equal(readFileSync(writes, "utf8"), "agent-installed\n");
+  assert.deepEqual(receivedArgv(argvFile).at(-1), [
+    "agent",
+    "install",
+    "acme/widget@1.0.0",
+    "--json",
+    "--yes",
+  ]);
+});
+
+test("on a CLI before v0.7.19, a running agent's update is the plan's refusal, and the confirm writes nothing", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "agentry-mcp-agent-"));
+  const writes = join(dir, "writes");
+  const { client } = await connect(
+    {
+      ...PERSISTENT,
+      FAKE_INSTALLED_AS_AGENT: "1",
+      FAKE_AGENT_RUNNING: "1",
+      FAKE_NO_RUNNING_UPDATES: "1",
+      FAKE_WRITES: writes,
+    },
+    {},
+    undefined,
+    { ...ALL_FEATURES, runningUpdates: false },
+  );
   const p = envelope(await call(client, "agentry_agent_install", { ref: "acme/widget" }));
   assert.equal(p.json.refusals.length, 1);
   assert.match(p.json.refusals[0].reason ?? JSON.stringify(p.json.refusals[0]), /stop it first/);
@@ -731,7 +764,7 @@ test("removing the data needs the reference as confirmRef, and passes it as --co
   ]);
 });
 
-test("an uninstall refuses a built-in, a running agent, and a confirmRef without removeData", async () => {
+test("an uninstall refuses a built-in and a confirmRef without removeData, and a CLI before v0.7.19 a running agent", async () => {
   const { client, argvFile } = await connect();
   const builtin = await call(client, "agentry_agent_uninstall", { name: "assistant" });
   assert.equal(builtin.isError, true);
@@ -742,12 +775,45 @@ test("an uninstall refuses a built-in, a running agent, and a confirmRef without
   });
   assert.equal(stray.isError, true);
   assert.match(stray.content[0].text, /goes with removeData/);
-  const running = await connect({ FAKE_AGENT_STATE: "running" });
+  const running = await connect({ FAKE_AGENT_STATE: "running" }, {}, undefined, {
+    ...ALL_FEATURES,
+    runningUpdates: false,
+  });
   const r = await call(running.client, "agentry_agent_uninstall", { name: "acme/widget" });
   assert.equal(r.isError, true);
   assert.match(r.content[0].text, /stop it first/);
+  assert.match(r.content[0].text, /v0\.7\.19 or later/);
   for (const argv of [...receivedArgv(argvFile), ...receivedArgv(running.argvFile)])
     assert.notEqual(argv[1], "uninstall");
+});
+
+test("an uninstall of a running agent says it stops it first, and a state that moved writes nothing", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "agentry-mcp-agent-"));
+  const writes = join(dir, "writes");
+  const { client, argvFile, elicitations } = await connect(
+    { FAKE_AGENT_STATE: "running", FAKE_WRITES: writes },
+    {},
+    "accept",
+  );
+  const p = envelope(await call(client, "agentry_agent_uninstall", { name: "acme/widget" }));
+  assert.equal(p.json.running, true);
+  assert.match(p.json.note, /the uninstall stops it first/);
+  const r = envelope(
+    await call(client, "agentry_agent_uninstall", { name: "acme/widget", confirm: p.json.digest }),
+  );
+  assert.equal(r.json.result.dataRemoved, false);
+  assert.match(elicitations[0], /^Stop and uninstall acme\/widget\?/);
+  assert.equal(readFileSync(writes, "utf8"), "agent-uninstalled\n");
+  assert.deepEqual(receivedArgv(argvFile).at(-1), ["agent", "uninstall", "acme/widget", "--json"]);
+  // A preview taken while it ran is not a stopped agent's.
+  const stopped = await connect({ FAKE_WRITES: writes });
+  const moved = await call(stopped.client, "agentry_agent_uninstall", {
+    name: "acme/widget",
+    confirm: p.json.digest,
+  });
+  assert.equal(moved.isError, true);
+  assert.match(moved.content[0].text, /does not match this preview/);
+  assert.equal(readFileSync(writes, "utf8"), "agent-uninstalled\n");
 });
 
 test("a question the agent asks during a send goes to the person through the host, and their answer goes back", async () => {
