@@ -198,7 +198,11 @@ case "$1" in
   schedule) echo '[{"id":"s1","name":"weekly","ref":"acme/widget","paused":false,"describe":"every Monday at 09:00","alarm":true}]' ;;
   connections) echo '[{"ref":"acme/widget@1.0.0","server":"notion","issuer":"https://auth.example"}]' ;;
   model-signins) echo '[{"vendor":"claude","account":"me@example.com"}]' ;;
-  report-design) echo '{"design":{"name":"Plain","basedOn":"plain"},"source":"default"}' ;;
+  report-design)
+    case "$2" in
+      list) echo '{"registry":"r","default":"","designs":[{"id":"00000000-0000-4000-8000-000000000001","name":"House","basedOn":"modern","version":1,"default":false,"hasLogo":true,"hasCoverImage":false,"hasCustomCover":false}]}' ;;
+      *) echo '{"design":{"name":"Plain","basedOn":"plain"},"source":"default"}' ;;
+    esac ;;
   destinations)
     dests="${FAKE_DESTINATIONS:-}"; [ -n "${FAKE_DESTINATIONS_FILE:-}" ] && [ -f "$FAKE_DESTINATIONS_FILE" ] && dests=$(cat "$FAKE_DESTINATIONS_FILE")
     echo "${dests:-{\"destinations\":[]\}}" ;;

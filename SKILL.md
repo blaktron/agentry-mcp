@@ -157,7 +157,7 @@ To run on one, pass its name as `agentry_run`'s `on`. Use it only when the
 person asked for that runhost by name or chose it. The preview's `summary`
 says where the run goes, and its `readiness` is the runhost's own doctor;
 show both. A run on a runhost takes everything a run on this computer
-takes, `files`, `knowledge`, the voice, `intake`, `reportTheme`, `deliverTo`
+takes, `files`, `knowledge`, the voice, `intake`, `reportTheme` or `reportDesign`, `deliverTo`
 and `destinations` among them: this computer gathers the secrets and the
 intake answers and sends them, with the files, for that run alone, and the
 runhost deletes them when the run ends. A target host is reached from the
@@ -237,8 +237,10 @@ The run preview's `delivery` names where the run sends its result: a folder
 and saved destinations, the call's `destinations` or else the default set the
 person saved for that QuickAgent. Show it with the contract; pass
 `noDestination` when the person wants none. Use `agentry_destinations_list` to
-see what is saved. `reportTheme` picks a built-in theme for the run's PDFs
-(`agentry_report_design_show` says what a run takes now). Pass an input
+see what is saved. `reportTheme` picks a built-in theme for the run's PDFs,
+and `reportDesign` a design of the person's library by name or id, or a file
+(`agentry_report_design_list` lists the library, `agentry_report_design_show`
+says what a run takes now; CLI v0.7.22 or later for the library). Pass an input
 source's token or a target host's password only as the NAME of an environment
 variable the person set (`intakeTokens`, `hostPasswords`, `hostPassphrases`,
 `hostSudoPasswords`), and a host key as a file path (`hostKeys`); without them
@@ -394,7 +396,7 @@ tool error carrying the CLI's envelope.
 
 Terminal-only workflows include signing in to MCP servers (`agentry connect`)
 and model vendors (`agentry model-signins add`), adding or changing schedules,
-saving destinations and default sets, importing or resetting the report design,
+saving destinations and default sets, adding, replacing, picking the default or deleting a report design,
 forking, publishing/yanking, shipping a Knowledge pack with a QuickAgent
 (`agentry knowledge ship`, `agentry draft --ship`, the per-pack confirmation
 `agentry publish` asks), registry administration,

@@ -53,9 +53,16 @@ export function registerReadTools(d: Driver): void {
     [
       "agentry_report_design_show",
       ["report-design", "show"],
-      "Show the report design a run's PDFs would take now, and what chose it (the account's, the config's, " +
-        "or the default), with agentry report-design show --json. A run can pick a built-in theme with " +
-        "agentry_run's reportTheme.",
+      "Show the report design a run's PDFs would take now, and what chose it (the account's default, the " +
+        "config's, or the default), with agentry report-design show --json. A run can pick a built-in theme " +
+        "with agentry_run's reportTheme, or a design of the account's library by name with its reportDesign.",
+    ],
+    [
+      "agentry_report_design_list",
+      ["report-design", "list"],
+      "List the account's report design library (name, the built-in each started from, which is the " +
+        "default, which images each carries) with agentry report-design list --json (CLI v0.7.22 or later). " +
+        "Adding, replacing, picking the default or deleting a design stays in a terminal.",
     ],
     [
       "agentry_destinations_list",

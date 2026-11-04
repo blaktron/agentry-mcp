@@ -29,6 +29,7 @@ test("the read tools run their CLI command with --json and pass its JSON through
     "agentry_connections_list",
     "agentry_model_signins_list",
     "agentry_report_design_show",
+    "agentry_report_design_list",
     "agentry_destinations_list",
   ]) {
     const env = await preview(client, name, {});
@@ -39,8 +40,38 @@ test("the read tools run their CLI command with --json and pass its JSON through
     ["connections", "list", "--json"],
     ["model-signins", "list", "--json"],
     ["report-design", "show", "--json"],
+    ["report-design", "list", "--json"],
     ["destinations", "list", "--json"],
   ]);
+});
+
+test("run: a library design by name rides on the run as --report-design, never beside a theme", async () => {
+  const { client, argvFile } = await connect();
+  const call = { ref: "acme/widget", reportDesign: "House & Co" };
+  const p = await preview(client, "agentry_run", call);
+  const r = await client.callTool({
+    name: "agentry_run",
+    arguments: { ...call, confirm: p.digest },
+  });
+  assert.equal(r.isError, undefined, r.content[0].text);
+  const [plan, run] = runs(argvFile).slice(-2);
+  assert.ok(!plan.includes("--report-design"), "--report-design on the plan");
+  assert.ok(
+    run.includes("--report-design") && run[run.indexOf("--report-design") + 1] === "House & Co",
+    run.join(" "),
+  );
+  const both = await client.callTool({
+    name: "agentry_run",
+    arguments: { ref: "acme/widget", reportDesign: "House", reportTheme: "modern" },
+  });
+  assert.equal(both.isError, true);
+  assert.match(both.content[0].text, /not both/);
+  const flagLike = await client.callTool({
+    name: "agentry_run",
+    arguments: { ref: "acme/widget", reportDesign: "--yes" },
+  });
+  assert.equal(flagLike.isError, true);
+  assert.match(flagLike.content[0].text, /must not start with "-"/);
 });
 
 test("run: destinations, report theme and sign-ins by name ride on the run, never the plan", async () => {
@@ -119,6 +150,7 @@ test("run: each new argument changes the digest", async () => {
     { destinations: ["n8n"] },
     { noDestination: true },
     { reportTheme: "classic" },
+    { reportDesign: "House" },
     { intakeTokens: { repo: "TOKEN" } },
     { hostKeys: { web: "/k" } },
     { hostPasswords: { web: "PW" } },
