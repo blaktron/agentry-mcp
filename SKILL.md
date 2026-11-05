@@ -393,10 +393,18 @@ tool error carrying the CLI's envelope.
   optional samples. Each page is read by AI Review with the person's TypeSafe
   key first; without the key the CLI refuses the addresses, and files still
   work. This changes the local voice unless `write` names a VOICE.md file.
+- `agentry_report_design_build`: `job: design` writes a report design from a
+  `brief` (optionally `from` a design, a `logo`, up to 4 reference `images`, up
+  to 2 https `urls`); `job: cover` writes a custom cover page for `design`
+  (with `images` it may draw). Show the person the preview: the files it reads,
+  the addresses fetched and read by AI Review with their TypeSafe key. The design
+  lands under `out` in `design/design.json`; nothing is added to the account.
+  Adding it (`--save`, `agentry report-design import`), `use` and `delete` are
+  terminal-only. Needs CLI 0.7.23 or later.
 
 Terminal-only workflows include signing in to MCP servers (`agentry connect`)
 and model vendors (`agentry model-signins add`), adding or changing schedules,
-saving destinations and default sets, adding, replacing, picking the default or deleting a report design,
+saving destinations and default sets, adding (`--save`, `agentry report-design import`), replacing, picking the default (`use`) or deleting a report design,
 forking, publishing/yanking, shipping a Knowledge pack with a QuickAgent
 (`agentry knowledge ship`, `agentry draft --ship`, the per-pack confirmation
 `agentry publish` asks), registry administration,
