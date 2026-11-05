@@ -19,7 +19,7 @@ import { registerSessionTools } from "./tools/session.js";
 import { registerWriteTools } from "./tools/write.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.7.11";
+export const SERVER_VERSION = "0.7.12";
 
 export function instructions(bin: string, cliVersion: string): string {
   return [
@@ -54,8 +54,8 @@ export function instructions(bin: string, cliVersion: string): string {
       "A run can take many minutes. Cancelling the call stops the CLI run and keeps what it wrote under a run id; " +
       "when your tool timeout is shorter than the run's budget, confirm with detach: true, which returns the id at " +
       "once, then follow it with agentry_run_status (its progress, then its result) and stop it with " +
-      "agentry_run_cancel. The same holds for agentry_draft, agentry_review, agentry_knowledge_build and " +
-      "agentry_voice_build.",
+      "agentry_run_cancel. The same holds for agentry_draft, agentry_review, agentry_knowledge_build, " +
+      "agentry_voice_build and agentry_report_design_build.",
     "",
     "To read this computer's state: agentry_schedule_list, agentry_connections_list, " +
       "agentry_model_signins_list, agentry_report_design_show, agentry_report_design_list and " +
@@ -80,10 +80,13 @@ export function instructions(bin: string, cliVersion: string): string {
       "during a send is the person's to answer, never yours. Main runs only in Agentry Desktop; enabling, " +
       "configuring and resetting an agent stay with the person.",
     "",
-    "Authoring: agentry_draft, agentry_review, agentry_knowledge_build and agentry_voice_build use " +
+    "Authoring: agentry_draft, agentry_review, agentry_knowledge_build, agentry_voice_build and agentry_report_design_build use " +
       "two-call operation previews (not compiled plans). They fingerprint inputs, policy and built-in identities " +
       "before confirmation, then run the CLI built-ins with model/review/search charges as described. " +
       "Use agentry_builtins, agentry_knowledge_list and agentry_voice_status to inspect their state.",
+    "",
+    "agentry_report_design_build runs the Report Designer (a design from a brief, or a custom cover) and writes " +
+      "the design to the output folder only; adding it to the account's report designs stays in a terminal.",
     "",
     "Not here: signing in (the person runs `agentry login` in a terminal once; this server uses " +
       "that login; `agentry connect` and `agentry model-signins add` likewise), publishing (`agentry publish` " +

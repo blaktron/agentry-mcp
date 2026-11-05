@@ -26,6 +26,8 @@ export interface CliFeatures {
   buildSources: boolean;
   /** `voice create|improve|edit --url`: samples from web addresses. */
   voiceURLs: boolean;
+  /** `report-design design|cover`: the Report Designer's jobs. */
+  reportDesigner: boolean;
   /** `agent attach --json` and JSON from `agent start|stop`: persistent agents for a program. */
   agents: boolean;
   /** `agent tasks <name> [pause|resume|remove <task>] --json`: an agent's tasks. */
@@ -58,6 +60,7 @@ export const ALL_FEATURES: CliFeatures = {
   destinations: true,
   buildSources: true,
   voiceURLs: true,
+  reportDesigner: true,
   agents: true,
   tasks: true,
   compact: true,
@@ -336,6 +339,11 @@ export async function checkCli(
   const runHelp = protocol.stdout + protocol.stderr;
   const knowledgeHelp = await runCli(bin, ["knowledge", "create", "--help"], { timeoutMs: 10_000 });
   const voiceHelp = await runCli(bin, ["voice", "create", "--help"], { timeoutMs: 10_000 });
+  // An older CLI prints the parent's help for an unknown subcommand, which
+  // names no --brief.
+  const designerHelp = await runCli(bin, ["report-design", "design", "--help"], {
+    timeoutMs: 10_000,
+  });
   // A CLI without the subcommand prints the parent's help, so the probe
   // looks for attach's own usage line.
   const attachHelp = await runCli(bin, ["agent", "attach", "--help"], { timeoutMs: 10_000 });
@@ -358,6 +366,10 @@ export async function checkCli(
       destinations: /--destination\b/.test(runHelp),
       buildSources: /--repo\b/.test(knowledgeHelp.stdout + knowledgeHelp.stderr),
       voiceURLs: /--url\b/.test(voiceHelp.stdout + voiceHelp.stderr),
+      reportDesigner:
+        !designerHelp.spawnError &&
+        designerHelp.code === 0 &&
+        /--brief\b/.test(designerHelp.stdout + designerHelp.stderr),
       agents: /attach <name> --json/.test(attachHelp.stdout + attachHelp.stderr),
       tasks: /tasks <name> \[pause\|resume/.test(tasksHelp.stdout + tasksHelp.stderr),
       compact: /compact <name>/.test(compactHelp.stdout + compactHelp.stderr),

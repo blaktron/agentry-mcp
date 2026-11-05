@@ -28,6 +28,7 @@
 #   FAKE_NO_DESTINATION  set to make `run --help` omit --destination (a CLI from before destinations)
 #   FAKE_NO_SOURCES  set to make `knowledge create --help` omit --repo and --url
 #   FAKE_NO_VOICE_URL  set to make `voice create --help` omit --url
+#   FAKE_NO_DESIGNER  set to make `report-design design --help` print the parent's help (a CLI without the Report Designer)
 #   FAKE_RUN_OUT     the run envelope's outDir (default /tmp/out)
 #   FAKE_DELIVERABLES  the run envelope's deliverables block, verbatim JSON
 #   FAKE_DELIVERIES    the run envelope's deliveries block, verbatim JSON
@@ -78,6 +79,9 @@ if [ "${1:-}" = "knowledge" ] && [ "${2:-}" = "create" ] && [ "${3:-}" = "--help
 fi
 if [ "${1:-}" = "voice" ] && [ "${2:-}" = "create" ] && [ "${3:-}" = "--help" ]; then
   echo "Flags: --file --brief --write ${FAKE_NO_VOICE_URL:---url}"; exit 0
+fi
+if [ "${1:-}" = "report-design" ] && [ "${3:-}" = "--help" ] && { [ "${2:-}" = "design" ] || [ "${2:-}" = "cover" ]; }; then
+  if [ -n "${FAKE_NO_DESIGNER:-}" ]; then echo "Usage: agentry report-design [command]"; else echo "Usage: agentry report-design $2 --brief TEXT [flags]"; fi; exit 0
 fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "attach" ] && [ "${3:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_AGENTS:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent attach <name> --json [flags]"; fi; exit 0
@@ -200,6 +204,9 @@ case "$1" in
   model-signins) echo '[{"vendor":"claude","account":"me@example.com"}]' ;;
   report-design)
     case "$2" in
+      design|cover)
+        [ -n "${FAKE_WRITES:-}" ] && echo built >> "$FAKE_WRITES"
+        echo '{"status":"ok","reportDesign":{"job":"'"$2"'","name":"Fake design","sha256":"00","cover":"band","looked":true,"previews":2,"dir":"out/design"}}' ;;
       list) echo '{"registry":"r","default":"","designs":[{"id":"00000000-0000-4000-8000-000000000001","name":"House","basedOn":"modern","version":1,"default":false,"hasLogo":true,"hasCoverImage":false,"hasCustomCover":false}]}' ;;
       *) echo '{"design":{"name":"Plain","basedOn":"plain"},"source":"default"}' ;;
     esac ;;
