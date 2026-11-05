@@ -19,7 +19,7 @@ import { registerSessionTools } from "./tools/session.js";
 import { registerWriteTools } from "./tools/write.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.7.11";
+export const SERVER_VERSION = "0.7.12";
 
 export function instructions(bin: string, cliVersion: string): string {
   return [
