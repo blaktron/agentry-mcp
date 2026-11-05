@@ -219,7 +219,7 @@ deliverables, a failure class as a tool error. `agentry_run_cancel` sends it
 SIGINT and waits up to `waitSeconds` for the envelope. The digest is the same
 for a waited and a detached start: `detach` is not among the consent facts.
 `agentry_draft`, `agentry_review`, `agentry_knowledge_build` and
-`agentry_voice_build` take `detach` too. Every run leaves a record under
+`agentry_voice_build` and `agentry_report_design_build` take `detach` too. Every run leaves a record under
 `AGENTRY_MCP_STATE` (default `~/.agentry/mcp`), so a server started later
 reports a run it did not start by its process and its files: still running,
 ended with the envelope read from the run's stdout file or the output
@@ -341,12 +341,13 @@ Knowledge and Voice metadata; the confirm re-reads those facts and refuses
 changes. These runs use the person's keys and can incur model, AI Review and
 search charges.
 
-| Tool                      | Runs                                                     | Returns                                                                                                  |
-| ------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `agentry_draft`           | `agentry draft --output-format json`                     | the operation's summary, readiness and facts with a `digest`, then the draft/package and receipts        |
-| `agentry_review`          | `agentry review DIR --json`                              | the same preview, then the Examiner report and expected or undetermined gate outcome                     |
-| `agentry_knowledge_build` | `agentry knowledge create/add --output-format json`      | the same preview (the sources it will fetch among the facts), then the Creator build report and receipts |
-| `agentry_voice_build`     | `agentry voice create/improve/edit --output-format json` | the same preview, then the Voice Writer build report, each page's outcome, receipts                      |
+| Tool                          | Runs                                                      | Returns                                                                                                                     |
+| ----------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `agentry_draft`               | `agentry draft --output-format json`                      | the operation's summary, readiness and facts with a `digest`, then the draft/package and receipts                           |
+| `agentry_review`              | `agentry review DIR --json`                               | the same preview, then the Examiner report and expected or undetermined gate outcome                                        |
+| `agentry_knowledge_build`     | `agentry knowledge create/add --output-format json`       | the same preview (the sources it will fetch among the facts), then the Creator build report and receipts                    |
+| `agentry_voice_build`         | `agentry voice create/improve/edit --output-format json`  | the same preview, then the Voice Writer build report, each page's outcome, receipts                                         |
+| `agentry_report_design_build` | `agentry report-design design/cover --output-format json` | the same preview, then the Report Designer's result (`reportDesign`: name, cover, previews, where it was written), receipts |
 
 A knowledge build takes git repositories (`repos`, https, with `@ref` for a
 branch, tag or commit) and file addresses (`urls`) beside its files, and a
@@ -358,6 +359,19 @@ with `urls` needs that key. A private repository's access token is the one
 saved for its host in the system keychain; the server never takes or passes a
 token (`--source-token` stays in a terminal). Both need a CLI that has them:
 the server checks at start and asks for an update otherwise.
+
+`agentry_report_design_build` runs the Report Designer: `job: design` writes a
+whole report design from a `brief`, starting from `from` (one of the account's
+designs, a built-in theme or a design file) when given, with a `logo`, up to
+four reference `images` it looks at and never keeps, and up to two https
+`urls` about the person or brand; `job: cover` writes a custom Typst cover
+page for the design named by `design`, with images it may draw. The preview
+lists the files it reads, each address with the host it reaches, and that
+every page is read by AI Review with the person's own TypeSafe key. The design
+is written under the output folder (`design/design.json`) and nothing is added
+to the account: `--save`, `agentry report-design import`, `use` and `delete`
+stay in a terminal. It needs CLI 0.7.23 or later; the server checks at start
+and refuses the tool with a request to update otherwise.
 
 Not exposed: signing in (`agentry login`, `agentry connect`, `agentry
 model-signins add`), publishing (`agentry publish`), shipping a Knowledge

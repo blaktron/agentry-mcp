@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { access } from "node:fs/promises";
+import { access, stat } from "node:fs/promises";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerRequest, ServerNotification } from "@modelcontextprotocol/sdk/types.js";
 import { ArgumentError, flag, value } from "../argv.js";
@@ -85,6 +85,32 @@ interface SourceFacts {
   /** The knowledge build's explicit web choice: the Creator's web tools on or off. */
   web?: boolean;
   review?: string;
+  /** Further consent facts, one line each, kept in the digest and the summary. */
+  notes?: string[];
+  /** Where the run writes, when it is more than a report and receipts. */
+  writes?: string;
+}
+
+/** The review the Report Designer's pages get before it reads them. */
+const DESIGN_PAGE_REVIEW =
+  "every page is read by AI Review with the person's own TypeSafe key before the Report Designer reads it; without the key the CLI refuses the addresses";
+
+/** What a report design run adds to the account: nothing. */
+const DESIGN_ACCOUNT_NOTE =
+  "Nothing is added to the person's account: the design is written to the output folder only, and adding it to the account's report designs (--save, agentry report-design import, use and delete) stays in a terminal.";
+
+/** The Report Designer's limits, as the CLI holds them. */
+const MAX_DESIGN_IMAGES = 4;
+const MAX_DESIGN_URLS = 2;
+
+/** Whether the CLI takes a design reference as a file rather than a name. */
+async function designIsFile(ref: string, cwd: string | undefined): Promise<boolean> {
+  if (/[\\/]/.test(ref) || ref.toLowerCase().endsWith(".json")) return true;
+  try {
+    return (await stat(resolve(cwd ?? process.cwd(), ref))).isFile();
+  } catch {
+    return false;
+  }
 }
 
 /** The review a voice's pages get before the Voice Writer reads them. */
@@ -149,6 +175,7 @@ async function execute(
     voice: voice.plan,
     ...(sourceFacts.fetches?.length ? { fetches: sourceFacts.fetches } : {}),
     ...(sourceFacts.review ? { review: sourceFacts.review } : {}),
+    ...(sourceFacts.notes?.length ? { notes: sourceFacts.notes } : {}),
   };
   const summary = operationSummary(tool, a, paths, sourceFacts, ready);
   const facts = { ...operation, readiness: ready, summary };
@@ -200,6 +227,8 @@ const BUILTIN: Record<string, string> = {
   agentry_review: "Review a QuickAgent workspace with the Examiner (agentry review)",
   agentry_knowledge_build: "Build a Knowledge pack with the Creator (agentry knowledge)",
   agentry_voice_build: "Build a Writing Voice with the Voice Writer (agentry voice)",
+  agentry_report_design_build:
+    "Design a report design or write a custom cover with the Report Designer (agentry report-design)",
 };
 
 /**
@@ -228,9 +257,10 @@ function operationSummary(
         ? `fetches ${sourceFacts.fetches.map((f) => `${f.address} (${f.host})`).join(", ")} before the run`
         : "no fetch before the run"
     }; ${web}.`,
-    `Writes: its report and receipts under ${a.out}.`,
+    `Writes: ${sourceFacts.writes ?? "its report and receipts"} under ${a.out}.`,
     "Cost: the model key the runner policy names, and AI Review (the person's TypeSafe key) or search charges where the built-in uses them.",
     ...(sourceFacts.review ? [`Review: ${sourceFacts.review}.`] : []),
+    ...(sourceFacts.notes ?? []),
     ...readinessWords(ready),
   ];
   return lines.join("\n");
@@ -417,6 +447,83 @@ export function registerAuthorTools(d: Driver): void {
               }
             : {},
         );
+      }),
+  );
+  registerTool(
+    d.server,
+    "agentry_report_design_build",
+    {
+      description:
+        "Run the Report Designer with agentry report-design design|cover --output-format json (CLI 0.7.23 or later). job design writes a whole report design from a brief (optionally starting from `from`: one of the account's designs, a built-in theme or a design file; a `logo`; up to 4 reference `images` it looks at and never keeps; up to 2 https `urls` about the person or brand). job cover writes a custom Typst cover page for the design named by `design` (images the cover may draw). Two calls: operation preview (summary in words, readiness, digest) and confirm; a failure class is a tool error carrying the envelope. Reads the logo, images and any design file; each page is fetched first and read by AI Review with the person's own TypeSafe key. Returns the design's name, hash, cover, previews and where it was written (design/design.json under out, importable in a terminal). Nothing is added to the account: --save, agentry report-design import, use and delete are terminal-only.",
+      inputSchema: {
+        ...common,
+        job: z.enum(["design", "cover"]),
+        brief: z.string().describe("What the reports are and how they should look."),
+        from: z
+          .string()
+          .optional()
+          .describe(
+            "job design: start from this design (an account design's name or id, a built-in theme, or a design file).",
+          ),
+        design: z
+          .string()
+          .optional()
+          .describe(
+            "job cover, required: the design the cover is for (an account design's name or id, a built-in theme, or a design file).",
+          ),
+        logo: z.string().optional().describe("job design: a PNG or JPEG file."),
+        images: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "job design: at most 4 reference images (PNG or JPEG files); job cover: images the cover may draw.",
+          ),
+        urls: z
+          .array(z.string())
+          .optional()
+          .describe("job design: at most 2 https pages about the person or brand."),
+      },
+      annotations: writes,
+    },
+    (a, extra) =>
+      guard("agentry_report_design_build", async () => {
+        if (!d.features.reportDesigner)
+          throw new ArgumentError(
+            "this agentry CLI has no report-design design; update the CLI (0.7.23 or later)",
+          );
+        const cover = a.job === "cover";
+        if (!a.brief.trim()) throw new ArgumentError("brief must not be empty");
+        if (cover) {
+          if (!a.design) throw new ArgumentError("a cover is written for a design: give design");
+          if (a.from || a.logo || a.urls?.length)
+            throw new ArgumentError("from, logo and urls apply to job design only");
+        } else {
+          if (a.design)
+            throw new ArgumentError("design applies to job cover; job design takes from");
+          if ((a.images?.length ?? 0) > MAX_DESIGN_IMAGES)
+            throw new ArgumentError(`a design takes at most ${MAX_DESIGN_IMAGES} images`);
+          if ((a.urls?.length ?? 0) > MAX_DESIGN_URLS)
+            throw new ArgumentError(`a design takes at most ${MAX_DESIGN_URLS} urls`);
+        }
+        const ref = cover ? a.design : a.from;
+        const argv = ["report-design", a.job, "--output-format", "json"];
+        flag(argv, "brief", a.brief);
+        flag(argv, cover ? "design" : "from", ref);
+        flag(argv, "logo", a.logo);
+        for (const image of a.images ?? []) flag(argv, "image", image);
+        for (const url of a.urls ?? []) flag(argv, "url", url);
+        const paths = [
+          ...(a.logo ? [a.logo] : []),
+          ...(a.images ?? []),
+          ...(ref && (await designIsFile(ref, d.cwd)) ? [ref] : []),
+        ];
+        const fetched = a.urls?.length ? fetches(undefined, a.urls) : [];
+        return execute(d, "agentry_report_design_build", a, argv, paths, extra, {
+          fetches: fetched,
+          ...(fetched.length ? { review: DESIGN_PAGE_REVIEW } : {}),
+          writes: "its reports, receipts and the design (design/design.json)",
+          notes: [DESIGN_ACCOUNT_NOTE],
+        });
       }),
   );
 }
