@@ -373,6 +373,15 @@ to the account: `--save`, `agentry report-design import`, `use` and `delete`
 stay in a terminal. It needs CLI 0.7.23 or later; the server checks at start
 and refuses the tool with a request to update otherwise.
 
+`job: design` also takes one `document`, a PDF or a Word document (`.docx`)
+up to 20 MB, that the Designer builds the design around: it looks at the
+first twelve pages of a PDF, reads a Word document's theme, header, footer and
+pictures (no Word layout is rendered), and can take the logo from it. The
+preview lists the document among the files read and says it is read in full
+and kept only for the run: the CLI checks it like any input and stages images
+and text it makes from it, never the document itself. It needs CLI 0.7.26 or
+later.
+
 Not exposed: signing in (`agentry login`, `agentry connect`, `agentry
 model-signins add`), publishing (`agentry publish`), shipping a Knowledge
 pack with a QuickAgent (`agentry knowledge ship`, `agentry draft --ship`, and

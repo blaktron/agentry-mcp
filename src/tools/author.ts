@@ -99,6 +99,9 @@ const DESIGN_PAGE_REVIEW =
 const DESIGN_ACCOUNT_NOTE =
   "Nothing is added to the person's account: the design is written to the output folder only, and adding it to the account's report designs (--save, agentry report-design import, use and delete) stays in a terminal.";
 
+const DESIGN_DOCUMENT_NOTE =
+  "The document is read in full and kept only for the run: the CLI checks it like any input (its type, a malware scan, its text), then stages images and text it makes from it, never the document itself. Nothing of it is kept in the design but a logo cropped from it when no logo is given.";
+
 /** The Report Designer's limits, as the CLI holds them. */
 const MAX_DESIGN_IMAGES = 4;
 const MAX_DESIGN_URLS = 2;
@@ -454,7 +457,7 @@ export function registerAuthorTools(d: Driver): void {
     "agentry_report_design_build",
     {
       description:
-        "Run the Report Designer with agentry report-design design|cover --output-format json (CLI 0.7.23 or later). job design writes a whole report design from a brief (optionally starting from `from`: one of the account's designs, a built-in theme or a design file; a `logo`; up to 4 reference `images` it looks at and never keeps; up to 2 https `urls` about the person or brand). job cover writes a custom Typst cover page for the design named by `design` (images the cover may draw). Two calls: operation preview (summary in words, readiness, digest) and confirm; a failure class is a tool error carrying the envelope. Reads the logo, images and any design file; each page is fetched first and read by AI Review with the person's own TypeSafe key. Returns the design's name, hash, cover, previews and where it was written (design/design.json under out, importable in a terminal). Nothing is added to the account: --save, agentry report-design import, use and delete are terminal-only.",
+        "Run the Report Designer with agentry report-design design|cover --output-format json (CLI 0.7.23 or later). job design writes a whole report design from a brief (optionally starting from `from`: one of the account's designs, a built-in theme or a design file; a `logo`; up to 4 reference `images` it looks at and never keeps; up to 2 https `urls` about the person or brand). A `document` (job design, CLI 0.7.26 or later) is one PDF or Word document (.docx) up to 20 MB the Designer builds the design around: it looks at the first twelve pages of a PDF and reads a Word document's theme, header, footer and pictures, and can take the logo from it. job cover writes a custom Typst cover page for the design named by `design` (images the cover may draw). Two calls: operation preview (summary in words, readiness, digest) and confirm; a failure class is a tool error carrying the envelope. Reads the logo, images, the document and any design file; each page is fetched first and read by AI Review with the person's own TypeSafe key. Returns the design's name, hash, cover, previews and where it was written (design/design.json under out, importable in a terminal). Nothing is added to the account: --save, agentry report-design import, use and delete are terminal-only.",
       inputSchema: {
         ...common,
         job: z.enum(["design", "cover"]),
@@ -482,6 +485,12 @@ export function registerAuthorTools(d: Driver): void {
           .array(z.string())
           .optional()
           .describe("job design: at most 2 https pages about the person or brand."),
+        document: z
+          .string()
+          .optional()
+          .describe(
+            "job design: one PDF or Word document (.docx) file, up to 20 MB, to build the design around; read in full and kept only for the run.",
+          ),
       },
       annotations: writes,
     },
@@ -495,8 +504,8 @@ export function registerAuthorTools(d: Driver): void {
         if (!a.brief.trim()) throw new ArgumentError("brief must not be empty");
         if (cover) {
           if (!a.design) throw new ArgumentError("a cover is written for a design: give design");
-          if (a.from || a.logo || a.urls?.length)
-            throw new ArgumentError("from, logo and urls apply to job design only");
+          if (a.from || a.logo || a.urls?.length || a.document)
+            throw new ArgumentError("from, logo, urls and document apply to job design only");
         } else {
           if (a.design)
             throw new ArgumentError("design applies to job cover; job design takes from");
@@ -504,6 +513,12 @@ export function registerAuthorTools(d: Driver): void {
             throw new ArgumentError(`a design takes at most ${MAX_DESIGN_IMAGES} images`);
           if ((a.urls?.length ?? 0) > MAX_DESIGN_URLS)
             throw new ArgumentError(`a design takes at most ${MAX_DESIGN_URLS} urls`);
+          if (a.document !== undefined && !d.features.designDocument)
+            throw new ArgumentError(
+              "this agentry CLI has no report-design design --document; update the CLI (0.7.26 or later)",
+            );
+          if (a.document !== undefined && !/\.(pdf|docx)$/i.test(a.document))
+            throw new ArgumentError("document is a PDF or a Word document (.docx) file");
         }
         const ref = cover ? a.design : a.from;
         const argv = ["report-design", a.job, "--output-format", "json"];
@@ -512,9 +527,11 @@ export function registerAuthorTools(d: Driver): void {
         flag(argv, "logo", a.logo);
         for (const image of a.images ?? []) flag(argv, "image", image);
         for (const url of a.urls ?? []) flag(argv, "url", url);
+        flag(argv, "document", a.document);
         const paths = [
           ...(a.logo ? [a.logo] : []),
           ...(a.images ?? []),
+          ...(a.document ? [a.document] : []),
           ...(ref && (await designIsFile(ref, d.cwd)) ? [ref] : []),
         ];
         const fetched = a.urls?.length ? fetches(undefined, a.urls) : [];
@@ -522,7 +539,7 @@ export function registerAuthorTools(d: Driver): void {
           fetches: fetched,
           ...(fetched.length ? { review: DESIGN_PAGE_REVIEW } : {}),
           writes: "its reports, receipts and the design (design/design.json)",
-          notes: [DESIGN_ACCOUNT_NOTE],
+          notes: a.document ? [DESIGN_DOCUMENT_NOTE, DESIGN_ACCOUNT_NOTE] : [DESIGN_ACCOUNT_NOTE],
         });
       }),
   );
