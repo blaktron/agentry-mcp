@@ -29,6 +29,7 @@
 #   FAKE_NO_SOURCES  set to make `knowledge create --help` omit --repo and --url
 #   FAKE_NO_VOICE_URL  set to make `voice create --help` omit --url
 #   FAKE_NO_DESIGNER  set to make `report-design design --help` print the parent's help (a CLI without the Report Designer)
+#   FAKE_NO_DESIGN_DOCUMENT  set to leave --document out of `report-design design --help` (a CLI before it)
 #   FAKE_RUN_OUT     the run envelope's outDir (default /tmp/out)
 #   FAKE_DELIVERABLES  the run envelope's deliverables block, verbatim JSON
 #   FAKE_DELIVERIES    the run envelope's deliveries block, verbatim JSON
@@ -81,7 +82,9 @@ if [ "${1:-}" = "voice" ] && [ "${2:-}" = "create" ] && [ "${3:-}" = "--help" ];
   echo "Flags: --file --brief --write ${FAKE_NO_VOICE_URL:---url}"; exit 0
 fi
 if [ "${1:-}" = "report-design" ] && [ "${3:-}" = "--help" ] && { [ "${2:-}" = "design" ] || [ "${2:-}" = "cover" ]; }; then
-  if [ -n "${FAKE_NO_DESIGNER:-}" ]; then echo "Usage: agentry report-design [command]"; else echo "Usage: agentry report-design $2 --brief TEXT [flags]"; fi; exit 0
+  if [ -n "${FAKE_NO_DESIGNER:-}" ]; then echo "Usage: agentry report-design [command]"
+  elif [ "$2" = design ] && [ -z "${FAKE_NO_DESIGN_DOCUMENT:-}" ]; then echo "Usage: agentry report-design design --brief TEXT [--document FILE] [flags]"
+  else echo "Usage: agentry report-design $2 --brief TEXT [flags]"; fi; exit 0
 fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "attach" ] && [ "${3:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_AGENTS:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent attach <name> --json [flags]"; fi; exit 0

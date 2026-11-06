@@ -396,7 +396,9 @@ tool error carrying the CLI's envelope.
 - `agentry_report_design_build`: `job: design` writes a report design from a
   `brief` (optionally `from` a design, a `logo`, up to 4 reference `images`, up
   to 2 https `urls`); `job: cover` writes a custom cover page for `design`
-  (with `images` it may draw). Show the person the preview: the files it reads,
+  (with `images` it may draw). `job: design` also takes one `document`, a PDF
+  or `.docx` up to 20 MB, to build the design around (CLI 0.7.26 or later);
+  tell the person it is read in full and kept only for the run. Show the person the preview: the files it reads,
   the addresses fetched and read by AI Review with their TypeSafe key. The design
   lands under `out` in `design/design.json`; nothing is added to the account.
   Adding it (`--save`, `agentry report-design import`), `use` and `delete` are
