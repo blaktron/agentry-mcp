@@ -28,6 +28,8 @@ export interface CliFeatures {
   voiceURLs: boolean;
   /** `report-design design|cover`: the Report Designer's jobs. */
   reportDesigner: boolean;
+  /** `report-design design --document`: a design built around a document. */
+  designDocument: boolean;
   /** `agent attach --json` and JSON from `agent start|stop`: persistent agents for a program. */
   agents: boolean;
   /** `agent tasks <name> [pause|resume|remove <task>] --json`: an agent's tasks. */
@@ -61,6 +63,7 @@ export const ALL_FEATURES: CliFeatures = {
   buildSources: true,
   voiceURLs: true,
   reportDesigner: true,
+  designDocument: true,
   agents: true,
   tasks: true,
   compact: true,
@@ -370,6 +373,10 @@ export async function checkCli(
         !designerHelp.spawnError &&
         designerHelp.code === 0 &&
         /--brief\b/.test(designerHelp.stdout + designerHelp.stderr),
+      designDocument:
+        !designerHelp.spawnError &&
+        designerHelp.code === 0 &&
+        /--document\b/.test(designerHelp.stdout + designerHelp.stderr),
       agents: /attach <name> --json/.test(attachHelp.stdout + attachHelp.stderr),
       tasks: /tasks <name> \[pause\|resume/.test(tasksHelp.stdout + tasksHelp.stderr),
       compact: /compact <name>/.test(compactHelp.stdout + compactHelp.stderr),

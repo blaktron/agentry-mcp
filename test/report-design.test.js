@@ -178,3 +178,65 @@ test("checkCli detects the Report Designer from the command's help", async () =>
     delete process.env.FAKE_NO_DESIGNER;
   }
 });
+
+test("a document is read in full for a design, passed as --document, and kept only for the run", async () => {
+  const f = fixture();
+  const doc = join(f.dir, "Annual review.pdf");
+  writeFileSync(doc, "%PDF-1.7");
+  const { client, argvFile } = await connect();
+  const args = { job: "design", brief: "Like our review", document: doc, logo: f.logo, out: f.out };
+  const p = await preview(client, args);
+  assert.deepEqual(
+    p.operation.inputs.map((i) => i.path),
+    [f.logo, doc],
+  );
+  assert.match(p.summary, /read in full and kept only for the run/);
+  assert.match(p.summary, /never the document itself/);
+  const done = await client.callTool({
+    name: "agentry_report_design_build",
+    arguments: { ...args, confirm: p.digest },
+  });
+  assert.equal(done.isError, undefined, done.content[0].text);
+  const last = receivedArgv(argvFile).at(-1);
+  assert.equal(last[last.indexOf("--document") + 1], doc);
+  assert.ok(!last.includes("--save"));
+});
+
+test("a document on a cover, of another type, or for a CLI without --document is refused before anything runs", async () => {
+  const f = fixture();
+  const doc = join(f.dir, "review.pdf");
+  writeFileSync(doc, "%PDF-1.7");
+  const { client, argvFile } = await connect();
+  for (const [args, want] of [
+    [{ job: "cover", brief: "b", design: "House", document: doc }, /job design only/],
+    [{ job: "design", brief: "b", document: join(f.dir, "deck.pptx") }, /PDF or a Word document/],
+  ]) {
+    const r = await client.callTool({
+      name: "agentry_report_design_build",
+      arguments: { ...args, out: f.out },
+    });
+    assert.equal(r.isError, true, JSON.stringify(args));
+    assert.match(r.content[0].text, want);
+  }
+  const old = await connect({}, {}, undefined, { ...ALL_FEATURES, designDocument: false });
+  const r = await old.client.callTool({
+    name: "agentry_report_design_build",
+    arguments: { job: "design", brief: "b", document: doc, out: f.out },
+  });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /no report-design design --document; update the CLI/);
+  assert.ok(!receivedArgv(argvFile).some((a) => a[0] === "report-design"));
+  assert.ok(!receivedArgv(old.argvFile).some((a) => a[0] === "report-design"));
+});
+
+test("checkCli detects --document from the design command's help", async () => {
+  assert.equal((await checkCli(FAKE)).features.designDocument, true);
+  process.env.FAKE_NO_DESIGN_DOCUMENT = "1";
+  try {
+    const cli = await checkCli(FAKE);
+    assert.equal(cli.features.designDocument, false);
+    assert.equal(cli.features.reportDesigner, true);
+  } finally {
+    delete process.env.FAKE_NO_DESIGN_DOCUMENT;
+  }
+});
