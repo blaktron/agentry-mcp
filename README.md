@@ -376,7 +376,10 @@ and refuses the tool with a request to update otherwise.
 `job: design` also takes one `document`, a PDF or a Word document (`.docx`)
 up to 20 MB, that the Designer builds the design around: it looks at the
 first twelve pages of a PDF, reads a Word document's theme, header, footer and
-pictures (no Word layout is rendered), and can take the logo from it. The
+pictures (no Word layout is rendered), and can take the logo from it. With
+CLI 0.7.29 or later it also reads the pictures a PDF's pages draw, and the
+design can keep the cover page's artwork and a custom cover modelled on the
+cover page; never a whole page or the document's text. The
 preview lists the document among the files read and says it is read in full
 and kept only for the run: the CLI checks it like any input and stages images
 and text it makes from it, never the document itself. It needs CLI 0.7.26 or
