@@ -311,10 +311,17 @@ once when there is nothing new to agree to; otherwise it returns
 they agree. `agentry_agent_grant` switches a roster entry (`share`,
 `knowledge:<pack>`, `server:<id>` and an offered server's `server:<id>:writes`,
 `skill:<name>`, `secret:<NAME>`, the Assistant's `heartbeat`, `meetings` and `calendar:<name>` (a calendar feed, CLI v0.6.205 or later),
+an agent's applications on the person's computer `desktop:<id>`, their code
+agreement `desktop:<id>:exec` and computer use `desktop:computer` (CLI v0.7.34
+or later),
 and the Coding agent's `account:<host>`, `commands`, `egress`, `browser`,
 `dependency-scan`, `devhost` and `port:<name>`) in the same two calls, always.
 Show the entry's sentence, and say that a running agent restarts with the
-change at its next turn; the Assistant's `heartbeat` and `meetings` take
+change at its next turn. For `desktop:<id>`, say the agent then uses that
+application on the person's own computer through Agentry Desktop; for
+`desktop:<id>:exec`, that its code runs inside the application without
+Agentry Desktop asking each time. Settings → Your computer and the system's
+permissions stay in Agentry Desktop; the Assistant's `heartbeat` and `meetings` take
 effect at once and restart nothing. An entry that reads `needs-set-up` waits for a secret, an account or a
 sign-in the person gives in a terminal or the desktop; none of those needs the
 agent stopped with CLI v0.7.19 or later, which takes each at its next turn. The Assistant's mail

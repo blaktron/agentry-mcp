@@ -304,6 +304,20 @@ export interface AgentGrantArgs {
 }
 
 /**
+ * desktopNote is what switching on an entry of the person's computer adds to
+ * the preview's note: where it acts, and what an exec agreement waives.
+ */
+function desktopNote(kind: string): string {
+  switch (kind) {
+    case "desktop":
+      return "It acts on the person's own computer through Agentry Desktop, which answers each call while it runs there; whether the application is running is read at each call. ";
+    case "desktop-exec":
+      return "With it on, code the agent runs inside that application runs without Agentry Desktop asking the person first. ";
+  }
+  return "";
+}
+
+/**
  * agentry_agent_grant: switching a roster entry is always two calls. The
  * preview reads the entry from `agent show --json`, and the digest covers
  * the entry, its consent sentence, what it was agreed to as, and the switch
@@ -362,7 +376,7 @@ export async function agentGrant(d: Driver, a: AgentGrantArgs): Promise<CallTool
         writes: false,
         note:
           (a.on
-            ? `Switching it on gives the agent: ${entry.line} `
+            ? `Switching it on gives the agent: ${entry.line} ` + desktopNote(entry.kind)
             : "Switching it off takes it away. ") +
           (running
             ? "The running agent restarts with the change at its next turn and continues the conversation. "
