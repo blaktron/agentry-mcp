@@ -14,6 +14,7 @@ import {
   sessionStart,
 } from "../session.js";
 import { registerTool } from "../toolargs.js";
+import { desktopArg } from "./desktop.js";
 
 export function registerSessionTools(d: Driver): void {
   registerTool(
@@ -58,6 +59,7 @@ export function registerSessionTools(d: Driver): void {
           .describe("Knowledge pack names or directories to attach read-only."),
         voice: z.boolean().optional().describe("Attach this computer's Writing Voice."),
         noVoice: z.boolean().optional().describe("Skip the Writing Voice for this run."),
+        desktop: desktopArg,
         on: z
           .string()
           .optional()

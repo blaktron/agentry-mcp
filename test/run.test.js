@@ -654,3 +654,50 @@ test("the run tool's description names the policy budget", async () => {
     tools.find((t) => t.name === "agentry_run").description.includes("runner policy's own budget"),
   );
 });
+
+test("a run that uses the person's computer names each application, and refuses one missing, one unknown or computer use not agreed", async () => {
+  const { client, argvFile } = await connect({ FAKE_RUN_DESKTOP: "app" });
+  const refused = async (args, pattern) => {
+    const r = await client.callTool({
+      name: "agentry_run",
+      arguments: { ref: "acme/widget", ...args },
+    });
+    assert.equal(r.isError, true, r.content[0].text);
+    assert.match(r.content[0].text, pattern);
+  };
+  await refused(
+    {},
+    /uses blender on the person's computer through Agentry Desktop: .*desktop\.applications \["blender"\]/,
+  );
+  await refused(
+    { desktop: { applications: ["blender", "unreal"], computerUse: true } },
+    /names unreal, which this release does not use/,
+  );
+  await refused(
+    { desktop: { applications: ["blender"] } },
+    /does computer use on the person's computer \(the windows of its applications\): pass desktop\.computerUse true/,
+  );
+  const p = await previewRun(client, {
+    ref: "acme/widget",
+    desktop: { applications: ["blender"], computerUse: true },
+  });
+  assert.match(
+    p.summary,
+    /on the person's computer through Agentry Desktop, which must be running there: Blender \(2 tools, 1 that run code\), computer use in the windows of those applications; Agentry Desktop asks before code runs, logs each call, and its Stop ends/,
+  );
+  await previewRun(client, {
+    ref: "acme/widget",
+    desktop: { applications: ["blender"], computerUse: true, allowScreen: true },
+  });
+  assert.ok(receivedRunArgv(argvFile).at(-1).includes("--allow-screen"));
+});
+
+test("a run that uses nothing on the person's computer refuses a desktop argument", async () => {
+  const { client } = await connect({});
+  const r = await client.callTool({
+    name: "agentry_run",
+    arguments: { ref: "acme/widget", desktop: { applications: ["blender"] } },
+  });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /uses nothing on the person's computer/);
+});
