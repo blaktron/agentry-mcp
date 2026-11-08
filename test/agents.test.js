@@ -847,3 +847,53 @@ test("a question on a host that cannot ask the person is left unanswered, and th
   assert.deepEqual(r.json.questions, [{ id: "q-1", text: "Run acme/summarizer?" }]);
   assert.match(r.json.note, /never yours|cannot put to them/);
 });
+
+test("a grant of an application on the person's computer says where it acts, and of its code agreement what it waives", async () => {
+  const { client, argvFile } = await connect({ FAKE_AGENT_STATE: "running" });
+  const p = envelope(
+    await call(client, "agentry_agent_grant", {
+      name: "assistant",
+      entry: "desktop:blender",
+      on: true,
+    }),
+  );
+  assert.equal(p.json.entry.kind, "desktop");
+  assert.match(p.json.note, /person's own computer through Agentry Desktop/);
+  assert.match(p.json.note, /next turn/);
+  const x = envelope(
+    await call(client, "agentry_agent_grant", {
+      name: "assistant",
+      entry: "desktop:blender:exec",
+      on: true,
+    }),
+  );
+  assert.match(x.json.note, /without Agentry Desktop asking the person first/);
+  const r = envelope(
+    await call(client, "agentry_agent_grant", {
+      name: "assistant",
+      entry: "desktop:blender",
+      on: true,
+      confirm: p.json.digest,
+    }),
+  );
+  assert.equal(r.json.exitClass, "ok");
+  assert.deepEqual(receivedArgv(argvFile).at(-1), [
+    "agent",
+    "grant",
+    "assistant",
+    "desktop:blender",
+    "on",
+    "--json",
+    "--yes",
+  ]);
+  const none = await call(client, "agentry_agent_grant", {
+    name: "assistant",
+    entry: "desktop:photoshop",
+    on: true,
+  });
+  assert.equal(none.isError, true);
+  assert.match(
+    none.content[0].text,
+    /no roster entry desktop:photoshop; its entries: .*desktop:blender/,
+  );
+});

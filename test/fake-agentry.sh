@@ -126,7 +126,7 @@ if [ "$1" = "agent" ]; then
           exit 0 ;;
       esac
       [ "$3" = main ] && { echo '{"agent":"main","displayName":"Agentry Helper","state":"desktop only","desktopOnly":true}'; exit 0; }
-      printf '{"agent":"%s","displayName":"Assistant","state":"%s","roster":[{"id":"data","kind":"folder","name":"its own files","grantedBy":"agent","state":"on","on":true,"line":"its own files","fixed":true},{"id":"share","kind":"folder","name":"share","grantedBy":"person","state":"off","on":false,"line":"%s"}],"config":{"enabled":true,"consented":{}}}\n' "$3" "${FAKE_AGENT_STATE:-stopped}" "$share_line" ;;
+      printf '{"agent":"%s","displayName":"Assistant","state":"%s","roster":[{"id":"data","kind":"folder","name":"its own files","grantedBy":"agent","state":"on","on":true,"line":"its own files","fixed":true},{"id":"share","kind":"folder","name":"share","grantedBy":"person","state":"off","on":false,"line":"%s"},{"id":"desktop:blender","kind":"desktop","name":"Blender on your computer","grantedBy":"built-in","state":"off","on":false,"line":"Can use Blender on your computer through its MCP server, through Agentry Desktop"},{"id":"desktop:blender:exec","kind":"desktop-exec","name":"Blender: code without asking","grantedBy":"built-in","state":"off","on":false,"line":"Runs code inside Blender without Agentry Desktop asking you each time"}],"config":{"enabled":true,"consented":{}}}\n' "$3" "${FAKE_AGENT_STATE:-stopped}" "$share_line" ;;
     start)
       if has --yes || [ -n "${FAKE_AGENT_AGREED:-}" ]; then
         echo '{"segment":1,"state":"running","client":"cli","adapter":"docker-agent","model":"test"}'
