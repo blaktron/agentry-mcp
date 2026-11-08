@@ -665,17 +665,30 @@ test("a run that uses the person's computer names each application, and refuses 
     assert.equal(r.isError, true, r.content[0].text);
     assert.match(r.content[0].text, pattern);
   };
-  await refused(
-    {},
+  const shown = await previewRun(client, { ref: "acme/widget" });
+  assert.match(
+    shown.desktopNeeds,
     /uses blender on the person's computer through Agentry Desktop: .*desktop\.applications \["blender"\]/,
+  );
+  await refused(
+    { confirm: shown.digest },
+    /uses blender on the person's computer through Agentry Desktop/,
   );
   await refused(
     { desktop: { applications: ["blender", "unreal"], computerUse: true } },
     /names unreal, which this release does not use/,
   );
-  await refused(
-    { desktop: { applications: ["blender"] } },
+  const noComputer = await previewRun(client, {
+    ref: "acme/widget",
+    desktop: { applications: ["blender"] },
+  });
+  assert.match(
+    noComputer.desktopNeeds,
     /does computer use on the person's computer \(the windows of its applications\): pass desktop\.computerUse true/,
+  );
+  await refused(
+    { desktop: { applications: ["blender"] }, confirm: noComputer.digest },
+    /pass desktop\.computerUse true/,
   );
   const p = await previewRun(client, {
     ref: "acme/widget",
