@@ -570,8 +570,17 @@ export async function runConsent(
   // not only the first.
   const refusals = planRefusals(plan, { unsigned, unscanned });
   if (typeof refusals === "string") return text(`${tool}: ${refusals}`, true);
+  // What the release uses on the person's computer is shown in the
+  // preview; the agreement to it is the confirm's to carry.
   const desktopRefusal = desktopAgreement(plan.plan, a.desktop);
-  if (desktopRefusal) return text(`${tool}: ${desktopRefusal}`, true);
+  const desktopNeeds =
+    desktopRefusal &&
+    !desktopRefusal.startsWith("desktop.applications names") &&
+    !desktopRefusal.startsWith("this release uses nothing")
+      ? desktopRefusal
+      : null;
+  if (desktopRefusal && (a.confirm !== undefined || !desktopNeeds))
+    return text(`${tool}: ${desktopRefusal}`, true);
   const attachmentInputs = [];
   for (const path of [
     ...(a.files ?? []),
@@ -640,6 +649,7 @@ export async function runConsent(
     return previewText(
       {
         summary,
+        ...(desktopNeeds ? { desktopNeeds } : {}),
         readiness: ready,
         unsigned,
         unscanned,
