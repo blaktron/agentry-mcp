@@ -246,7 +246,15 @@ variable the person set (`intakeTokens`, `hostPasswords`, `hostPassphrases`,
 `hostSudoPasswords`), and a host key as a file path (`hostKeys`); without them
 the CLI uses the sign-ins saved in the system keychain. Use only variable
 names the person gave you, and show the preview's `signIns`: each variable's
-value goes to the source or host named beside it. `agentry_deliver`
+value goes to the source or host named beside it. A release that uses an
+application on the person's computer (Blender, Unreal Engine) needs
+`desktop`: show the preview's line, then pass `applications` with each id it
+names and `computerUse: true` if it does computer use, only once the person
+agrees, and `allowScreen` only when they agreed to their whole screen. Agentry
+Desktop must be running on their computer; it asks them before code runs and
+they can stop it at any time. Never start Agentry Desktop, open an application
+or change Settings → Your computer for them: those stay in the app.
+`agentry_deliver`
 copies or sends a run already made again, previewed and confirmed like a run.
 
 `agentry_schedule_list`, `agentry_connections_list` and
@@ -311,10 +319,17 @@ once when there is nothing new to agree to; otherwise it returns
 they agree. `agentry_agent_grant` switches a roster entry (`share`,
 `knowledge:<pack>`, `server:<id>` and an offered server's `server:<id>:writes`,
 `skill:<name>`, `secret:<NAME>`, the Assistant's `heartbeat`, `meetings` and `calendar:<name>` (a calendar feed, CLI v0.6.205 or later),
+an agent's applications on the person's computer `desktop:<id>`, their code
+agreement `desktop:<id>:exec` and computer use `desktop:computer` (CLI v0.7.34
+or later),
 and the Coding agent's `account:<host>`, `commands`, `egress`, `browser`,
 `dependency-scan`, `devhost` and `port:<name>`) in the same two calls, always.
 Show the entry's sentence, and say that a running agent restarts with the
-change at its next turn; the Assistant's `heartbeat` and `meetings` take
+change at its next turn. For `desktop:<id>`, say the agent then uses that
+application on the person's own computer through Agentry Desktop; for
+`desktop:<id>:exec`, that its code runs inside the application without
+Agentry Desktop asking each time. Settings → Your computer and the system's
+permissions stay in Agentry Desktop; the Assistant's `heartbeat` and `meetings` take
 effect at once and restart nothing. An entry that reads `needs-set-up` waits for a secret, an account or a
 sign-in the person gives in a terminal or the desktop; none of those needs the
 agent stopped with CLI v0.7.19 or later, which takes each at its next turn. The Assistant's mail

@@ -275,14 +275,18 @@ export function registerAgentTools(d: Driver): void {
         "takes the change at its next turn and continues the conversation. agentry_agent_show lists the " +
         "entries. Adding a server, a knowledge pack or a skill, storing a secret, giving an account, the " +
         "Google sign-in, giving or removing a calendar feed, exporting the memory and moving the share folder " +
-        "stay in a terminal or the desktop.",
+        "stay in a terminal or the desktop. Switching on an application (`desktop:<id>`) lets the agent use it " +
+        "on the person's computer through Agentry Desktop, which answers each call; `desktop:<id>:exec` lets " +
+        "code the agent runs inside that application run without Agentry Desktop asking the person each time; " +
+        "`desktop:computer` lets it see and use the application's windows. Agentry Desktop's Settings → Your " +
+        "computer and the system's own permissions stay in Agentry Desktop.",
       inputSchema: {
         name,
         runhost: on,
         entry: z
           .string()
           .describe(
-            "The roster entry's id, as agentry_agent_show lists it: `share`, `knowledge:<pack>`, `server:<id>` (the person's or an offered one) and an offered server's `server:<id>:writes`, `skill:<name>`, `secret:<NAME>`, a registry agent's subagent `subagent:<ns>/<name>` and its `subagent:<ns>/<name>:ask` switch (which asks the person before each run), the Assistant's `heartbeat`, `meetings` (which needs `heartbeat` on first) and `calendar:<name>` (a calendar feed), and the Coding agent's `account:<host>`, `commands`, `egress`, `browser`, `dependency-scan`, `devhost` and `port:<name>`.",
+            "The roster entry's id, as agentry_agent_show lists it: `share`, `knowledge:<pack>`, `server:<id>` (the person's or an offered one) and an offered server's `server:<id>:writes`, `skill:<name>`, `secret:<NAME>`, a registry agent's subagent `subagent:<ns>/<name>` and its `subagent:<ns>/<name>:ask` switch (which asks the person before each run), the Assistant's `heartbeat`, `meetings` (which needs `heartbeat` on first) and `calendar:<name>` (a calendar feed), an agent's applications on the person's computer `desktop:<id>` (`desktop:blender`, `desktop:unreal`), their code agreement `desktop:<id>:exec` and `desktop:computer` (computer use; CLI v0.7.34 or later), and the Coding agent's `account:<host>`, `commands`, `egress`, `browser`, `dependency-scan`, `devhost` and `port:<name>`.",
           ),
         on: z.boolean().describe("true switches it on, false off."),
         confirm: z

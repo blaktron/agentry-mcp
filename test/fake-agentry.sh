@@ -8,6 +8,7 @@
 #   FAKE_SLEEP     seconds to hang before answering
 #   FAKE_NO_PLAN   set to make `install --help` omit --plan (an old CLI)
 #   FAKE_NO_RUN_PLAN  set to make `run --help` omit --plan (a CLI without run --plan)
+#   FAKE_RUN_DESKTOP  a computer use scope (app or screen): the run plan uses Blender on the person's computer with it
 #   FAKE_RUN_ATTEST   the run plan's attestation for a registry ref (default verified; --local is always local)
 #   FAKE_RUN_REFUSAL  the run plan's attestation refusal, in place of the verdict's own (no lift)
 #   FAKE_RUN_LIFT     the lift FAKE_RUN_REFUSAL carries (default none)
@@ -126,7 +127,7 @@ if [ "$1" = "agent" ]; then
           exit 0 ;;
       esac
       [ "$3" = main ] && { echo '{"agent":"main","displayName":"Agentry Helper","state":"desktop only","desktopOnly":true}'; exit 0; }
-      printf '{"agent":"%s","displayName":"Assistant","state":"%s","roster":[{"id":"data","kind":"folder","name":"its own files","grantedBy":"agent","state":"on","on":true,"line":"its own files","fixed":true},{"id":"share","kind":"folder","name":"share","grantedBy":"person","state":"off","on":false,"line":"%s"}],"config":{"enabled":true,"consented":{}}}\n' "$3" "${FAKE_AGENT_STATE:-stopped}" "$share_line" ;;
+      printf '{"agent":"%s","displayName":"Assistant","state":"%s","roster":[{"id":"data","kind":"folder","name":"its own files","grantedBy":"agent","state":"on","on":true,"line":"its own files","fixed":true},{"id":"share","kind":"folder","name":"share","grantedBy":"person","state":"off","on":false,"line":"%s"},{"id":"desktop:blender","kind":"desktop","name":"Blender on your computer","grantedBy":"built-in","state":"off","on":false,"line":"Can use Blender on your computer through its MCP server, through Agentry Desktop"},{"id":"desktop:blender:exec","kind":"desktop-exec","name":"Blender: code without asking","grantedBy":"built-in","state":"off","on":false,"line":"Runs code inside Blender without Agentry Desktop asking you each time"}],"config":{"enabled":true,"consented":{}}}\n' "$3" "${FAKE_AGENT_STATE:-stopped}" "$share_line" ;;
     start)
       if has --yes || [ -n "${FAKE_AGENT_AGREED:-}" ]; then
         echo '{"segment":1,"state":"running","client":"cli","adapter":"docker-agent","model":"test"}'
@@ -320,9 +321,11 @@ if rs:
 if os.environ["RAW"]:
     out += ",\"refusals\":" + os.environ["RAW"]
 print(out, end="")')
+      rdesktop=""
+      [ -n "${FAKE_RUN_DESKTOP:-}" ] && rdesktop=',"desktop":{"servers":[{"id":"blender","application":"Blender","package":"pypi:mcp-for-blender@2.2.7","tools":[{"name":"get_scene_info","class":"read"},{"name":"execute_blender_code","class":"exec"}]}],"computerUse":"'"${FAKE_RUN_DESKTOP}"'"}'
       timeout=900; mode=autonomous; prev=""; for a in "$@"; do if [ "$prev" = "--timeout" ]; then timeout=$a; fi; if [ "$prev" = "--mode" ]; then mode=$a; fi; prev=$a; done
       echo "narration: compiled plan" >&2
-      printf '{"ref":"%s","version":"1.0.0","digest":"sha256:aaaa","mode":"%s","modes":["autonomous","interactive"],"summary":"x","plan":{"planVersion":2,"ref":"%s","digest":"sha256:aaaa","mode":"%s","policySha256":"sha256:pppp","capabilities":{"egressMode":"none","fsReadMode":"workspace"},"enforcement":{"network":"gateway --block-network"},"tools":["write_report"],"gateway":{"image":"ghcr.io/blaktron/agentry-mcp-gateway:v0.44.3"},"proxy":{},"budgets":{"timeoutSeconds":%s}},"planSha256":"abc","contract":%s,"contractDigest":"sha256:cccc","attestation":"%s","signed":%s,"diff":{},"needsConfirmation":true,"reason":"a first run"%s}\n' "$rref" "$mode" "$rref" "$mode" "$timeout" "$contract" "$ratt" "$rsigned" "$rjson"
+      printf '{"ref":"%s","version":"1.0.0","digest":"sha256:aaaa","mode":"%s","modes":["autonomous","interactive"],"summary":"x","plan":{"planVersion":2,"ref":"%s","digest":"sha256:aaaa","mode":"%s","policySha256":"sha256:pppp","capabilities":{"egressMode":"none","fsReadMode":"workspace"%s},"enforcement":{"network":"gateway --block-network"},"tools":["write_report"],"gateway":{"image":"ghcr.io/blaktron/agentry-mcp-gateway:v0.44.3"},"proxy":{},"budgets":{"timeoutSeconds":%s}},"planSha256":"abc","contract":%s,"contractDigest":"sha256:cccc","attestation":"%s","signed":%s,"diff":{},"needsConfirmation":true,"reason":"a first run"%s}\n' "$rref" "$mode" "$rref" "$mode" "$rdesktop" "$timeout" "$contract" "$ratt" "$rsigned" "$rjson"
     elif has --mode && [ "$(prev=""; for a in "$@"; do if [ "$prev" = "--mode" ]; then echo "$a"; fi; prev=$a; done)" = interactive ]; then
       if ! has --session-protocol; then echo "fake: sessions require the protocol" >&2; exit 2; fi
       exec python3 "$(dirname "$0")/fake-session.py" "$@"

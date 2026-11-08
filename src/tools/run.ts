@@ -12,6 +12,7 @@ import { runOutcome, toolJSON, toolText } from "../envelope.js";
 import { DEFAULT_RUN_TIMEOUT_SECONDS, decorateRun, run, setup, validate } from "../run.js";
 import type { RunStatus } from "../runs.js";
 import { registerTool } from "../toolargs.js";
+import { desktopArg } from "./desktop.js";
 
 export function registerRunTools(d: Driver): void {
   registerTool(
@@ -275,6 +276,7 @@ export function registerRunTools(d: Driver): void {
           .describe(
             "Only with `confirm`, only when the preview said unscanned (admitted without a scan), and only if the person accepted that nothing about its contents was checked.",
           ),
+        desktop: desktopArg,
         on: z
           .string()
           .optional()

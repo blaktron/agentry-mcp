@@ -157,6 +157,19 @@ export interface RunArgs {
   detach?: boolean;
   /** A remote runhost of this computer's to run on (`--on`). */
   on?: string;
+  /**
+   * The person's agreement to what the release uses on their computer:
+   * each application it declares, by catalogue id, and computer use; and
+   * `allowScreen` for a computer use that asks for the whole screen
+   * (`--allow-screen`).
+   */
+  desktop?: DesktopArgs;
+}
+
+export interface DesktopArgs {
+  applications?: string[];
+  computerUse?: boolean;
+  allowScreen?: boolean;
 }
 
 /** The compiled plan's fields the summary in words reads; everything else passes through. */
@@ -175,6 +188,10 @@ export interface CompiledPlan {
     webRender?: boolean;
     targetHosts?: string[];
     browser?: unknown;
+    desktop?: {
+      servers?: { id: string; application?: string; tools?: { name: string; class?: string }[] }[];
+      computerUse?: string;
+    };
   };
   tools?: string[];
   harness?: {
@@ -305,6 +322,7 @@ function target(a: RunArgs, resolvedRef?: string): string[] {
  */
 function commonFlags(argv: string[], a: RunArgs, mode: RunMode): void {
   argv.push("--mode", mode);
+  bool(argv, "allow-screen", a.desktop?.allowScreen);
   flag(argv, "timeout", a.timeoutSeconds);
   flag(argv, "max-turns", a.maxTurns);
   flag(argv, "max-cost", a.maxCost);
@@ -394,6 +412,7 @@ export function runSummary(
     cap.webRender ? "page rendering" : "",
     cap.browser ? "a browser" : "",
     cap.targetHosts?.length ? `the target hosts ${cap.targetHosts.join(", ")}` : "",
+    desktopWords(cap.desktop),
     cap.dataAccess?.length ? `data access: ${cap.dataAccess.join(", ")}` : "",
   ].filter(Boolean);
   const reads =
@@ -457,6 +476,7 @@ export function runSummary(
  */
 function runFacts(p: RunPlan, a: RunArgs, timeoutSeconds: number, refusals: PlanRefusal[]) {
   return {
+    desktop: a.desktop ?? null,
     ref: p.ref,
     version: p.version,
     archiveDigest: p.digest,
@@ -550,6 +570,17 @@ export async function runConsent(
   // not only the first.
   const refusals = planRefusals(plan, { unsigned, unscanned });
   if (typeof refusals === "string") return text(`${tool}: ${refusals}`, true);
+  // What the release uses on the person's computer is shown in the
+  // preview; the agreement to it is the confirm's to carry.
+  const desktopRefusal = desktopAgreement(plan.plan, a.desktop);
+  const desktopNeeds =
+    desktopRefusal &&
+    !desktopRefusal.startsWith("desktop.applications names") &&
+    !desktopRefusal.startsWith("this release uses nothing")
+      ? desktopRefusal
+      : null;
+  if (desktopRefusal && (a.confirm !== undefined || !desktopNeeds))
+    return text(`${tool}: ${desktopRefusal}`, true);
   const attachmentInputs = [];
   for (const path of [
     ...(a.files ?? []),
@@ -618,6 +649,7 @@ export async function runConsent(
     return previewText(
       {
         summary,
+        ...(desktopNeeds ? { desktopNeeds } : {}),
         readiness: ready,
         unsigned,
         unscanned,
@@ -923,4 +955,46 @@ export function isRunConsent(v: RunConsent | CallToolResult): v is RunConsent {
 
 function textOf(r: CallToolResult): string {
   return (r.content[0] as { text: string }).text;
+}
+
+/**
+ * desktopAgreement holds the call's `desktop` to what the compiled plan uses
+ * on the person's computer: each declared application named, and computer
+ * use agreed when it is declared, nothing named the release does not use.
+ * The message names what is missing or unknown; null when they agree.
+ */
+export function desktopAgreement(plan: CompiledPlan, d: DesktopArgs | undefined): string | null {
+  const line = plan.capabilities?.desktop;
+  const declared = (line?.servers ?? []).map((s) => s.id);
+  const named = d?.applications ?? [];
+  if (!line) {
+    if (named.length || d?.computerUse || d?.allowScreen)
+      return "this release uses nothing on the person's computer: leave desktop out";
+    return null;
+  }
+  const unknown = named.filter((id) => !declared.includes(id));
+  if (unknown.length)
+    return `desktop.applications names ${unknown.join(", ")}, which this release does not use; it uses ${declared.join(", ") || "no application"}`;
+  const missing = declared.filter((id) => !named.includes(id));
+  if (missing.length)
+    return `this release uses ${missing.join(", ")} on the person's computer through Agentry Desktop: show the person the preview and pass desktop.applications ${JSON.stringify(declared)} once they agree`;
+  if (line.computerUse && !d?.computerUse)
+    return `this release does computer use on the person's computer (${line.computerUse === "screen" ? "the whole screen" : "the windows of its applications"}): pass desktop.computerUse true once the person agrees`;
+  return null;
+}
+
+/** desktopWords is the summary's phrase for what the run uses on the person's computer. */
+function desktopWords(line: NonNullable<CompiledPlan["capabilities"]>["desktop"]): string {
+  if (!line) return "";
+  const apps = (line.servers ?? []).map((s) => {
+    const tools = s.tools ?? [];
+    const code = tools.filter((t) => t.class === "exec").length;
+    return `${s.application ?? s.id} (${tools.length} tools${code ? `, ${code} that run code` : ""})`;
+  });
+  if (line.computerUse === "app") apps.push("computer use in the windows of those applications");
+  if (line.computerUse === "screen") apps.push("computer use of the whole screen");
+  return (
+    `on the person's computer through Agentry Desktop, which must be running there: ${apps.join(", ")}; ` +
+    "Agentry Desktop asks before code runs, logs each call, and its Stop ends the run's use of the computer"
+  );
 }
