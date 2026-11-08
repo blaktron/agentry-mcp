@@ -73,23 +73,26 @@ Read tools run one CLI command with an argv built from typed arguments, never
 a shell string. The result is the CLI's JSON in an envelope with `exitClass`
 and the CLI's last stderr lines as `log`.
 
-| Tool                         | Runs                                | Returns                                                                                                                                                                                                                                               |
-| ---------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agentry_search`             | `agentry search --json`             | results, facets, total                                                                                                                                                                                                                                |
-| `agentry_info`               | `agentry info --json`               | the agent, its latest published version, the capability contract, whether it carries an attestation (signed or unsigned), and how to run it: its questions and how to answer each, the files it takes, its keys and its guide (CLI 0.6.1011 or later) |
-| `agentry_verify`             | `agentry verify --json`             | the digest match and the attestation's verdict                                                                                                                                                                                                        |
-| `agentry_whoami`             | `agentry whoami --json`             | signed-in account and tier                                                                                                                                                                                                                            |
-| `agentry_builtins`           | `agentry builtins --json`           | embedded package refs and archive digests                                                                                                                                                                                                             |
-| `agentry_knowledge_list`     | `agentry knowledge list --json`     | local packs or an organization's shared packs                                                                                                                                                                                                         |
-| `agentry_voice_status`       | `agentry voice status --json`       | local and account Voice metadata and review                                                                                                                                                                                                           |
-| `agentry_doctor`             | `agentry doctor --json`             | machine readiness: policy, provider key **name**, docker, images, exec catalog                                                                                                                                                                        |
-| `agentry_schedule_list`      | `agentry schedule list --json`      | the schedules on this computer: repeat, next run, output folder, paused; with `on`, a runhost's (`agentry runhost schedules <on> --json`, CLI v0.7.11 or later): next run, what each keeps in its store, its runs' jobs                               |
-| `agentry_connections_list`   | `agentry connections list --json`   | the OAuth connections kept for QuickAgent versions' MCP servers, never a token                                                                                                                                                                        |
-| `agentry_model_signins_list` | `agentry model-signins list --json` | the model sign-ins local runs can spend, never a token                                                                                                                                                                                                |
-| `agentry_report_design_list` | `agentry report-design list --json` | the account's report design library: each design's name, the built-in it started from, which is the default and which images it carries (CLI v0.7.22 or later)                                                                                        |
-| `agentry_report_design_show` | `agentry report-design show --json` | the report design a run's PDFs would take, and what chose it                                                                                                                                                                                          |
-| `agentry_destinations_list`  | `agentry destinations list --json`  | the saved destinations (name, kind, host, on my network) and the QuickAgents each is a default for, never a secret                                                                                                                                    |
-| `agentry_runhost_list`       | `agentry runhost list --json`       | this computer's remote runhosts: name, address, host key fingerprint, owner, server CLI version, system                                                                                                                                               |
+| Tool                         | Runs                                                                                                      | Returns                                                                                                                                                                                                                                               |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agentry_search`             | `agentry search --json`                                                                                   | results, facets, total                                                                                                                                                                                                                                |
+| `agentry_info`               | `agentry info --json`                                                                                     | the agent, its latest published version, the capability contract, whether it carries an attestation (signed or unsigned), and how to run it: its questions and how to answer each, the files it takes, its keys and its guide (CLI 0.6.1011 or later) |
+| `agentry_verify`             | `agentry verify --json`                                                                                   | the digest match and the attestation's verdict                                                                                                                                                                                                        |
+| `agentry_whoami`             | `agentry whoami --json`                                                                                   | signed-in account and tier                                                                                                                                                                                                                            |
+| `agentry_builtins`           | `agentry builtins --json`                                                                                 | embedded package refs and archive digests                                                                                                                                                                                                             |
+| `agentry_knowledge_list`     | `agentry knowledge list --json`                                                                           | local packs or an organization's shared packs                                                                                                                                                                                                         |
+| `agentry_voice_status`       | `agentry voice status --json`                                                                             | local and account Voice metadata and review                                                                                                                                                                                                           |
+| `agentry_voice_show`         | `agentry voice show --json`                                                                               | the Writing Voice kept on this computer, its VOICE.md                                                                                                                                                                                                 |
+| `agentry_doctor`             | `agentry doctor --json`                                                                                   | machine readiness: policy, provider key **name**, docker, images, exec catalog                                                                                                                                                                        |
+| `agentry_schedule_list`      | `agentry schedule list --json`                                                                            | the schedules on this computer: repeat, next run, output folder, paused; with `on`, a runhost's (`agentry runhost schedules <on> --json`, CLI v0.7.11 or later): next run, what each keeps in its store, its runs' jobs                               |
+| `agentry_schedule_show`      | `agentry schedule show <id> --json`                                                                       | one schedule: its QuickAgent, repeat, next occurrences, paused, its runs                                                                                                                                                                              |
+| `agentry_schedule_pause`     | `agentry schedule pause <id>` or `agentry schedule resume <id>`, then `agentry schedule show <id> --json` | the schedule as `agentry_schedule_show` gives it, paused or resumed                                                                                                                                                                                   |
+| `agentry_connections_list`   | `agentry connections list --json`                                                                         | the OAuth connections kept for QuickAgent versions' MCP servers, never a token                                                                                                                                                                        |
+| `agentry_model_signins_list` | `agentry model-signins list --json`                                                                       | the model sign-ins local runs can spend, never a token                                                                                                                                                                                                |
+| `agentry_report_design_list` | `agentry report-design list --json`                                                                       | the account's report design library: each design's name, the built-in it started from, which is the default and which images it carries (CLI v0.7.22 or later)                                                                                        |
+| `agentry_report_design_show` | `agentry report-design show --json`                                                                       | the report design a run's PDFs would take, and what chose it                                                                                                                                                                                          |
+| `agentry_destinations_list`  | `agentry destinations list --json`                                                                        | the saved destinations (name, kind, host, on my network) and the QuickAgents each is a default for, never a secret                                                                                                                                    |
+| `agentry_runhost_list`       | `agentry runhost list --json`                                                                             | this computer's remote runhosts: name, address, host key fingerprint, owner, server CLI version, system                                                                                                                                               |
 
 `agentry_run` takes `on`, a remote runhost's name from `agentry_runhost_list`,
 to run there instead of on this computer (`agentry run --on`, CLI v0.6.1017 or
@@ -423,14 +426,105 @@ named in `knowledge` and ships none of them.
 The server has no credential store. Tools take key names and never return
 their values.
 
+## Terminal-only commands
+
+Every command of the CLI is either run by a tool above or listed here, with
+the reason it stays in a terminal or the desktop. A test holds this list and
+the tools against the CLI's command tree (`spec/cli-commands.txt`, read from
+the CLI's help with `node scripts/cli-commands.mjs <agentry>`), so a command
+the CLI gains is given a tool or a row here before the server ships.
+
+| Command                             | Why it stays in a terminal                                                                                                                    |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agentry acp`                       | is the Agent Client Protocol server itself, which a host starts directly instead of this one                                                  |
+| `agentry agent chat`                | an interactive terminal interface, not a command a program reads                                                                              |
+| `agentry agent configure`           | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent disable`             | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent enable`              | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent memory export`       | deletes, downloads, exports or imports a kept pack, voice, design or memory on this computer; the person does it in a terminal or the desktop |
+| `agentry agent messenger add`       | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent messenger list`      | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent messenger manifest`  | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent messenger pair`      | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent messenger remove`    | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent messenger test`      | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent reset`               | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent secret list`         | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent secret remove`       | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent secret set`          | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent skill add`           | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent skill list`          | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry agent skill remove`        | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds      |
+| `agentry browser ensure`            | fetches or builds a runner image; agentry_run and agentry_setup do it when a run needs it                                                     |
+| `agentry builtins publish`          | publishes to the registry or changes what the person's account holds there; a person decides that in a terminal or on the site                |
+| `agentry connect`                   | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                       |
+| `agentry connections client list`   | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                       |
+| `agentry connections client remove` | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                       |
+| `agentry connections client set`    | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                       |
+| `agentry connections remove`        | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                       |
+| `agentry destinations add`          | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                       |
+| `agentry destinations default`      | changes what every later run takes or where its results go, which the person decides once in a terminal or the desktop                        |
+| `agentry destinations remove`       | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                       |
+| `agentry files ensure`              | fetches or builds a runner image; agentry_run and agentry_setup do it when a run needs it                                                     |
+| `agentry fork`                      | publishes to the registry or changes what the person's account holds there; a person decides that in a terminal or on the site                |
+| `agentry init`                      | writes a new workspace in a folder of the person's; agentry_draft drafts one from a description                                               |
+| `agentry knowledge delete`          | deletes, downloads, exports or imports a kept pack, voice, design or memory on this computer; the person does it in a terminal or the desktop |
+| `agentry knowledge download`        | deletes, downloads, exports or imports a kept pack, voice, design or memory on this computer; the person does it in a terminal or the desktop |
+| `agentry knowledge export`          | deletes, downloads, exports or imports a kept pack, voice, design or memory on this computer; the person does it in a terminal or the desktop |
+| `agentry knowledge import`          | deletes, downloads, exports or imports a kept pack, voice, design or memory on this computer; the person does it in a terminal or the desktop |
+| `agentry knowledge ship`            | publishes to the registry or changes what the person's account holds there; a person decides that in a terminal or on the site                |
+| `agentry knowledge upload`          | publishes to the registry or changes what the person's account holds there; a person decides that in a terminal or on the site                |
+| `agentry login`                     | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                       |
+| `agentry logout`                    | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                       |
+| `agentry managed refresh`           | reads or refreshes what the person's organization manages; the desktop and the terminal show it where the person can act on it                |
+| `agentry managed show`              | reads or refreshes what the person's organization manages; the desktop and the terminal show it where the person can act on it                |
+| `agentry model-signins add`         | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                       |
+| `agentry model-signins remove`      | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                       |
+| `agentry open`                      | acts on this computer's folders and desktop (lists the runs made from here, or opens a folder in the file manager)                            |
+| `agentry profiles list`             | changes the stored MCP profiles, which hold the keys a QuickAgent's servers use                                                               |
+| `agentry profiles remove`           | changes the stored MCP profiles, which hold the keys a QuickAgent's servers use                                                               |
+| `agentry publish`                   | publishes to the registry or changes what the person's account holds there; a person decides that in a terminal or on the site                |
+| `agentry report-design delete`      | publishes to the registry or changes what the person's account holds there; a person decides that in a terminal or on the site                |
+| `agentry report-design export`      | deletes, downloads, exports or imports a kept pack, voice, design or memory on this computer; the person does it in a terminal or the desktop |
+| `agentry report-design import`      | publishes to the registry or changes what the person's account holds there; a person decides that in a terminal or on the site                |
+| `agentry report-design use`         | publishes to the registry or changes what the person's account holds there; a person decides that in a terminal or on the site                |
+| `agentry runhost add`               | sets up, pairs, updates or removes a remote runhost, which takes the person's own server and sign-in                                          |
+| `agentry runhost attach`            | follows or collects a job on a remote runhost; agentry_run with `on` starts and follows its own runs                                          |
+| `agentry runhost cancel`            | follows or collects a job on a remote runhost; agentry_run with `on` starts and follows its own runs                                          |
+| `agentry runhost collect`           | follows or collects a job on a remote runhost; agentry_run with `on` starts and follows its own runs                                          |
+| `agentry runhost jobs`              | follows or collects a job on a remote runhost; agentry_run with `on` starts and follows its own runs                                          |
+| `agentry runhost model`             | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                       |
+| `agentry runhost pair`              | sets up, pairs, updates or removes a remote runhost, which takes the person's own server and sign-in                                          |
+| `agentry runhost remove`            | sets up, pairs, updates or removes a remote runhost, which takes the person's own server and sign-in                                          |
+| `agentry runhost set`               | sets up, pairs, updates or removes a remote runhost, which takes the person's own server and sign-in                                          |
+| `agentry runhost status`            | follows or collects a job on a remote runhost; agentry_run with `on` starts and follows its own runs                                          |
+| `agentry runhost store`             | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                       |
+| `agentry runhost unpair`            | sets up, pairs, updates or removes a remote runhost, which takes the person's own server and sign-in                                          |
+| `agentry runhost update`            | sets up, pairs, updates or removes a remote runhost, which takes the person's own server and sign-in                                          |
+| `agentry runs`                      | acts on this computer's folders and desktop (lists the runs made from here, or opens a folder in the file manager)                            |
+| `agentry schedule add`              | makes, changes or removes a schedule, which runs a QuickAgent later with nobody asked; the person does it in a terminal or the desktop        |
+| `agentry schedule check-signed-out` | checks this computer's keychain and login session for running schedules signed out, which the person sets up in a terminal                    |
+| `agentry schedule edit`             | makes, changes or removes a schedule, which runs a QuickAgent later with nobody asked; the person does it in a terminal or the desktop        |
+| `agentry schedule remove`           | makes, changes or removes a schedule, which runs a QuickAgent later with nobody asked; the person does it in a terminal or the desktop        |
+| `agentry schedule reseal`           | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                       |
+| `agentry schedule run`              | runs a schedule's QuickAgent now on the consent given when the schedule was made; agentry_run asks for a run's consent itself                 |
+| `agentry schedule sync`             | makes, changes or removes a schedule, which runs a QuickAgent later with nobody asked; the person does it in a terminal or the desktop        |
+| `agentry voice attach`              | changes what every later run takes or where its results go, which the person decides once in a terminal or the desktop                        |
+| `agentry voice delete`              | deletes, downloads, exports or imports a kept pack, voice, design or memory on this computer; the person does it in a terminal or the desktop |
+| `agentry voice download`            | deletes, downloads, exports or imports a kept pack, voice, design or memory on this computer; the person does it in a terminal or the desktop |
+| `agentry voice set`                 | changes what every later run takes or where its results go, which the person decides once in a terminal or the desktop                        |
+| `agentry voice upload`              | publishes to the registry or changes what the person's account holds there; a person decides that in a terminal or on the site                |
+| `agentry yank`                      | publishes to the registry or changes what the person's account holds there; a person decides that in a terminal or on the site                |
+
 ## Layout
 
-| Path                 | Contents                                                          |
-| -------------------- | ----------------------------------------------------------------- |
-| `src/`               | the server: CLI seam, consent, runs, sessions, tools              |
-| `test/`              | tests against a fake `agentry` CLI (`fake-agentry.sh`)            |
-| `scripts/`           | packaging, the prose gate and the workflow fork-guard check       |
-| `secureagentry-mcp/` | a separate registry-API server with its own build, see its README |
+| Path                 | Contents                                                                |
+| -------------------- | ----------------------------------------------------------------------- |
+| `src/`               | the server: CLI seam, consent, runs, sessions, tools                    |
+| `test/`              | tests against a fake `agentry` CLI (`fake-agentry.sh`)                  |
+| `scripts/`           | packaging, the prose gate and the workflow fork-guard check             |
+| `spec/`              | the CLI command tree the parity test reads (`scripts/cli-commands.mjs`) |
+| `secureagentry-mcp/` | a separate registry-API server with its own build, see its README       |
 
 ## Licence
 

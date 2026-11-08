@@ -8,7 +8,7 @@
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
-import { checkCli, findCli, CliUnavailableError } from "./cli.js";
+import { checkCli, findCli, missingFeaturesNote, CliUnavailableError } from "./cli.js";
 import { SERVER_NAME, SERVER_VERSION, createServer } from "./server.js";
 import { installShutdown } from "./session.js";
 import { connectServer } from "./toolargs.js";
@@ -23,6 +23,8 @@ async function main(): Promise<void> {
     `${SERVER_NAME} ${SERVER_VERSION} ready: driving ${bin} (agentry ${v.raw}` +
       `${v.floorChecked ? "" : ", a dev build; the version floor is not checked"})\n`,
   );
+  const note = missingFeaturesNote(v.raw, v.features);
+  if (note) process.stderr.write(`${SERVER_NAME}: ${note}\n`);
 }
 
 main().catch((err: unknown) => {

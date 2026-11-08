@@ -260,6 +260,9 @@ copies or sends a run already made again, previewed and confirmed like a run.
 `agentry_schedule_list`, `agentry_connections_list` and
 `agentry_model_signins_list` show the schedules, OAuth connections and model
 sign-ins on this computer, never a token.
+`agentry_schedule_show` shows one schedule, its next occurrences and its runs.
+`agentry_schedule_pause` pauses or resumes one, only when the person asked;
+making, changing or removing a schedule stays in a terminal or the desktop.
 
 Sessions use `agentry_session_start`, `agentry_session_send`, and
 `agentry_session_close`. Start reports a launched process, not a ready sandbox.
@@ -381,7 +384,8 @@ the person set up. The pipe protocol is unavailable on Windows.
 
 ## Knowledge, Voice and authoring
 
-Inspect `agentry_builtins`, `agentry_knowledge_list` and `agentry_voice_status`.
+Inspect `agentry_builtins`, `agentry_knowledge_list`, `agentry_voice_status`
+and `agentry_voice_show` (the kept VOICE.md itself).
 The four authoring tools are **operation previews**, not compiled run plans:
 local inputs, policy and embedded-package identities are fingerprinted at
 preview and confirm. Each preview puts its `summary` in words first and the

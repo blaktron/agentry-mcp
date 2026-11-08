@@ -78,6 +78,46 @@ export const ALL_FEATURES: CliFeatures = {
   runhostAgents: true,
 };
 
+/**
+ * What each feature the probe looks for gives a tool, in the words the
+ * start-up line uses when the CLI lacks it.
+ */
+export const FEATURE_TOOLS: Record<keyof CliFeatures, string> = {
+  deliverTo: "agentry_run's deliverTo and agentry_deliver",
+  destinations: "agentry_run's destination, agentry_deliver and agentry_destinations_list",
+  buildSources: "agentry_knowledge_build from a repository or an address",
+  voiceURLs: "agentry_voice_build from web addresses",
+  reportDesigner: "agentry_report_design_build",
+  designDocument: "agentry_report_design_build around a document",
+  agents: "agentry_agent_send and the agent tools' JSON",
+  tasks: "agentry_agent_tasks",
+  compact: "agentry_agent_compact",
+  publishedAgents: "agentry_agent_install and agentry_agent_uninstall",
+  agentPlans: "agentry_agent_install's preview",
+  runningUpdates: "agentry_agent_install on a running agent",
+  runhosts: "agentry_run's on (a remote runhost)",
+  runhostJobs: "agentry_run's on with the run's secrets, files and intake",
+  runhostSessions: "agentry_run's detach and sessions on a runhost",
+  runhostSignIns: "agentry_run's on with the runhost's own plan sign-in",
+  runhostSchedules: "agentry_schedule_list's on",
+  runhostAgents: "the agent tools' on",
+};
+
+/**
+ * The start-up note for a CLI that lacks some of what the tools use: which
+ * tools or arguments will refuse, and how to get them. Empty when it has
+ * everything.
+ */
+export function missingFeaturesNote(version: string, features: CliFeatures): string {
+  const missing = (Object.keys(FEATURE_TOOLS) as (keyof CliFeatures)[]).filter((k) => !features[k]);
+  if (missing.length === 0) return "";
+  return (
+    `agentry ${version} is older than these tools need, so they refuse until the CLI is updated: ` +
+    missing.map((k) => FEATURE_TOOLS[k]).join("; ") +
+    ". Update the CLI (https://secureagentry.net/download) and restart this server; the server never updates it for you."
+  );
+}
+
 /** What `agentry --version` said, parsed. */
 export interface CliVersion {
   /** The raw string after `agentry version `. */

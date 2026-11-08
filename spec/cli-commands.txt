@@ -1,0 +1,145 @@
+# agentry version 0.0.0-dev, built from agentry-cli dev 890c9e83
+acp
+agent
+agent attach
+agent chat
+agent compact
+agent configure
+agent disable
+agent enable
+agent grant
+agent install
+agent list
+agent memory
+agent memory export
+agent messenger
+agent messenger add
+agent messenger list
+agent messenger manifest
+agent messenger pair
+agent messenger remove
+agent messenger test
+agent reset
+agent secret
+agent secret list
+agent secret remove
+agent secret set
+agent show
+agent skill
+agent skill add
+agent skill list
+agent skill remove
+agent start
+agent stop
+agent tasks
+agent uninstall
+browser
+browser ensure
+builtins
+builtins publish
+connect
+connections
+connections client
+connections client list
+connections client remove
+connections client set
+connections list
+connections remove
+deliver
+destinations
+destinations add
+destinations default
+destinations list
+destinations remove
+doctor
+draft
+files
+files ensure
+fork
+info
+init
+install
+knowledge
+knowledge add
+knowledge create
+knowledge delete
+knowledge download
+knowledge export
+knowledge import
+knowledge list
+knowledge ship
+knowledge upload
+list
+login
+logout
+managed
+managed refresh
+managed show
+model-signins
+model-signins add
+model-signins list
+model-signins remove
+open
+profiles
+profiles list
+profiles remove
+publish
+report-design
+report-design cover
+report-design delete
+report-design design
+report-design export
+report-design import
+report-design list
+report-design show
+report-design use
+review
+run
+runhost
+runhost add
+runhost attach
+runhost cancel
+runhost collect
+runhost doctor
+runhost jobs
+runhost list
+runhost model
+runhost pair
+runhost remove
+runhost schedules
+runhost set
+runhost status
+runhost store
+runhost unpair
+runhost update
+runs
+schedule
+schedule add
+schedule check-signed-out
+schedule edit
+schedule list
+schedule pause
+schedule remove
+schedule reseal
+schedule resume
+schedule run
+schedule show
+schedule sync
+search
+setup
+uninstall
+validate
+verify
+voice
+voice attach
+voice create
+voice delete
+voice download
+voice edit
+voice improve
+voice set
+voice show
+voice status
+voice upload
+whoami
+yank
