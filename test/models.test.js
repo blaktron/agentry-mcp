@@ -112,3 +112,13 @@ test("the probe reads run --model from the CLI's help", async () => {
     delete process.env.FAKE_NO_SAVED_MODELS;
   }
 });
+
+test("the probe reads agent configure --model from the CLI's help", async () => {
+  assert.equal((await checkCli(FAKE)).features.agentModels, true);
+  process.env.FAKE_NO_AGENT_MODELS = "1";
+  try {
+    assert.equal((await checkCli(FAKE)).features.agentModels, false);
+  } finally {
+    delete process.env.FAKE_NO_AGENT_MODELS;
+  }
+});

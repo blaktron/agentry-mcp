@@ -56,6 +56,8 @@ export interface CliFeatures {
   runhostAgents: boolean;
   /** `run --model` and `models list --json`: a run on any of the computer's saved models. */
   savedModels: boolean;
+  /** `agent configure --model` and the agents' `model` in `agent list|show --json`. */
+  agentModels: boolean;
 }
 
 /** The features of a CLI that has them all (the tests' fake, a current CLI). */
@@ -79,6 +81,7 @@ export const ALL_FEATURES: CliFeatures = {
   runhostSchedules: true,
   runhostAgents: true,
   savedModels: true,
+  agentModels: true,
 };
 
 /**
@@ -105,6 +108,7 @@ export const FEATURE_TOOLS: Record<keyof CliFeatures, string> = {
   runhostSchedules: "agentry_schedule_list's on",
   runhostAgents: "the agent tools' on",
   savedModels: "agentry_run's and agentry_session_start's model, and agentry_models_list",
+  agentModels: "agentry_agent_model",
 };
 
 /**
@@ -405,6 +409,7 @@ export async function checkCli(
   const schedulesHelp = await runCli(bin, ["runhost", "schedules", "--help"], {
     timeoutMs: 10_000,
   });
+  const configureHelp = await runCli(bin, ["agent", "configure", "--help"], { timeoutMs: 10_000 });
   return {
     ...v,
     floorChecked: v.semver !== undefined,
@@ -442,6 +447,9 @@ export async function checkCli(
         attachHelp.stdout + attachHelp.stderr,
       ),
       savedModels: /--model\b/.test(runHelp),
+      agentModels: /--model string\s+the saved model it runs on/.test(
+        configureHelp.stdout + configureHelp.stderr,
+      ),
     },
   };
 }
