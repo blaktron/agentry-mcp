@@ -89,10 +89,24 @@ and the CLI's last stderr lines as `log`.
 | `agentry_schedule_pause`     | `agentry schedule pause <id>` or `agentry schedule resume <id>`, then `agentry schedule show <id> --json` | the schedule as `agentry_schedule_show` gives it, paused or resumed                                                                                                                                                                                   |
 | `agentry_connections_list`   | `agentry connections list --json`                                                                         | the OAuth connections kept for QuickAgent versions' MCP servers, never a token                                                                                                                                                                        |
 | `agentry_model_signins_list` | `agentry model-signins list --json`                                                                       | the model sign-ins local runs can spend, never a token                                                                                                                                                                                                |
+| `agentry_models_list`        | `agentry models list --json`                                                                              | the saved models on this computer (each a provider and a model id under the person's name for it) and which is the default, never a key (CLI v0.7.39 or later)                                                                                        |
 | `agentry_report_design_list` | `agentry report-design list --json`                                                                       | the account's report design library: each design's name, the built-in it started from, which is the default and which images it carries (CLI v0.7.22 or later)                                                                                        |
 | `agentry_report_design_show` | `agentry report-design show --json`                                                                       | the report design a run's PDFs would take, and what chose it                                                                                                                                                                                          |
 | `agentry_destinations_list`  | `agentry destinations list --json`                                                                        | the saved destinations (name, kind, host, on my network) and the QuickAgents each is a default for, never a secret                                                                                                                                    |
 | `agentry_runhost_list`       | `agentry runhost list --json`                                                                             | this computer's remote runhosts: name, address, host key fingerprint, owner, server CLI version, system                                                                                                                                               |
+
+`agentry_run` and `agentry_session_start` take `model`, a saved model's name
+or id from `agentry_models_list`, to run on that saved model instead of the
+default (`agentry run --model`, CLI v0.7.39 or later). Its provider's
+credential pays, and the harness follows that credential unless `adapter`
+names one. The preview's summary names the saved model, and a run on another
+model is another plan and needs its own confirm. A name the computer does not
+have is refused by the CLI, never replaced by the default. `model` is not
+taken with `on`: a runhost runs on the model it keeps. Saving, editing,
+removing or checking a saved model, changing the default and adding a
+provider stay in a terminal or the desktop, and so does making a schedule
+(`agentry schedule add --model`); `agentry_schedule_show` names the saved
+model each schedule runs on.
 
 `agentry_run` takes `on`, a remote runhost's name from `agentry_runhost_list`,
 to run there instead of on this computer (`agentry run --on`, CLI v0.6.1017 or
@@ -488,13 +502,12 @@ the CLI gains is given a tool or a row here before the server ships.
 | `agentry models check`              | changes the saved models every later run, schedule and agent may take, or checks one by asking its provider (a Claude subscription's check spends one message), which the person decides in a terminal or the desktop |
 | `agentry models default`            | changes the saved models every later run, schedule and agent may take, or checks one by asking its provider (a Claude subscription's check spends one message), which the person decides in a terminal or the desktop |
 | `agentry models edit`               | changes the saved models every later run, schedule and agent may take, or checks one by asking its provider (a Claude subscription's check spends one message), which the person decides in a terminal or the desktop |
-| `agentry models list`               | lists the saved models and providers on this computer; a tool lists them beside the run tool's model choice when runs can name one                                                                                    |
 | `agentry models remove`             | changes the saved models every later run, schedule and agent may take, or checks one by asking its provider (a Claude subscription's check spends one message), which the person decides in a terminal or the desktop |
 | `agentry open`                      | acts on this computer's folders and desktop (lists the runs made from here, or opens a folder in the file manager)                                                                                                    |
 | `agentry profiles list`             | changes the stored MCP profiles, which hold the keys a QuickAgent's servers use                                                                                                                                       |
 | `agentry profiles remove`           | changes the stored MCP profiles, which hold the keys a QuickAgent's servers use                                                                                                                                       |
 | `agentry providers add`             | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                                                                                               |
-| `agentry providers list`            | lists the saved models and providers on this computer; a tool lists them beside the run tool's model choice when runs can name one                                                                                    |
+| `agentry providers list`            | lists the providers on this computer, each with its credential's kind; agentry_models_list names each saved model's provider                                                                                          |
 | `agentry providers remove`          | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                                                                                               |
 | `agentry publish`                   | publishes to the registry or changes what the person's account holds there; a person decides that in a terminal or on the site                                                                                        |
 | `agentry report-design delete`      | publishes to the registry or changes what the person's account holds there; a person decides that in a terminal or on the site                                                                                        |

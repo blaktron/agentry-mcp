@@ -176,6 +176,14 @@ export function registerRunTools(d: Driver): void {
             `Stop the run after this many seconds; the runner policy's budget when omitted (${DEFAULT_RUN_TIMEOUT_SECONDS} by default).`,
           ),
         adapter: z.string().optional().describe("The harness adapter (default docker-agent)."),
+        model: z
+          .string()
+          .optional()
+          .describe(
+            "The saved model to run on, by its name or id (see agentry_models_list; `--model`, CLI v0.7.39 or later). " +
+              "Its provider's credential pays and the harness follows that credential unless adapter names one. " +
+              "This computer's default saved model when omitted; a name it does not have is refused, never replaced by the default.",
+          ),
         out: z
           .string()
           .optional()

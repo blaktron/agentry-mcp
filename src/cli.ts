@@ -54,6 +54,8 @@ export interface CliFeatures {
   runhostSchedules: boolean;
   /** `agent … --on <runhost>`: the persistent agents on a remote runhost. */
   runhostAgents: boolean;
+  /** `run --model` and `models list --json`: a run on any of the computer's saved models. */
+  savedModels: boolean;
 }
 
 /** The features of a CLI that has them all (the tests' fake, a current CLI). */
@@ -76,6 +78,7 @@ export const ALL_FEATURES: CliFeatures = {
   runhostSignIns: true,
   runhostSchedules: true,
   runhostAgents: true,
+  savedModels: true,
 };
 
 /**
@@ -101,6 +104,7 @@ export const FEATURE_TOOLS: Record<keyof CliFeatures, string> = {
   runhostSignIns: "agentry_run's on with the runhost's own plan sign-in",
   runhostSchedules: "agentry_schedule_list's on",
   runhostAgents: "the agent tools' on",
+  savedModels: "agentry_run's and agentry_session_start's model, and agentry_models_list",
 };
 
 /**
@@ -437,6 +441,7 @@ export async function checkCli(
       runhostAgents: /--on string\s+run the command on the remote runhost/.test(
         attachHelp.stdout + attachHelp.stderr,
       ),
+      savedModels: /--model\b/.test(runHelp),
     },
   };
 }

@@ -190,6 +190,35 @@ export function registerReadTools(d: Driver): void {
 
   registerTool(
     d.server,
+    "agentry_models_list",
+    {
+      description:
+        "List the saved models on this computer, each a provider and a model id under the person's name for it, " +
+        "and which is the default, with agentry models list --json (never a key). agentry_run's and " +
+        "agentry_session_start's model names one of them; without it a run is on the default. Adding, editing, " +
+        "removing or checking a saved model, changing the default and adding a provider stay in a terminal or the desktop.",
+      inputSchema: {
+        policy: z
+          .string()
+          .optional()
+          .describe("The operator policy file; the default when omitted."),
+      },
+      annotations: readOnly,
+    },
+    (a) =>
+      guard("agentry_models_list", async () => {
+        if (!d.features.savedModels)
+          throw new ArgumentError(
+            "this agentry CLI has no saved models a run can name; update the CLI to v0.7.39 or later",
+          );
+        const argv = ["models", "list", "--json"];
+        flag(argv, "policy", a.policy);
+        return d.run("agentry_models_list", argv);
+      }),
+  );
+
+  registerTool(
+    d.server,
     "agentry_knowledge_list",
     {
       description:
