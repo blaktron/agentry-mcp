@@ -138,6 +138,8 @@ export interface RunArgs {
   intake?: Record<string, string>;
   timeoutSeconds?: number;
   adapter?: string;
+  /** The saved model the run is on, by name or id (`--model`); the default when omitted. */
+  model?: string;
   out?: string;
   deliverTo?: string;
   destinations?: string[];
@@ -207,6 +209,8 @@ export interface CompiledPlan {
   harness?: {
     adapter?: string;
     model?: string;
+    /** The saved model the plan was compiled on. */
+    savedModel?: { id: string; name: string };
     agent?: { env?: { fromInference?: boolean }[] };
     host?: { env?: { fromInference?: boolean }[] };
     modelSignIn?: { provider?: string };
@@ -299,6 +303,10 @@ function checkOn(d: Driver, a: RunArgs, mode: RunMode): void {
     throw new ArgumentError(
       "this agentry CLI cannot run a session on a remote runhost (its run has no --detach); update the CLI, or start the session on this computer",
     );
+  if (given(a.model))
+    throw new ArgumentError(
+      "model chooses among this computer's saved models, and a run on a runhost uses the model the runhost keeps; leave model out",
+    );
   if (given(a.adapter) && !d.features.runhostSignIns)
     throw new ArgumentError(
       "this agentry CLI's run --on takes no adapter; update the CLI to v0.7.6 or later, or leave adapter out",
@@ -343,6 +351,7 @@ function commonFlags(argv: string[], a: RunArgs, mode: RunMode): void {
   bool(argv, "no-voice", a.noVoice);
   flag(argv, "voice-file", a.voiceFile);
   flag(argv, "adapter", a.adapter);
+  flag(argv, "model", a.model);
   flag(argv, "policy", a.policy);
   flag(argv, "registry", a.registry);
   for (const f of a.files ?? []) argv.push("--file", value("files", f));
@@ -367,13 +376,14 @@ function listed(items: string[] | undefined, none: string): string {
 function modelWords(p: RunPlan): string {
   const h = p.plan.harness;
   if (!h?.model) return "Model: as the runner policy sets it.";
+  const named = h.savedModel ? `the saved model ${h.savedModel.name} (${h.model})` : h.model;
   const credits = [...(h.agent?.env ?? []), ...(h.host?.env ?? [])].some((e) => e.fromInference);
   const paid = credits
     ? "paid with your Agentry credits"
     : h.modelSignIn
       ? `spends your ${h.modelSignIn.provider ?? "model"} plan through its sign-in`
       : "paid with the provider key the runner policy names";
-  return `Model: ${h.model}, ${paid}.`;
+  return `Model: ${named}, ${paid}.`;
 }
 
 /** A run's budget in words: the wall clock, the cost cap and the tool-call cap, each when set. */
@@ -505,6 +515,7 @@ function runFacts(p: RunPlan, a: RunArgs, timeoutSeconds: number, refusals: Plan
     voiceFile: a.voiceFile ?? "",
     maxTurns: a.maxTurns ?? null,
     maxCost: a.maxCost ?? null,
+    model: a.model ?? "",
     registry: a.registry ?? "",
     inputFile: a.inputFile ?? "",
     out: a.out ?? "",
@@ -562,6 +573,10 @@ export async function runConsent(
     throw new ArgumentError("give destinations or noDestination, not both");
   if (a.reportTheme && a.reportDesign)
     throw new ArgumentError("give reportTheme or reportDesign, not both");
+  if (a.model !== undefined && !d.features.savedModels)
+    throw new ArgumentError(
+      "this agentry CLI has no run --model; update the CLI to v0.7.39 or later to choose a saved model, or leave model out",
+    );
   // The flags only the run carries are checked before anything is planned.
   deliveryFlags([], a);
   checkOn(d, a, mode);
@@ -684,6 +699,7 @@ export async function runConsent(
     ask:
       `${mode === "interactive" ? "Start a session with" : "Run"} ${plan.ref}${a.on !== undefined ? ` on the remote runhost ${a.on}` : ""} (${plan.mode}` +
       `${mode === "interactive" ? "" : `, up to ${timeoutSeconds}s`})? Contract: ${canonical(plan.contract)}. ` +
+      `${a.model !== undefined ? `${modelWords(plan)} ` : ""}` +
       `${a.deliverTo !== undefined ? `Copies its deliverables to ${a.deliverTo}. ` : ""}` +
       `${sends.destinations.length ? `Sends its result and deliverables to ${sends.destinations.join(", ")}. ` : ""}` +
       `${secrets.length ? `Signs in with: ${secrets.map(describeSignIn).join("; ")}. ` : ""}` +
