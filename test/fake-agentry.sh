@@ -66,6 +66,11 @@
 #   FAKE_PIN_FILE      a file whose content, when it exists, is FAKE_PIN_VERSION (so a test can move the pin between calls)
 #   FAKE_AGENT_RUNNING  the agent runs: with FAKE_NO_RUNNING_UPDATES, `agent install --plan` reports it as its refusal
 #   FAKE_NO_RUNNING_UPDATES  set to make `agent install --help` omit the running agent's update (a CLI before v0.7.19)
+#   FAKE_NO_MANAGED    set to make `managed show --help` print the root's help (a CLI before managed settings)
+#   FAKE_MANAGED_REFUSED  `managed show` prints its document and exits 11 with this reason on stderr (no run may start)
+#   FAKE_MANAGED_REFRESH_FAIL  `managed refresh` exits 2 with this on stderr
+#   FAKE_LOCKED        `setup` and `agent configure` are refused with this sentence on stderr (exit 11), as for a locked managed setting
+#   FAKE_SCHEDULE_HELD  the schedule list and show print this as `held`, and `run.unsafeMode` true
 set -u
 if [ -n "${FAKE_ARGV:-}" ]; then
   printf '%s\n' "$@" >> "$FAKE_ARGV"
@@ -106,12 +111,18 @@ fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "configure" ] && [ "${3:-}" = "--help" ]; then
   echo "Usage: agentry agent configure <name> [flags]"; [ -z "${FAKE_NO_AGENT_MODELS:-}" ] && echo "      --model string   the saved model it runs on, by name or id (agentry models list); default follows the default${FAKE_NO_RUNHOST_MODELS:-; with --on, one the runhost holds (agentry runhost model <runhost>)}"; exit 0
 fi
+if [ "${1:-}" = "managed" ] && [ "${2:-}" = "show" ] && [ "${3:-}" = "--help" ]; then
+  if [ -n "${FAKE_NO_MANAGED:-}" ]; then echo "Usage: agentry [command]"; else printf 'Usage:\n  agentry managed show [flags]\n'; fi; exit 0
+fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "uninstall" ] && [ "${3:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_AGENT_INSTALL:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent uninstall <name> [flags]"; fi; exit 0
 fi
 if [ "${2:-}" = "--help" ]; then echo "Usage: agentry $1"; exit 0; fi
 echo "narration: running $1" >&2
 if [ -n "${FAKE_SLEEP:-}" ]; then sleep "$FAKE_SLEEP"; fi
+if [ -n "${FAKE_LOCKED:-}" ] && { [ "$1" = setup ] || { [ "$1" = agent ] && [ "${2:-}" = configure ]; }; }; then
+  echo "$FAKE_LOCKED" >&2; exit 11
+fi
 if [ -n "${FAKE_STDOUT+x}" ]; then printf '%s' "$FAKE_STDOUT"; exit "${FAKE_EXIT:-0}"; fi
 has() { for a in "$@"; do :; done; case " $ARGS " in *" $1 "*) return 0;; esac; return 1; }
 ARGS="$*"
@@ -215,12 +226,32 @@ if [ "${1:-}" = "runhost" ]; then
   exit 0
 fi
 case "$1" in
+  managed)
+    case "${2:-}" in
+      show)
+        echo '{"documents":[{"registry":"https://registry.example","organization":"acme","version":3,"issuedAt":"2026-11-08T09:00:00Z","fetchedAt":"2026-11-09T07:00:00Z","settings":[{"id":"unsafeMode","value":false,"locked":true,"known":true,"applied":true},{"id":"newSetting","value":"x","locked":false,"known":false,"applied":false}]}],"problems":[]}'
+        [ -n "${FAKE_MANAGED_REFUSED:-}" ] && { echo "$FAKE_MANAGED_REFUSED" >&2; exit 11; } ;;
+      refresh)
+        [ -n "${FAKE_MANAGED_REFRESH_FAIL:-}" ] && { echo "$FAKE_MANAGED_REFRESH_FAIL" >&2; exit 2; }
+        echo "acme, version 3" ;;
+      *) echo "fake: managed ${2:-}" >&2; exit 2 ;;
+    esac ;;
   whoami) echo '{"username":"example","tier":"pro"}' ;;
   schedule)
     case "${2:-}" in
-      show) echo '{"schedule":{"id":"'"$3"'","name":"weekly","ref":"acme/widget","paused":false,"describe":"every Monday at 09:00"},"next":["2026-11-09T09:00:00Z"],"runs":[]}' ;;
+      show)
+        if [ -n "${FAKE_SCHEDULE_HELD:-}" ]; then
+          echo '{"schedule":{"id":"'"$3"'","name":"weekly","ref":"acme/widget","paused":false,"describe":"every Monday at 09:00","run":{"unsafeMode":true}},"held":"'"$FAKE_SCHEDULE_HELD"'","next":["2026-11-09T09:00:00Z"],"runs":[]}'
+        else
+          echo '{"schedule":{"id":"'"$3"'","name":"weekly","ref":"acme/widget","paused":false,"describe":"every Monday at 09:00"},"next":["2026-11-09T09:00:00Z"],"runs":[]}'
+        fi ;;
       pause|resume) echo "schedule $3 ${2}d" >&2 ;;
-      *) echo '[{"id":"s1","name":"weekly","ref":"acme/widget","paused":false,"describe":"every Monday at 09:00","alarm":true}]' ;;
+      *)
+        if [ -n "${FAKE_SCHEDULE_HELD:-}" ]; then
+          echo '[{"id":"s1","name":"weekly","ref":"acme/widget","paused":false,"describe":"every Monday at 09:00","alarm":true,"held":"'"$FAKE_SCHEDULE_HELD"'","run":{"unsafeMode":true}}]'
+        else
+          echo '[{"id":"s1","name":"weekly","ref":"acme/widget","paused":false,"describe":"every Monday at 09:00","alarm":true}]'
+        fi ;;
     esac ;;
   connections) echo '[{"ref":"acme/widget@1.0.0","server":"notion","issuer":"https://auth.example"}]' ;;
   model-signins) echo '[{"vendor":"claude","account":"me@example.com"}]' ;;
