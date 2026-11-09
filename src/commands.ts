@@ -47,6 +47,8 @@ export const TOOL_COMMANDS: Record<string, readonly string[]> = {
   agentry_schedule_list: ["schedule list", "runhost schedules"],
   agentry_schedule_show: ["schedule show"],
   agentry_schedule_pause: ["schedule pause", "schedule resume", "schedule show"],
+  agentry_managed_show: ["managed show"],
+  agentry_managed_refresh: ["managed refresh", "managed show"],
   agentry_runhost_list: ["runhost list"],
   agentry_agent_list: ["agent list"],
   agentry_agent_show: ["agent show"],
@@ -81,8 +83,6 @@ const AGENT_SETUP =
   "configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds";
 const LOCAL_STORE =
   "deletes, downloads, exports or imports a kept pack, voice, design or memory on this computer; the person does it in a terminal or the desktop";
-const ORG_POLICY =
-  "reads or refreshes what the person's organization manages; the desktop and the terminal show it where the person can act on it";
 const PROFILES = "changes the stored MCP profiles, which hold the keys a QuickAgent's servers use";
 const SCAFFOLD =
   "writes a new workspace in a folder of the person's; agentry_draft drafts one from a description";
@@ -182,8 +182,6 @@ export const TERMINAL_ONLY: Record<string, string> = {
   "agent messenger pair": AGENT_SETUP,
   "agent messenger test": AGENT_SETUP,
   "agent messenger manifest": AGENT_SETUP,
-  "managed show": ORG_POLICY,
-  "managed refresh": ORG_POLICY,
   "profiles list": PROFILES,
   "profiles remove": PROFILES,
 };
