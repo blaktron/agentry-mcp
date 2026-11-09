@@ -116,7 +116,8 @@ export const FEATURE_TOOLS: Record<keyof CliFeatures, string> = {
   runhostSignIns: "agentry_run's on with the runhost's own plan sign-in",
   runhostSchedules: "agentry_schedule_list's on",
   runhostAgents: "the agent tools' on",
-  savedModels: "agentry_run's and agentry_session_start's model, and agentry_models_list",
+  savedModels:
+    "agentry_run's and agentry_session_start's model, agentry_models_list and agentry_providers_list",
   agentModels: "agentry_agent_model",
   runhostModels:
     "agentry_models_list's on, and agentry_run's and agentry_session_start's model with on",

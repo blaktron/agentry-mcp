@@ -255,6 +255,7 @@ case "$1" in
     esac ;;
   connections) echo '[{"ref":"acme/widget@1.0.0","server":"notion","issuer":"https://auth.example"}]' ;;
   model-signins) echo '[{"vendor":"claude","account":"me@example.com"}]' ;;
+  providers) echo '{"providers":[{"id":"copilot","vendor":"copilot","kind":"Copilot plan","state":"signed in as octo","models":["Copilot auto"],"account":"octo","createdAt":"2026-11-09T10:00:00Z","app":"github-app"}],"signIns":[{"vendor":"copilot","kind":"copilot-signin","account":"octo","state":"signed in","createdAt":"2026-11-09T10:00:00Z","provider":"copilot","inUse":true},{"vendor":"chatgpt","kind":"chatgpt-plan","account":"me@example.com","state":"signed in","createdAt":"2026-11-08T10:00:00Z","provider":"openai","inUse":false}]}' ;;
   models) echo '{"default":"71903d13","max":10,"models":[{"id":"71903d13","name":"anthropic","provider":"anthropic","model":"claude-sonnet-5-5","default":true},{"id":"d3f17234","name":"Qwen","provider":"custom-lab","model":"qwen3","contextWindow":32768}]}' ;;
   report-design)
     case "$2" in

@@ -75,8 +75,10 @@ through a tool.
 
 Saved models (`agentry models`) and the providers they are paid with
 (`agentry providers`) are the person's to add, change, check and remove, in a
-terminal or the desktop: no tool lists or changes them yet, and a run uses the
-computer's default saved model.
+terminal or the desktop. `agentry_models_list` lists the saved models and
+`agentry_providers_list` the providers, with every model sign-in and connected
+account kept on the computer (CLI v0.7.41 or later lists the sign-ins); no tool
+changes them, and signing in again is `agentry providers add` in a terminal.
 
 ## Find, install and run
 
@@ -312,8 +314,10 @@ or approve one in Settings → Your computer for them: those stay in the app.
 copies or sends a run already made again, previewed and confirmed like a run.
 
 `agentry_schedule_list`, `agentry_connections_list` and
-`agentry_model_signins_list` show the schedules, OAuth connections and model
-sign-ins on this computer, never a token.
+`agentry_providers_list` show the schedules, OAuth connections, and providers
+with the model sign-ins on this computer, never a token.
+`agentry_model_signins_list` is deprecated in favour of
+`agentry_providers_list`, as the CLI's `model-signins` is of `providers`.
 `agentry_schedule_show` shows one schedule, its next occurrences and its runs.
 `agentry_schedule_pause` pauses or resumes one, only when the person asked;
 making, changing or removing a schedule stays in a terminal or the desktop.
@@ -493,7 +497,7 @@ tool error carrying the CLI's envelope.
   terminal-only. Needs CLI 0.7.23 or later.
 
 Terminal-only workflows include signing in to MCP servers (`agentry connect`)
-and model vendors (`agentry model-signins add`), adding or changing schedules,
+and model vendors (`agentry providers add`), adding or changing schedules,
 saving destinations and default sets, adding (`--save`, `agentry report-design import`), replacing, picking the default (`use`) or deleting a report design,
 forking, publishing/yanking, shipping a Knowledge pack with a QuickAgent
 (`agentry knowledge ship`, `agentry draft --ship`, the per-pack confirmation

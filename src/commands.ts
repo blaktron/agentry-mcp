@@ -41,7 +41,9 @@ export const TOOL_COMMANDS: Record<string, readonly string[]> = {
   agentry_report_design_list: ["report-design list"],
   agentry_report_design_build: ["report-design design", "report-design cover"],
   agentry_connections_list: ["connections list"],
+  // Deprecated with the CLI's model-signins; agentry_providers_list lists the same sign-ins.
   agentry_model_signins_list: ["model-signins list"],
+  agentry_providers_list: ["providers list"],
   // `runhost model` with no flag lists what a runhost holds; its --add, --remove and --default stay in a terminal.
   agentry_models_list: ["models list", "runhost model"],
   agentry_schedule_list: ["schedule list", "runhost schedules"],
@@ -94,10 +96,19 @@ const SCHEDULE_NOW =
   "runs a schedule's QuickAgent now on the consent given when the schedule was made; agentry_run asks for a run's consent itself";
 const SAVED_MODELS =
   "changes the saved models every later run, schedule and agent may take, or checks one by asking its provider (a Claude subscription's check spends one message), which the person decides in a terminal or the desktop";
-const PROVIDERS_LIST =
-  "lists the providers on this computer, each with its credential's kind; agentry_models_list names each saved model's provider";
 const SIGNED_OUT =
   "checks this computer's keychain and login session for running schedules signed out, which the person sets up in a terminal";
+
+/**
+ * The CLI's deprecated aliases: hidden from its help, so absent from
+ * spec/cli-commands.txt, and still answered for one release line. A tool may
+ * run one, and the terminal-only list may name one, until the CLI drops it.
+ */
+export const DEPRECATED_COMMANDS: string[] = [
+  "model-signins add",
+  "model-signins list",
+  "model-signins remove",
+];
 
 /** The commands that stay in a terminal or the desktop, and why. */
 export const TERMINAL_ONLY: Record<string, string> = {
@@ -112,7 +123,6 @@ export const TERMINAL_ONLY: Record<string, string> = {
   "model-signins remove": SIGN_IN,
   "providers add": SIGN_IN,
   "providers remove": SIGN_IN,
-  "providers list": PROVIDERS_LIST,
   "models add": SAVED_MODELS,
   "models edit": SAVED_MODELS,
   "models remove": SAVED_MODELS,
