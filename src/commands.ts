@@ -57,6 +57,8 @@ export const TOOL_COMMANDS: Record<string, readonly string[]> = {
   agentry_agent_tasks: ["agent tasks"],
   agentry_agent_compact: ["agent compact"],
   agentry_agent_grant: ["agent grant"],
+  // The model alone (--model); the rest of configure stays with the person.
+  agentry_agent_model: ["agent configure", "agent show", "models list"],
 };
 
 const SIGN_IN =
@@ -165,7 +167,6 @@ export const TERMINAL_ONLY: Record<string, string> = {
   "runhost attach": RUNHOST_JOBS,
   "runhost collect": RUNHOST_JOBS,
   "runhost cancel": RUNHOST_JOBS,
-  "agent configure": AGENT_SETUP,
   "agent enable": AGENT_SETUP,
   "agent disable": AGENT_SETUP,
   "agent reset": AGENT_SETUP,

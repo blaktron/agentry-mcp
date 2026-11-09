@@ -171,6 +171,18 @@ changing the default, adding a provider, and making a schedule on a model
 (`agentry schedule add --model`) stay in a terminal or the desktop;
 `agentry_schedule_show` names the model each schedule runs on.
 
+Each persistent agent runs on a saved model too (CLI v0.7.39 or later): the
+one it names, or the default it follows. `agentry_agent_list` and
+`agentry_agent_show` return it as `model`; say which when the person asks what
+an agent runs on. `agentry_agent_model` moves an agent to another saved model,
+or to `default`, only when the person asked for that move: it is two calls,
+and the preview names the model the agent is on and the one it would move to.
+Show both and confirm only once they agree. A running agent takes the move at
+its next turn without a stop and is told; no new agreement is asked, since the
+person set the model's provider up. When a turn fails because the agent's
+saved model is gone or cannot be used, tell the person the error as it is and
+offer to move the agent: never move it on your own.
+
 ## Remote runhosts
 
 A person may have remote runhosts: their own Linux servers, set up from this

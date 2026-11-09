@@ -59,6 +59,8 @@
 #   FAKE_INFO_VERSION  the latest version `info` reports (default 1.0.0)
 #   FAKE_NO_AGENT_PLAN  set to make `agent install --help` omit --plan (a CLI without agent install --plan)
 #   FAKE_NO_SAVED_MODELS  set to make `run --help` omit --model (a CLI without saved model runs)
+#   FAKE_NO_AGENT_MODELS  set to make `agent configure --help` omit --model (a CLI before agents named saved models)
+#   FAKE_AGENT_MODEL_FILE  a file whose content, when it exists, is the `model` `agent show` says the assistant runs on
 #   FAKE_PIN_VERSION   the version `agent install --plan` pins acme/summarizer to (default 1.2.0; "none" resolves to none)
 #   FAKE_PIN_FILE      a file whose content, when it exists, is FAKE_PIN_VERSION (so a test can move the pin between calls)
 #   FAKE_AGENT_RUNNING  the agent runs: with FAKE_NO_RUNNING_UPDATES, `agent install --plan` reports it as its refusal
@@ -100,6 +102,9 @@ fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "install" ] && [ "${3:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_AGENT_INSTALL:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent install <ns/name[@version]> | --local <folder> [flags]"; [ -z "${FAKE_NO_AGENT_PLAN:-}" ] && echo "      --plan   preview only"; [ -z "${FAKE_NO_RUNNING_UPDATES:-}" ] && printf 'A running agent takes the update at its next turn,\nits conversation continuing.\n'; fi; exit 0
 fi
+if [ "${1:-}" = "agent" ] && [ "${2:-}" = "configure" ] && [ "${3:-}" = "--help" ]; then
+  echo "Usage: agentry agent configure <name> [flags]"; [ -z "${FAKE_NO_AGENT_MODELS:-}" ] && echo "      --model string   the saved model it runs on, by name or id (agentry models list); default follows the default"; exit 0
+fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "uninstall" ] && [ "${3:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_AGENT_INSTALL:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent uninstall <name> [flags]"; fi; exit 0
 fi
@@ -119,6 +124,8 @@ refusal="${FAKE_REFUSAL:-}"
 if [ "$1" = "agent" ]; then
   share_line="the folder /home/me/agentry/assistantshare, read and write"
   [ -n "${FAKE_AGENT_LINE_FILE:-}" ] && [ -f "$FAKE_AGENT_LINE_FILE" ] && share_line=$(cat "$FAKE_AGENT_LINE_FILE")
+  agent_model='{"savedModel":{"id":"71903d13","name":"anthropic"},"model":"anthropic/claude-sonnet-5-5","followsDefault":true}'
+  [ -n "${FAKE_AGENT_MODEL_FILE:-}" ] && [ -f "$FAKE_AGENT_MODEL_FILE" ] && agent_model=$(cat "$FAKE_AGENT_MODEL_FILE")
   case "$2" in
     list) echo '[{"agent":"main","displayName":"Agentry Helper","state":"desktop only","desktopOnly":true},{"agent":"assistant","displayName":"Assistant","state":"stopped"}]' ;;
     show)
@@ -128,7 +135,7 @@ if [ "$1" = "agent" ]; then
           exit 0 ;;
       esac
       [ "$3" = main ] && { echo '{"agent":"main","displayName":"Agentry Helper","state":"desktop only","desktopOnly":true}'; exit 0; }
-      printf '{"agent":"%s","displayName":"Assistant","state":"%s","roster":[{"id":"data","kind":"folder","name":"its own files","grantedBy":"agent","state":"on","on":true,"line":"its own files","fixed":true},{"id":"share","kind":"folder","name":"share","grantedBy":"person","state":"off","on":false,"line":"%s"},{"id":"desktop:blender","kind":"desktop","name":"Blender on your computer","grantedBy":"built-in","state":"off","on":false,"line":"Can use Blender on your computer through its MCP server, through Agentry Desktop"},{"id":"desktop:blender:exec","kind":"desktop-exec","name":"Blender: code without asking","grantedBy":"built-in","state":"off","on":false,"line":"Runs code inside Blender without Agentry Desktop asking you each time"}],"config":{"enabled":true,"consented":{}}}\n' "$3" "${FAKE_AGENT_STATE:-stopped}" "$share_line" ;;
+      printf '{"agent":"%s","displayName":"Assistant","state":"%s","roster":[{"id":"data","kind":"folder","name":"its own files","grantedBy":"agent","state":"on","on":true,"line":"its own files","fixed":true},{"id":"share","kind":"folder","name":"share","grantedBy":"person","state":"off","on":false,"line":"%s"},{"id":"desktop:blender","kind":"desktop","name":"Blender on your computer","grantedBy":"built-in","state":"off","on":false,"line":"Can use Blender on your computer through its MCP server, through Agentry Desktop"},{"id":"desktop:blender:exec","kind":"desktop-exec","name":"Blender: code without asking","grantedBy":"built-in","state":"off","on":false,"line":"Runs code inside Blender without Agentry Desktop asking you each time"}],"config":{"enabled":true,"consented":{}},"model":%s}\n' "$3" "${FAKE_AGENT_STATE:-stopped}" "$share_line" "$agent_model" ;;
     start)
       if has --yes || [ -n "${FAKE_AGENT_AGREED:-}" ]; then
         echo '{"segment":1,"state":"running","client":"cli","adapter":"docker-agent","model":"test"}'
@@ -179,6 +186,9 @@ if [ "$1" = "agent" ]; then
     tasks)
       st=on; [ "${4:-}" = pause ] && st=paused
       printf '{"agent":"%s","tasks":[{"id":"t1","name":"Morning summary","cron":"0 8 * * 1-5","zone":"Europe/Oslo","instruction":"Summarise my day.","state":"%s","madeBy":"agent","lastResult":"Three meetings today."}]}\n' "$3" "$st" ;;
+    configure)
+      [ -n "${FAKE_WRITES:-}" ] && echo "agent-configured" >> "$FAKE_WRITES"
+      echo '[{"id":"data","kind":"folder","name":"its own files","grantedBy":"agent","state":"on","on":true,"line":"its own files","fixed":true}]' ;;
     *) echo "fake: agent $2" >&2; exit 2 ;;
   esac
   exit 0
