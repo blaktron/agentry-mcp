@@ -67,7 +67,8 @@ export function registerReadTools(d: Driver): void {
     [
       "agentry_model_signins_list",
       ["model-signins", "list"],
-      "List the model sign-ins local runs can spend (a ChatGPT, Claude or Copilot plan, or a connected key), " +
+      "Deprecated: use agentry_providers_list, which lists the same sign-ins beside the providers they pay. " +
+        "List the model sign-ins local runs can spend (a ChatGPT, Claude or Copilot plan, or a connected key), " +
         "with agentry model-signins list --json (never a token). Adding or removing one stays in a terminal.",
     ],
     [
@@ -250,6 +251,41 @@ export function registerReadTools(d: Driver): void {
         const argv = ["models", "list", "--json"];
         flag(argv, "policy", a.policy);
         return d.run("agentry_models_list", argv);
+      }),
+  );
+
+  registerTool(
+    d.server,
+    "agentry_providers_list",
+    {
+      description:
+        "List the providers on this computer, the credentials the saved models are paid with, and every model " +
+        "sign-in and connected account kept here, with agentry providers list --json (never a key or a token). " +
+        "`providers` each has `id`, `vendor`, `kind` (how it is paid: a key, a plan's sign-in, a connected account, " +
+        "Agentry credits, or an endpoint that takes no key), `state` (whether its credential is here), `models` (the " +
+        "names of the saved models on it), and, for one a sign-in or connected account pays, that credential's " +
+        "`account`, `createdAt`, `lastUsedAt`, `app` and `keyExpiresAt`. `signIns` (CLI v0.7.41 or later) is every " +
+        "kept sign-in and connected account, each with its `vendor`, `kind`, `state`, `account`, `createdAt`, " +
+        "`lastUsedAt`, the `provider` it pays for, and `inUse`, false for one no provider here uses. Signing in, " +
+        "adding a provider and removing one or a kept sign-in (`agentry providers add|remove`) stay in a terminal, " +
+        "where the person sees the vendor's page and the prompt.",
+      inputSchema: {
+        policy: z
+          .string()
+          .optional()
+          .describe("The operator policy file; the default when omitted."),
+      },
+      annotations: readOnly,
+    },
+    (a) =>
+      guard("agentry_providers_list", async () => {
+        if (!d.features.savedModels)
+          throw new ArgumentError(
+            "this agentry CLI has no providers to list; update the CLI to v0.7.39 or later",
+          );
+        const argv = ["providers", "list", "--json"];
+        flag(argv, "policy", a.policy);
+        return d.run("agentry_providers_list", argv);
       }),
   );
 

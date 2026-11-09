@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { TERMINAL_ONLY, TOOL_COMMANDS } from "../dist/commands.js";
+import { DEPRECATED_COMMANDS, TERMINAL_ONLY, TOOL_COMMANDS } from "../dist/commands.js";
 import { subcommands } from "../scripts/cli-commands.mjs";
 import { connect } from "./helpers.js";
 
@@ -35,7 +35,7 @@ test("every CLI command is a tool's or terminal-only", () => {
 });
 
 test("nothing names a command the CLI does not have", () => {
-  const known = new Set(TREE);
+  const known = new Set([...TREE, ...DEPRECATED_COMMANDS]);
   for (const [tool, commands] of Object.entries(TOOL_COMMANDS))
     for (const c of commands)
       assert.ok(known.has(c), `${tool} runs \`agentry ${c}\`, which the CLI does not list`);
