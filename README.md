@@ -177,8 +177,11 @@ runhost pair`, `agentry runhost unpair`), changing its settings and choosing its
 model stay in a terminal. Each takes an administrator's sign-in to the person's
 server, a sign-in in the browser, or a change only the person decides on, and a
 host agent never holds those. So does making a schedule there (`agentry schedule
-add --on`), whose consent names what the runhost's store will keep; listing a
-runhost's schedules is `agentry_schedule_list` with `on`. So does `agentry runhost update`, which installs
+add --on`), whose consent names what the runhost's store will keep, and moving
+one to another saved model the runhost holds (`agentry schedule edit <id> --on
+<runhost> --model <name|default>`, CLI v0.7.44 or later); listing a runhost's
+schedules, with the saved model each runs on, is `agentry_schedule_list` with
+`on`. So does `agentry runhost update`, which installs
 this computer's CLI on the person's server; the CLI also does it by itself on
 the first runhost command after it updates. A run on a runhost whose CLI is not
 this computer's version is refused, naming both versions: the person runs
