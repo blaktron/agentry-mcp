@@ -25,7 +25,9 @@ export function registerRunTools(d: Driver): void {
         "NAME of the environment variable holding the key, never the key — and, unless skipImages, pull and build " +
         "the gateway, harness and runner images (minutes; progress is streamed when the host asks for it). " +
         "Returns the policy as configured and whether the images are ready. Call agentry_doctor first to see " +
-        "what is missing.",
+        "what is missing. If the person's managed settings lock a value this would write (agentry_managed_show lists " +
+        "what is locked), the CLI refuses and its sentence comes back unchanged, with exit class `policy`: " +
+        "show it as it is, in no words of this server's own, and do not try another value to get around it.",
       inputSchema: {
         provider: z
           .enum([

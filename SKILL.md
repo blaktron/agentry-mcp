@@ -317,6 +317,19 @@ sign-ins on this computer, never a token.
 `agentry_schedule_show` shows one schedule, its next occurrences and its runs.
 `agentry_schedule_pause` pauses or resumes one, only when the person asked;
 making, changing or removing a schedule stays in a terminal or the desktop.
+A schedule's `held`, when present, is why it does not run now: its consents were
+given in Unsafe Mode and the person's managed settings forbid it; it runs again
+once they stop. `run.unsafeMode` says its consents were given in Unsafe Mode.
+
+`agentry_managed_show` reads the managed settings the person's organization sets
+(CLI v0.7.35 or later): per setting its value, whether it is `locked` or an
+organization default, whether this computer's Agentry applies it, and, when the
+CLI exits 11 (no run may start), the CLI's reason. `agentry_managed_refresh`
+asks the registry again, then shows them; use it when the person asked or the
+copy looks stale. When `agentry_setup` or `agentry_agent_model` is refused for a
+locked value, show the CLI's sentence as it is and do not try another value
+around it. Changing managed settings is an admin's act in the organization's
+console; there is no tool for it, and do not offer to change one.
 
 Sessions use `agentry_session_start`, `agentry_session_send`, and
 `agentry_session_close`. Start reports a launched process, not a ready sandbox.

@@ -110,7 +110,10 @@ export function registerReadTools(d: Driver): void {
     {
       description:
         "Show one schedule on this computer (an id from agentry_schedule_list): its QuickAgent, repeat, next " +
-        "occurrences, whether it is paused, and what its runs did, with agentry schedule show <id> --json.",
+        "occurrences, whether it is paused, and what its runs did, with agentry schedule show <id> --json. " +
+        "`held`, when present, is why the schedule does not run now (managed settings that forbid the Unsafe " +
+        "Mode its consents were given in; it runs again once they stop forbidding it), and the schedule's " +
+        "`run.unsafeMode` says its consents were given in Unsafe Mode. agentry_managed_show reads those settings.",
       inputSchema: { id: scheduleId },
       annotations: readOnly,
     },
@@ -160,7 +163,9 @@ export function registerReadTools(d: Driver): void {
     {
       description:
         "List the QuickAgents scheduled to run on this computer, with their repeat, next run, output folder and " +
-        "whether each is paused, with agentry schedule list --json. With `on`, a remote runhost's schedules " +
+        "whether each is paused, with agentry schedule list --json; a schedule's `held` is why it does not run " +
+        "now (managed settings that forbid the Unsafe Mode its consents were given in) and its `run.unsafeMode` " +
+        "says they were given in Unsafe Mode (agentry_managed_show reads those settings). With `on`, a remote runhost's schedules " +
         "instead (agentry runhost schedules <on> --json): each one's next run, what it keeps in the runhost's " +
         "encrypted store (never a value), and its latest runs' jobs. Adding, editing, pausing or removing a " +
         "schedule, here or on a runhost (`agentry schedule add --on`), stays in a terminal or the desktop.",

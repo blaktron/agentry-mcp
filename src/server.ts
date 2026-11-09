@@ -13,13 +13,14 @@ import { Driver } from "./driver.js";
 import { registerAgentTools } from "./tools/agents.js";
 import { registerAuthorTools } from "./tools/author.js";
 import { registerDeliverTools } from "./tools/deliver.js";
+import { registerManagedTools } from "./tools/managed.js";
 import { registerReadTools } from "./tools/read.js";
 import { registerRunTools } from "./tools/run.js";
 import { registerSessionTools } from "./tools/session.js";
 import { registerWriteTools } from "./tools/write.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.7.18";
+export const SERVER_VERSION = "0.7.19";
 
 export function instructions(bin: string, cliVersion: string): string {
   return [
@@ -60,7 +61,10 @@ export function instructions(bin: string, cliVersion: string): string {
     "To read this computer's state: agentry_schedule_list, agentry_connections_list, " +
       "agentry_model_signins_list, agentry_report_design_show, agentry_report_design_list and " +
       "agentry_destinations_list. Changing any of " +
-      "them stays with the person, in a terminal or the desktop.",
+      "them stays with the person, in a terminal or the desktop. agentry_managed_show reads the settings the " +
+      "person's organization manages for them (what is locked, what is a default, what this computer applies); " +
+      "changing them is an admin's act in the organization's console. A tool that writes the person's settings " +
+      "(agentry_setup, agentry_agent_model) can be refused by a locked value: pass the CLI's sentence on as it is.",
     "",
     "An interactive session is the same consent, then agentry_session_start opens the QuickAgent's " +
       "session through the CLI's JSON-line protocol; agentry_session_send is one turn in and the reply out, as the " +
@@ -123,6 +127,7 @@ export function createServer(opts: ServerOptions): { server: McpServer; driver: 
   );
   registerAuthorTools(driver);
   registerReadTools(driver);
+  registerManagedTools(driver);
   registerWriteTools(driver);
   registerRunTools(driver);
   registerSessionTools(driver);

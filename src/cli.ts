@@ -62,6 +62,8 @@ export interface CliFeatures {
   runhostModels: boolean;
   /** `agent configure --on --model`: an agent on a runhost moved to a saved model the runhost holds. */
   agentRunhostModels: boolean;
+  /** `managed show --json` and `managed refresh`: the managed settings an organization sets. */
+  managedSettings: boolean;
 }
 
 /** The features of a CLI that has them all (the tests' fake, a current CLI). */
@@ -88,6 +90,7 @@ export const ALL_FEATURES: CliFeatures = {
   agentModels: true,
   runhostModels: true,
   agentRunhostModels: true,
+  managedSettings: true,
 };
 
 /**
@@ -118,6 +121,7 @@ export const FEATURE_TOOLS: Record<keyof CliFeatures, string> = {
   runhostModels:
     "agentry_models_list's on, and agentry_run's and agentry_session_start's model with on",
   agentRunhostModels: "agentry_agent_model's on",
+  managedSettings: "agentry_managed_show and agentry_managed_refresh",
 };
 
 /**
@@ -419,6 +423,8 @@ export async function checkCli(
     timeoutMs: 10_000,
   });
   const configureHelp = await runCli(bin, ["agent", "configure", "--help"], { timeoutMs: 10_000 });
+  // A CLI without the command prints the root's help, which names no `managed show`.
+  const managedHelp = await runCli(bin, ["managed", "show", "--help"], { timeoutMs: 10_000 });
   return {
     ...v,
     floorChecked: v.semver !== undefined,
@@ -465,6 +471,7 @@ export async function checkCli(
       agentRunhostModels: /--model string[^\n]*with --on, one the runhost holds/.test(
         configureHelp.stdout + configureHelp.stderr,
       ),
+      managedSettings: /agentry managed show/.test(managedHelp.stdout + managedHelp.stderr),
     },
   };
 }

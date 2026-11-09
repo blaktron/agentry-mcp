@@ -325,8 +325,10 @@ export function registerAgentTools(d: Driver): void {
         "to that digest. A running agent takes the new model at its next turn without a stop, and is told; on " +
         "another harness its new conversation carries the last exchange. `default` has it follow the default. " +
         "agentry_models_list names the saved models. A turn on a saved model the computer no longer has fails " +
-        "and never runs on another. The agent's other settings stay in a terminal or the desktop. Needs CLI " +
-        "v0.7.39 or later.",
+        "and never runs on another. The agent's other settings stay in a terminal or the desktop. If the " +
+        "person's managed settings lock the model (agentry_managed_show lists what is locked), the CLI refuses the " +
+        "move and its sentence comes back unchanged: show it as it is, in no words of this server's own. Needs " +
+        "CLI v0.7.39 or later.",
       inputSchema: {
         name,
         model: z
