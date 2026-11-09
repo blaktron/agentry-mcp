@@ -88,6 +88,10 @@ const RUN_DEFAULTS =
   "changes what every later run takes or where its results go, which the person decides once in a terminal or the desktop";
 const SCHEDULE_NOW =
   "runs a schedule's QuickAgent now on the consent given when the schedule was made; agentry_run asks for a run's consent itself";
+const SAVED_MODELS =
+  "changes the saved models every later run, schedule and agent may take, or checks one by asking its provider (a Claude subscription's check spends one message), which the person decides in a terminal or the desktop";
+const MODELS_LIST =
+  "lists the saved models and providers on this computer; a tool lists them beside the run tool's model choice when runs can name one";
 const SIGNED_OUT =
   "checks this computer's keychain and login session for running schedules signed out, which the person sets up in a terminal";
 
@@ -102,6 +106,15 @@ export const TERMINAL_ONLY: Record<string, string> = {
   "connections client remove": SIGN_IN,
   "model-signins add": SIGN_IN,
   "model-signins remove": SIGN_IN,
+  "providers add": SIGN_IN,
+  "providers remove": SIGN_IN,
+  "providers list": MODELS_LIST,
+  "models list": MODELS_LIST,
+  "models add": SAVED_MODELS,
+  "models edit": SAVED_MODELS,
+  "models remove": SAVED_MODELS,
+  "models default": SAVED_MODELS,
+  "models check": SAVED_MODELS,
   "runhost model": SIGN_IN,
   "runhost store": SIGN_IN,
   publish: PUBLISH,
