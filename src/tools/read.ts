@@ -8,7 +8,9 @@
 import { z } from "zod";
 
 import { ArgumentError, bool, flag, value } from "../argv.js";
+import { runCli } from "../cli.js";
 import { guard, type Driver } from "../driver.js";
+import { toToolResult } from "../envelope.js";
 import { registerTool } from "../toolargs.js";
 
 const registry = z
@@ -19,6 +21,17 @@ const registry = z
   );
 
 const readOnly = { readOnlyHint: true, openWorldHint: true };
+
+const scheduleId = z.string().describe("The schedule's id, as agentry_schedule_list gives it.");
+
+/** A schedule's id as the CLI writes one: ten lowercase letters and digits. */
+function checkScheduleId(id: string): string {
+  if (!/^[a-z0-9]{10}$/.test(id))
+    throw new ArgumentError(
+      `id ${JSON.stringify(id)} is not a schedule's id (see agentry_schedule_list)`,
+    );
+  return id;
+}
 
 export function registerReadTools(d: Driver): void {
   for (const [name, command, description] of [
@@ -36,6 +49,13 @@ export function registerReadTools(d: Driver): void {
       "agentry_voice_status",
       ["voice", "status"],
       "Read the local and account Writing Voice metadata and review with agentry voice status --json.",
+    ],
+    [
+      "agentry_voice_show",
+      ["voice", "show"],
+      "Read the Writing Voice kept on this computer, the VOICE.md a run writes in, with agentry voice show " +
+        "--json. Making, improving or editing it is agentry_voice_build; uploading it to the account stays in a " +
+        "terminal.",
     ],
     [
       "agentry_connections_list",
@@ -84,6 +104,56 @@ export function registerReadTools(d: Driver): void {
         }),
     );
   }
+  registerTool(
+    d.server,
+    "agentry_schedule_show",
+    {
+      description:
+        "Show one schedule on this computer (an id from agentry_schedule_list): its QuickAgent, repeat, next " +
+        "occurrences, whether it is paused, and what its runs did, with agentry schedule show <id> --json.",
+      inputSchema: { id: scheduleId },
+      annotations: readOnly,
+    },
+    (a) =>
+      guard("agentry_schedule_show", async () =>
+        d.run("agentry_schedule_show", ["schedule", "show", checkScheduleId(a.id), "--json"]),
+      ),
+  );
+
+  registerTool(
+    d.server,
+    "agentry_schedule_pause",
+    {
+      description:
+        "Pause a schedule on this computer, or resume it (`agentry schedule pause|resume <id>`), then return " +
+        "it as agentry_schedule_show does. A paused schedule's alarm is removed until it is resumed, and what " +
+        "fell due while it was paused does not run. Pause or resume only when the person asked. Making, " +
+        "changing or removing a schedule stays in a terminal or the desktop.",
+      inputSchema: {
+        id: scheduleId,
+        action: z
+          .enum(["pause", "resume"])
+          .describe("pause removes the schedule's alarm; resume sets it again."),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    (a) =>
+      guard("agentry_schedule_pause", async () => {
+        const id = checkScheduleId(a.id);
+        // pause and resume print a line, not JSON: the exit code is the answer,
+        // and the schedule's state is read back as JSON.
+        const changed = await runCli(d.bin, ["schedule", a.action, id], d.defaults);
+        if (changed.spawnError || changed.code !== 0)
+          return toToolResult("agentry_schedule_pause", changed);
+        return d.run("agentry_schedule_pause", ["schedule", "show", id, "--json"]);
+      }),
+  );
+
   registerTool(
     d.server,
     "agentry_schedule_list",

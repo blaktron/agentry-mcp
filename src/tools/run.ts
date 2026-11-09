@@ -379,9 +379,12 @@ export function registerRunTools(d: Driver): void {
       description:
         "Validate a QuickAgent workspace offline with the installed agentry CLI (`agentry validate --json`): the " +
         "registry's manifest rules (the CLI names those it ran) and its S1/S3/S4 scanners, as data — issues, inventory and scan " +
-        "findings with file and line, the bundle version, and whether publish would pass. The report comes back " +
-        'whatever the verdict; exitClass "cli" beside it means it failed. For authoring: fix what it names, ' +
-        "then validate again; publishing itself is `agentry publish` in a terminal.",
+        "findings with file and line, the bundle version, and the scaffold lines still to replace (`unfinished`: a TODO, " +
+        "a placeholder namespace, author or licence, a template's README). `stages` names the registry stages it ran here " +
+        "and those only the registry runs (secrets, AI Review, support scripts, declared servers, publisher signals, the diff " +
+        "against the previous version), so a pass is not a publication verdict: the registry runs every stage at " +
+        'submission and decides. The report comes back whatever the verdict; exitClass "cli" beside it means it failed. ' +
+        "For authoring: fix what it names, then validate again; publishing itself is `agentry publish` in a terminal.",
       inputSchema: {
         dir: z.string().describe("The workspace directory holding agent.yaml."),
         strict: z.boolean().optional().describe("Also fail on warnings."),

@@ -203,7 +203,12 @@ if [ "${1:-}" = "runhost" ]; then
 fi
 case "$1" in
   whoami) echo '{"username":"example","tier":"pro"}' ;;
-  schedule) echo '[{"id":"s1","name":"weekly","ref":"acme/widget","paused":false,"describe":"every Monday at 09:00","alarm":true}]' ;;
+  schedule)
+    case "${2:-}" in
+      show) echo '{"schedule":{"id":"'"$3"'","name":"weekly","ref":"acme/widget","paused":false,"describe":"every Monday at 09:00"},"next":["2026-11-09T09:00:00Z"],"runs":[]}' ;;
+      pause|resume) echo "schedule $3 ${2}d" >&2 ;;
+      *) echo '[{"id":"s1","name":"weekly","ref":"acme/widget","paused":false,"describe":"every Monday at 09:00","alarm":true}]' ;;
+    esac ;;
   connections) echo '[{"ref":"acme/widget@1.0.0","server":"notion","issuer":"https://auth.example"}]' ;;
   model-signins) echo '[{"vendor":"claude","account":"me@example.com"}]' ;;
   report-design)
@@ -227,7 +232,8 @@ case "$1" in
       echo '{"status":"ok","knowledge":{"written":["index.md"]}}'
     fi ;;
   voice)
-    if [ "${2:-}" = status ]; then echo '{"registry":"https://r.example","local":null,"signedIn":false}'; else
+    if [ "${2:-}" = status ]; then echo '{"registry":"https://r.example","local":null,"signedIn":false}'
+    elif [ "${2:-}" = show ]; then echo '{"voice":"# Voice\nShort sentences.\n","path":"/home/me/.agentry/voice/VOICE.md"}'; else
       [ -n "${FAKE_WRITES:-}" ] && echo built >> "$FAKE_WRITES"
       echo '{"status":"ok","voice":{"written":true}}'
     fi ;;
@@ -322,6 +328,7 @@ if os.environ["RAW"]:
     out += ",\"refusals\":" + os.environ["RAW"]
 print(out, end="")')
       rdesktop=""
+      [ -n "${FAKE_RUN_DESKTOP_LINE:-}" ] && rdesktop=",\"desktop\":${FAKE_RUN_DESKTOP_LINE}"
       [ -n "${FAKE_RUN_DESKTOP:-}" ] && rdesktop=',"desktop":{"servers":[{"id":"blender","application":"Blender","package":"pypi:mcp-for-blender@2.2.7","tools":[{"name":"get_scene_info","class":"read"},{"name":"execute_blender_code","class":"exec"}]}],"computerUse":"'"${FAKE_RUN_DESKTOP}"'"}'
       timeout=900; mode=autonomous; prev=""; for a in "$@"; do if [ "$prev" = "--timeout" ]; then timeout=$a; fi; if [ "$prev" = "--mode" ]; then mode=$a; fi; prev=$a; done
       echo "narration: compiled plan" >&2
