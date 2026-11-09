@@ -42,6 +42,8 @@ export const TOOL_COMMANDS: Record<string, readonly string[]> = {
   agentry_report_design_build: ["report-design design", "report-design cover"],
   agentry_connections_list: ["connections list"],
   agentry_model_signins_list: ["model-signins list"],
+  // `runhost model` with no flag lists what a runhost holds; its --add, --remove and --default stay in a terminal.
+  agentry_models_list: ["models list", "runhost model"],
   agentry_schedule_list: ["schedule list", "runhost schedules"],
   agentry_schedule_show: ["schedule show"],
   agentry_schedule_pause: ["schedule pause", "schedule resume", "schedule show"],
@@ -56,6 +58,8 @@ export const TOOL_COMMANDS: Record<string, readonly string[]> = {
   agentry_agent_tasks: ["agent tasks"],
   agentry_agent_compact: ["agent compact"],
   agentry_agent_grant: ["agent grant"],
+  // The model alone (--model); the rest of configure stays with the person.
+  agentry_agent_model: ["agent configure", "agent show", "models list", "runhost model"],
 };
 
 const SIGN_IN =
@@ -88,6 +92,10 @@ const RUN_DEFAULTS =
   "changes what every later run takes or where its results go, which the person decides once in a terminal or the desktop";
 const SCHEDULE_NOW =
   "runs a schedule's QuickAgent now on the consent given when the schedule was made; agentry_run asks for a run's consent itself";
+const SAVED_MODELS =
+  "changes the saved models every later run, schedule and agent may take, or checks one by asking its provider (a Claude subscription's check spends one message), which the person decides in a terminal or the desktop";
+const PROVIDERS_LIST =
+  "lists the providers on this computer, each with its credential's kind; agentry_models_list names each saved model's provider";
 const SIGNED_OUT =
   "checks this computer's keychain and login session for running schedules signed out, which the person sets up in a terminal";
 
@@ -102,7 +110,14 @@ export const TERMINAL_ONLY: Record<string, string> = {
   "connections client remove": SIGN_IN,
   "model-signins add": SIGN_IN,
   "model-signins remove": SIGN_IN,
-  "runhost model": SIGN_IN,
+  "providers add": SIGN_IN,
+  "providers remove": SIGN_IN,
+  "providers list": PROVIDERS_LIST,
+  "models add": SAVED_MODELS,
+  "models edit": SAVED_MODELS,
+  "models remove": SAVED_MODELS,
+  "models default": SAVED_MODELS,
+  "models check": SAVED_MODELS,
   "runhost store": SIGN_IN,
   publish: PUBLISH,
   yank: PUBLISH,
@@ -152,7 +167,6 @@ export const TERMINAL_ONLY: Record<string, string> = {
   "runhost attach": RUNHOST_JOBS,
   "runhost collect": RUNHOST_JOBS,
   "runhost cancel": RUNHOST_JOBS,
-  "agent configure": AGENT_SETUP,
   "agent enable": AGENT_SETUP,
   "agent disable": AGENT_SETUP,
   "agent reset": AGENT_SETUP,

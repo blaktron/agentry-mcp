@@ -58,6 +58,10 @@
 #   FAKE_INSTALLED_AS_AGENT  the install plan is refused because the release is installed as a persistent agent
 #   FAKE_INFO_VERSION  the latest version `info` reports (default 1.0.0)
 #   FAKE_NO_AGENT_PLAN  set to make `agent install --help` omit --plan (a CLI without agent install --plan)
+#   FAKE_NO_SAVED_MODELS  set to make `run --help` omit --model (a CLI without saved model runs)
+#   FAKE_NO_AGENT_MODELS  set to make `agent configure --help` omit --model (a CLI before agents named saved models)
+#   FAKE_NO_RUNHOST_MODELS  set to make `run --help` and `agent configure --help` omit what --on --model adds (a CLI before runhosts held saved models)
+#   FAKE_AGENT_MODEL_FILE  a file whose content, when it exists, is the `model` `agent show` says the assistant runs on
 #   FAKE_PIN_VERSION   the version `agent install --plan` pins acme/summarizer to (default 1.2.0; "none" resolves to none)
 #   FAKE_PIN_FILE      a file whose content, when it exists, is FAKE_PIN_VERSION (so a test can move the pin between calls)
 #   FAKE_AGENT_RUNNING  the agent runs: with FAKE_NO_RUNNING_UPDATES, `agent install --plan` reports it as its refusal
@@ -74,7 +78,7 @@ if [ "${1:-}" = "install" ] && [ "${2:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_PLAN:-}" ]; then echo "Flags: --yes --allow-unsigned --target"; else echo "Flags: --plan --yes --allow-unsigned --target"; fi; exit 0
 fi
 if [ "${1:-}" = "run" ] && [ "${2:-}" = "--help" ]; then
-  if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode ${FAKE_NO_PROTOCOL:+removed} ${FAKE_NO_PROTOCOL:---session-protocol} ${FAKE_NO_DELIVER:---deliver-to} ${FAKE_NO_DESTINATION:---destination} ${FAKE_NO_RUNHOST:---on}${FAKE_NO_RUNHOST:+}${FAKE_OLD_RUNHOST:- carrying the secrets, files and intake}${FAKE_OLD_RUNHOST:-; runhost model --sign-in}${FAKE_NO_RUNHOST_SESSIONS:- --detach}"; fi; exit 0
+  if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode ${FAKE_NO_PROTOCOL:+removed} ${FAKE_NO_PROTOCOL:---session-protocol} ${FAKE_NO_DELIVER:---deliver-to} ${FAKE_NO_DESTINATION:---destination} ${FAKE_NO_RUNHOST:---on}${FAKE_NO_RUNHOST:+}${FAKE_OLD_RUNHOST:- carrying the secrets, files and intake}${FAKE_OLD_RUNHOST:-; runhost model --sign-in}${FAKE_NO_RUNHOST_SESSIONS:- --detach} ${FAKE_NO_SAVED_MODELS:---model} ${FAKE_NO_RUNHOST_MODELS:-(with --on, its credential alone travels with the run)}"; fi; exit 0
 fi
 if [ "${1:-}" = "knowledge" ] && [ "${2:-}" = "create" ] && [ "${3:-}" = "--help" ]; then
   echo "Flags: --file --brief-file --web --no-web ${FAKE_NO_SOURCES:---repo --url}"; exit 0
@@ -99,6 +103,9 @@ fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "install" ] && [ "${3:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_AGENT_INSTALL:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent install <ns/name[@version]> | --local <folder> [flags]"; [ -z "${FAKE_NO_AGENT_PLAN:-}" ] && echo "      --plan   preview only"; [ -z "${FAKE_NO_RUNNING_UPDATES:-}" ] && printf 'A running agent takes the update at its next turn,\nits conversation continuing.\n'; fi; exit 0
 fi
+if [ "${1:-}" = "agent" ] && [ "${2:-}" = "configure" ] && [ "${3:-}" = "--help" ]; then
+  echo "Usage: agentry agent configure <name> [flags]"; [ -z "${FAKE_NO_AGENT_MODELS:-}" ] && echo "      --model string   the saved model it runs on, by name or id (agentry models list); default follows the default${FAKE_NO_RUNHOST_MODELS:-; with --on, one the runhost holds (agentry runhost model <runhost>)}"; exit 0
+fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "uninstall" ] && [ "${3:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_AGENT_INSTALL:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent uninstall <name> [flags]"; fi; exit 0
 fi
@@ -118,6 +125,8 @@ refusal="${FAKE_REFUSAL:-}"
 if [ "$1" = "agent" ]; then
   share_line="the folder /home/me/agentry/assistantshare, read and write"
   [ -n "${FAKE_AGENT_LINE_FILE:-}" ] && [ -f "$FAKE_AGENT_LINE_FILE" ] && share_line=$(cat "$FAKE_AGENT_LINE_FILE")
+  agent_model='{"savedModel":{"id":"71903d13","name":"anthropic"},"model":"anthropic/claude-sonnet-5-5","followsDefault":true}'
+  [ -n "${FAKE_AGENT_MODEL_FILE:-}" ] && [ -f "$FAKE_AGENT_MODEL_FILE" ] && agent_model=$(cat "$FAKE_AGENT_MODEL_FILE")
   case "$2" in
     list) echo '[{"agent":"main","displayName":"Agentry Helper","state":"desktop only","desktopOnly":true},{"agent":"assistant","displayName":"Assistant","state":"stopped"}]' ;;
     show)
@@ -127,7 +136,7 @@ if [ "$1" = "agent" ]; then
           exit 0 ;;
       esac
       [ "$3" = main ] && { echo '{"agent":"main","displayName":"Agentry Helper","state":"desktop only","desktopOnly":true}'; exit 0; }
-      printf '{"agent":"%s","displayName":"Assistant","state":"%s","roster":[{"id":"data","kind":"folder","name":"its own files","grantedBy":"agent","state":"on","on":true,"line":"its own files","fixed":true},{"id":"share","kind":"folder","name":"share","grantedBy":"person","state":"off","on":false,"line":"%s"},{"id":"desktop:blender","kind":"desktop","name":"Blender on your computer","grantedBy":"built-in","state":"off","on":false,"line":"Can use Blender on your computer through its MCP server, through Agentry Desktop"},{"id":"desktop:blender:exec","kind":"desktop-exec","name":"Blender: code without asking","grantedBy":"built-in","state":"off","on":false,"line":"Runs code inside Blender without Agentry Desktop asking you each time"}],"config":{"enabled":true,"consented":{}}}\n' "$3" "${FAKE_AGENT_STATE:-stopped}" "$share_line" ;;
+      printf '{"agent":"%s","displayName":"Assistant","state":"%s","roster":[{"id":"data","kind":"folder","name":"its own files","grantedBy":"agent","state":"on","on":true,"line":"its own files","fixed":true},{"id":"share","kind":"folder","name":"share","grantedBy":"person","state":"off","on":false,"line":"%s"},{"id":"desktop:blender","kind":"desktop","name":"Blender on your computer","grantedBy":"built-in","state":"off","on":false,"line":"Can use Blender on your computer through its MCP server, through Agentry Desktop"},{"id":"desktop:blender:exec","kind":"desktop-exec","name":"Blender: code without asking","grantedBy":"built-in","state":"off","on":false,"line":"Runs code inside Blender without Agentry Desktop asking you each time"}],"config":{"enabled":true,"consented":{}},"model":%s}\n' "$3" "${FAKE_AGENT_STATE:-stopped}" "$share_line" "$agent_model" ;;
     start)
       if has --yes || [ -n "${FAKE_AGENT_AGREED:-}" ]; then
         echo '{"segment":1,"state":"running","client":"cli","adapter":"docker-agent","model":"test"}'
@@ -178,6 +187,9 @@ if [ "$1" = "agent" ]; then
     tasks)
       st=on; [ "${4:-}" = pause ] && st=paused
       printf '{"agent":"%s","tasks":[{"id":"t1","name":"Morning summary","cron":"0 8 * * 1-5","zone":"Europe/Oslo","instruction":"Summarise my day.","state":"%s","madeBy":"agent","lastResult":"Three meetings today."}]}\n' "$3" "$st" ;;
+    configure)
+      [ -n "${FAKE_WRITES:-}" ] && echo "agent-configured" >> "$FAKE_WRITES"
+      echo '[{"id":"data","kind":"folder","name":"its own files","grantedBy":"agent","state":"on","on":true,"line":"its own files","fixed":true}]' ;;
     *) echo "fake: agent $2" >&2; exit 2 ;;
   esac
   exit 0
@@ -186,6 +198,7 @@ if [ "${1:-}" = "runhost" ]; then
   [ -n "${FAKE_NO_RUNHOST:-}" ] && { echo 'Error: unknown command "runhost" for "agentry"' >&2; exit 1; }
   case "${2:-}" in
     list) echo '{"runhosts":[{"name":"lab","host":"192.0.2.10","port":22,"hostKey":"ssh-ed25519 AAAA","hostKeyFingerprint":"SHA256:abc","owner":{"kind":"devices"},"deviceID":"aaaa","cliVersion":"0.6.1017","arch":"amd64","os":"Debian GNU/Linux 13 (trixie)","gvisor":"20261026.0","addedAt":"2026-11-01T00:00:00Z"}]}' ;;
+    model) printf '{"runhost":"%s","models":{"models":[{"id":"d3f17234","name":"Qwen","provider":"custom-lab","model":"qwen3","contextWindow":32768,"kind":"no-key","default":true,"users":[{"kind":"agent","id":"assistant","name":"Assistant"}]},{"id":"5a1c0b22","name":"ChatGPT","provider":"openai","model":"gpt-5.2","kind":"sign-in","refusal":"the runhost is not signed in to ChatGPT"}],"default":"d3f17234","max":10}}\n' "$3" ;;
     doctor)
       if [ -n "${FAKE_RUNHOST_DOWN:-}" ]; then
         printf '{"ref":"runhost %s","checks":[{"name":"docker","status":"ok","detail":"Docker Engine 29.0.0"},{"name":"runhost:gvisor","status":"fail","detail":"the policy runs containers under runc","remedy":"run agentry runhost add again"}]}\n' "$3"; exit 1
@@ -211,6 +224,7 @@ case "$1" in
     esac ;;
   connections) echo '[{"ref":"acme/widget@1.0.0","server":"notion","issuer":"https://auth.example"}]' ;;
   model-signins) echo '[{"vendor":"claude","account":"me@example.com"}]' ;;
+  models) echo '{"default":"71903d13","max":10,"models":[{"id":"71903d13","name":"anthropic","provider":"anthropic","model":"claude-sonnet-5-5","default":true},{"id":"d3f17234","name":"Qwen","provider":"custom-lab","model":"qwen3","contextWindow":32768}]}' ;;
   report-design)
     case "$2" in
       design|cover)
@@ -330,9 +344,13 @@ print(out, end="")')
       rdesktop=""
       [ -n "${FAKE_RUN_DESKTOP_LINE:-}" ] && rdesktop=",\"desktop\":${FAKE_RUN_DESKTOP_LINE}"
       [ -n "${FAKE_RUN_DESKTOP:-}" ] && rdesktop=',"desktop":{"servers":[{"id":"blender","application":"Blender","package":"pypi:mcp-for-blender@2.2.7","tools":[{"name":"get_scene_info","class":"read"},{"name":"execute_blender_code","class":"exec"}]}],"computerUse":"'"${FAKE_RUN_DESKTOP}"'"}'
-      timeout=900; mode=autonomous; prev=""; for a in "$@"; do if [ "$prev" = "--timeout" ]; then timeout=$a; fi; if [ "$prev" = "--mode" ]; then mode=$a; fi; prev=$a; done
+      timeout=900; mode=autonomous; rmodel=""; prev=""; for a in "$@"; do if [ "$prev" = "--timeout" ]; then timeout=$a; fi; if [ "$prev" = "--mode" ]; then mode=$a; fi; if [ "$prev" = "--model" ]; then rmodel=$a; fi; prev=$a; done
+      # The plan is compiled on the saved model --model names.
+      rharness=""
+      [ -n "$rmodel" ] && rharness=',"harness":{"adapter":"docker-agent","model":"custom/qwen3","savedModel":{"id":"d3f17234","name":"'"$rmodel"'"}}'
+      [ "$rmodel" = Gone ] && { echo 'agentry: there is no saved model "Gone" on this computer, and a run never takes the default in its place' >&2; exit 11; }
       echo "narration: compiled plan" >&2
-      printf '{"ref":"%s","version":"1.0.0","digest":"sha256:aaaa","mode":"%s","modes":["autonomous","interactive"],"summary":"x","plan":{"planVersion":2,"ref":"%s","digest":"sha256:aaaa","mode":"%s","policySha256":"sha256:pppp","capabilities":{"egressMode":"none","fsReadMode":"workspace"%s},"enforcement":{"network":"gateway --block-network"},"tools":["write_report"],"gateway":{"image":"ghcr.io/blaktron/agentry-mcp-gateway:v0.44.3"},"proxy":{},"budgets":{"timeoutSeconds":%s}},"planSha256":"abc","contract":%s,"contractDigest":"sha256:cccc","attestation":"%s","signed":%s,"diff":{},"needsConfirmation":true,"reason":"a first run"%s}\n' "$rref" "$mode" "$rref" "$mode" "$rdesktop" "$timeout" "$contract" "$ratt" "$rsigned" "$rjson"
+      printf '{"ref":"%s","version":"1.0.0","digest":"sha256:aaaa","mode":"%s","modes":["autonomous","interactive"],"summary":"x","plan":{"planVersion":2,"ref":"%s","digest":"sha256:aaaa","mode":"%s","policySha256":"sha256:pppp","capabilities":{"egressMode":"none","fsReadMode":"workspace"%s},"enforcement":{"network":"gateway --block-network"},"tools":["write_report"],"gateway":{"image":"ghcr.io/blaktron/agentry-mcp-gateway:v0.44.3"},"proxy":{},"budgets":{"timeoutSeconds":%s}%s},"planSha256":"abc","contract":%s,"contractDigest":"sha256:cccc","attestation":"%s","signed":%s,"diff":{},"needsConfirmation":true,"reason":"a first run"%s}\n' "$rref" "$mode" "$rref" "$mode" "$rdesktop" "$timeout" "$rharness" "$contract" "$ratt" "$rsigned" "$rjson"
     elif has --mode && [ "$(prev=""; for a in "$@"; do if [ "$prev" = "--mode" ]; then echo "$a"; fi; prev=$a; done)" = interactive ]; then
       if ! has --session-protocol; then echo "fake: sessions require the protocol" >&2; exit 2; fi
       exec python3 "$(dirname "$0")/fake-session.py" "$@"

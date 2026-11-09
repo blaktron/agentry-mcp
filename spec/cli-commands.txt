@@ -1,4 +1,4 @@
-# agentry version 0.0.0-dev, built from agentry-cli dev 890c9e83
+# agentry version 0.0.0-dev, built from agentry-cli dev 42701bfd
 acp
 agent
 agent attach
@@ -79,10 +79,21 @@ model-signins
 model-signins add
 model-signins list
 model-signins remove
+models
+models add
+models check
+models default
+models edit
+models list
+models remove
 open
 profiles
 profiles list
 profiles remove
+providers
+providers add
+providers list
+providers remove
 publish
 report-design
 report-design cover

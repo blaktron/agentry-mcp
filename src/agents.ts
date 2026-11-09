@@ -292,6 +292,8 @@ interface AgentState {
   desktopOnly?: boolean;
   roster?: RosterEntry[];
   config?: { consented?: Record<string, string> };
+  /** The saved model it runs on (CLI v0.7.39 or later). */
+  model?: AgentModel;
 }
 
 export interface AgentGrantArgs {
@@ -404,6 +406,165 @@ export async function agentGrant(d: Driver, a: AgentGrantArgs): Promise<CallTool
       ),
       ok,
     ),
+  );
+}
+
+/** The saved model an agent runs on, as `agent list|show --json` says it. */
+interface AgentModel {
+  savedModel?: { id: string; name: string };
+  model?: string;
+  followsDefault?: boolean;
+  refusal?: string;
+}
+
+/** One saved model as `models list --json` prints it. */
+interface SavedModel {
+  id: string;
+  name: string;
+  provider: string;
+  model: string;
+  default?: boolean;
+}
+
+export interface AgentModelArgs {
+  name: string;
+  /** A saved model's name or id, or `default`. */
+  model: string;
+  /** A remote runhost's name: the agent there, and the saved models that runhost holds. */
+  on?: string;
+  confirm?: string;
+}
+
+/** The words for following the default, as `agent configure --model` takes them. */
+const FOLLOW_DEFAULT = "default";
+
+/** How the person is told which model an agent runs on. */
+function modelWords(m: AgentModel | undefined): string {
+  if (!m) return "unknown";
+  if (m.refusal) return `refused: ${m.refusal}`;
+  if (!m.savedModel) return m.model ?? "unknown";
+  const named = `${m.savedModel.name} (${m.model ?? ""})`;
+  return m.followsDefault ? `the default, now ${named}` : named;
+}
+
+/**
+ * agentry_agent_model: moving an agent to another saved model is two
+ * calls. The preview reads the agent's model from `agent show --json` and
+ * the saved model asked for from `models list --json`; the digest covers
+ * the agent, the model it is on and the one it moves to, and the confirm
+ * reads both again and moves it only when nothing changed. A move asks
+ * for no new agreement in the CLI: the model's provider was agreed to when
+ * it was set up.
+ */
+export async function agentModel(d: Driver, a: AgentModelArgs): Promise<CallToolResult> {
+  const refused = needsAgents(d, "agentry_agent_model");
+  if (refused) return refused;
+  if (!d.features.agentModels)
+    return text(
+      "agentry_agent_model: this agentry CLI cannot name an agent's saved model (no `agent configure --model`). " +
+        "Update the CLI to v0.7.39 or later (https://secureagentry.net/download); the server never updates it for you.",
+      true,
+    );
+  const name = agentName(a.name);
+  const ref = value("model", a.model);
+  if (a.on !== undefined && !RUNHOST_NAME.test(a.on))
+    throw new ArgumentError(
+      `on ${JSON.stringify(a.on)} is not a runhost's name (see agentry_runhost_list)`,
+    );
+  if (a.on !== undefined && !d.features.agentRunhostModels)
+    return text(
+      "agentry_agent_model: this agentry CLI cannot move an agent on a runhost to one of the runhost's saved models (no `agent configure --on --model`). " +
+        "Update the CLI to v0.7.39 or later (https://secureagentry.net/download); the server never updates it for you.",
+      true,
+    );
+  const where = a.on !== undefined ? `the runhost ${a.on}` : "this computer";
+  const shown = await d.run(
+    "agentry_agent_model (show)",
+    onRunhost(d, ["agent", "show", name, "--json"], a.on),
+  );
+  const env = envelopeOf<AgentState>(shown);
+  if (!env || env.exitClass !== "ok") return { ...shown, isError: true };
+  const st = env.result;
+  if (st.desktopOnly)
+    return text(`agentry_agent_model: the ${name} agent runs only in Agentry Desktop.`, true);
+  let to: { id: string; name: string; model: string } | undefined;
+  if (ref.toLowerCase() !== FOLLOW_DEFAULT) {
+    let all: SavedModel[];
+    if (a.on !== undefined) {
+      const listed = await d.run("agentry_agent_model (models)", [
+        "runhost",
+        "model",
+        a.on,
+        "--json",
+      ]);
+      const models = envelopeOf<{ models?: { models?: SavedModel[] } }>(listed);
+      if (!models || models.exitClass !== "ok") return { ...listed, isError: true };
+      all = models.result.models?.models ?? [];
+    } else {
+      const listed = await d.run("agentry_agent_model (models)", ["models", "list", "--json"]);
+      const models = envelopeOf<{ models: SavedModel[] }>(listed);
+      if (!models || models.exitClass !== "ok") return { ...listed, isError: true };
+      all = models.result.models ?? [];
+    }
+    const found =
+      all.find((m) => m.id === ref) ?? all.find((m) => m.name.toLowerCase() === ref.toLowerCase());
+    if (!found) {
+      const names = all.map((m) => m.name).join(", ") || "none";
+      return text(
+        `agentry_agent_model: there is no saved model ${JSON.stringify(ref)} on ${where}; ${a.on !== undefined ? "it holds" : "its saved models"}: ${names} (or ${FOLLOW_DEFAULT} to follow the default).` +
+          (a.on !== undefined
+            ? ` Making another available there stays in a terminal: agentry runhost model ${a.on} --add <saved model>.`
+            : ""),
+        true,
+      );
+    }
+    to = { id: found.id, name: found.name, model: `${found.provider}/${found.model}` };
+  }
+  const facts = {
+    tool: "agentry_agent_model",
+    agent: st.agent,
+    on: a.on ?? "",
+    from: st.model?.followsDefault ? FOLLOW_DEFAULT : (st.model?.savedModel?.id ?? ""),
+    to: to?.id ?? FOLLOW_DEFAULT,
+  };
+  const running = st.state === "running";
+  const toWords = to ? `${to.name} (${to.model})` : "the default";
+  if (a.confirm === undefined) {
+    return previewText(
+      {
+        agent: st.agent,
+        ...(a.on !== undefined ? { on: a.on } : {}),
+        model: st.model ?? null,
+        from: modelWords(st.model),
+        to: to
+          ? { savedModel: { id: to.id, name: to.name }, model: to.model }
+          : { followsDefault: true },
+        running,
+        writes: false,
+        note:
+          `The agent would run on ${toWords}` +
+          (to ? "" : ", following it when the default changes") +
+          (a.on !== undefined ? `, on the runhost ${a.on}, one the runhost holds` : "") +
+          ". " +
+          (running
+            ? "The running agent takes it at its next turn without a stop, and is told; on another harness its new conversation carries the last exchange. "
+            : "The agent takes it when it next starts. ") +
+          "Its turns are paid with that model's provider" +
+          (a.on !== undefined ? ", with the credential the runhost keeps for it" : "") +
+          `. A turn on a saved model ${a.on !== undefined ? "the runhost no longer holds" : "the computer no longer has"} fails, and never runs on another. ` +
+          "Show the person this; confirm with this digest only once they agree.",
+      },
+      facts,
+    );
+  }
+  const ok = await confirmed(d.server, "agentry_agent_model", a.confirm, facts, {
+    unsigned: false,
+    ask: `Move the ${st.agent} agent${a.on !== undefined ? ` on the runhost ${a.on}` : ""} to ${toWords}?`,
+  });
+  if (!isConsent(ok)) return ok;
+  return d.run(
+    "agentry_agent_model",
+    onRunhost(d, ["agent", "configure", name, "--model", to?.id ?? FOLLOW_DEFAULT, "--json"], a.on),
   );
 }
 

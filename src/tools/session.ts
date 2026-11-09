@@ -87,6 +87,16 @@ export function registerSessionTools(d: Driver): void {
           .optional()
           .describe("Session wall-clock budget in seconds."),
         adapter: z.string().optional().describe("The harness adapter (default docker-agent)."),
+        model: z
+          .string()
+          .optional()
+          .describe(
+            "The saved model to run on, by its name or id (see agentry_models_list; `--model`, CLI v0.7.39 or later). " +
+              "Its provider's credential pays and the harness follows that credential unless adapter names one. " +
+              "This computer's default saved model when omitted; a name it does not have is refused, never replaced by the default. " +
+              "With `on` it is one of this computer's saved models, and its credential alone travels with the run (CLI v0.7.39 or later); " +
+              "the runhost's own saved models are for agentry_agent_model's on, not a run's.",
+          ),
         out: z
           .string()
           .optional()

@@ -1,6 +1,6 @@
 /**
  * The persistent-agent tools: list, show, install, uninstall, start, stop,
- * send, grant, tasks and compact. The Assistant, the Coding agent and the
+ * send, grant, model, tasks and compact. The Assistant, the Coding agent and the
  * persistent QuickAgents installed from a registry run in the background
  * once started; Main runs only in Agentry Desktop. Enabling, configuring
  * and resetting an agent stay with the person, in a terminal or the
@@ -14,6 +14,7 @@ import {
   agentGrant,
   agentInstall,
   agentList,
+  agentModel,
   agentSend,
   agentShow,
   agentStart,
@@ -47,7 +48,9 @@ export function registerAgentTools(d: Driver): void {
       description:
         "List the persistent agents on this computer with the installed agentry CLI (`agentry agent list --json`): " +
         "each agent's name, the name it goes by, and whether it is running, stopped, disabled or runs only in " +
-        "Agentry Desktop, with who runs it and since when.",
+        "Agentry Desktop, with who runs it and since when. `model` is the saved model it runs on: `savedModel` " +
+        "(id and name) and `model` (provider/model id), `followsDefault` when it names none, or `refusal` when " +
+        "its next turn would be refused for its model (CLI v0.7.39 or later).",
       inputSchema: { on },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -65,7 +68,9 @@ export function registerAgentTools(d: Driver): void {
         "version it resolved to or why it resolved to none, what its contract reaches, its digest). " +
         "`subagentRuns` lists the runs it started of its subagents, newest first, at most 50: the subagent's " +
         "exact version, who granted it, when it started and ended, its outcome or error and the run's own id " +
-        "(CLI v0.7.8 or later). A subagent's roster entries, `subagent:<ns>/<name>` and its `:ask` switch, say " +
+        "(CLI v0.7.8 or later). `model` is the saved model it runs on, as agentry_agent_list says it, and a " +
+        "running agent's `status.savedModel` the one its segment runs on (CLI v0.7.39 or later). " +
+        "A subagent's roster entries, `subagent:<ns>/<name>` and its `:ask` switch, say " +
         "whether it is on. It also returns its running segment, its " +
         "roster (each entry's id, kind, what it gives the agent, whether it is on, and what it waits for: its " +
         "folders, memory, heartbeat, skills, stored secrets by name (never a value), git host accounts, the " +
@@ -302,6 +307,52 @@ export function registerAgentTools(d: Driver): void {
       },
     },
     (a) => guard("agentry_agent_grant", () => agentGrant(d, a)),
+  );
+
+  registerTool(
+    d.server,
+    "agentry_agent_model",
+    {
+      description:
+        "Move a persistent agent to another of this computer's saved models (`agentry agent configure <name> " +
+        "--model <model> --json`), in two calls. With `on`, a remote runhost's name, the agent is the one on that " +
+        "runhost and `model` names one of the saved models the runhost holds (agentry_models_list with `on` lists " +
+        "them; CLI v0.7.39 or later): a model it does not hold is refused by name before anything is asked, with " +
+        "what it does hold, and making one available there stays in a terminal (`agentry runhost model <runhost> " +
+        "--add <saved model>`). Without `confirm`: a preview of the model it runs on now (the " +
+        "one it names, or the default it follows), the one it would move to, whether it is running, and a " +
+        "`digest`; nothing changes. Show the person both and only when they agree call again with `confirm` set " +
+        "to that digest. A running agent takes the new model at its next turn without a stop, and is told; on " +
+        "another harness its new conversation carries the last exchange. `default` has it follow the default. " +
+        "agentry_models_list names the saved models. A turn on a saved model the computer no longer has fails " +
+        "and never runs on another. The agent's other settings stay in a terminal or the desktop. Needs CLI " +
+        "v0.7.39 or later.",
+      inputSchema: {
+        name,
+        model: z
+          .string()
+          .describe(
+            "The saved model's name or id, as agentry_models_list names it (with `on`, one the runhost holds), or `default` to follow the default.",
+          ),
+        on: z
+          .string()
+          .optional()
+          .describe(
+            "A remote runhost's name (agentry_runhost_list names them): move the agent there to one of the saved models that runhost holds.",
+          ),
+        confirm: z
+          .string()
+          .optional()
+          .describe("The `digest` a preview of this exact call returned. Omit to preview."),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    (a) => guard("agentry_agent_model", () => agentModel(d, a)),
   );
 
   registerTool(
