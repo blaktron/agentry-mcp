@@ -254,7 +254,9 @@ and stay in a terminal (`agentry runhost add`, `agentry runhost remove`,
 `agentry runhost model` with `--add`, `--remove`, `--default`, `--provider` or
 `--sign-in`, `agentry runhost store`), and never make a schedule on
 one (`agentry schedule add --on`): its consent names everything the runhost's
-store will keep. Tell the person the command to run themselves.
+store will keep. Moving a runhost's schedule to another saved model the runhost
+holds is the person's too: `agentry schedule edit <id> --on <runhost> --model
+<name|default>` (CLI v0.7.44 or later). Tell the person the command to run themselves.
 `agentry_schedule_list` with `on` lists a runhost's schedules and their runs'
 jobs (CLI v0.7.11 or later). A run refused because the runhost's CLI is another version
 than this computer's names both versions: tell the person to run `agentry
