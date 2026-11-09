@@ -968,3 +968,95 @@ test("a CLI without agent configure --model is refused with the version it needs
   assert.match(r.content[0].text, /v0\.7\.39 or later/);
   assert.deepEqual(receivedArgv(argvFile), []);
 });
+
+test("a move on a runhost reads the agent and the runhost's saved models there, and the digest covers on", async () => {
+  const { client, argvFile } = await connect();
+  const p = envelope(
+    await call(client, "agentry_agent_model", { name: "assistant", model: "qwen", on: "lab" }),
+  );
+  assert.equal(p.json.on, "lab");
+  assert.deepEqual(p.json.to, {
+    savedModel: { id: "d3f17234", name: "Qwen" },
+    model: "custom-lab/qwen3",
+  });
+  assert.match(p.json.note, /on the runhost lab, one the runhost holds/);
+  // The same call for another runhost, or for this computer, is another digest.
+  const other = envelope(
+    await call(client, "agentry_agent_model", { name: "assistant", model: "qwen", on: "lab2" }),
+  );
+  assert.notEqual(other.json.digest, p.json.digest);
+  const here = envelope(
+    await call(client, "agentry_agent_model", { name: "assistant", model: "qwen" }),
+  );
+  assert.notEqual(here.json.digest, p.json.digest);
+  const mismatched = await call(client, "agentry_agent_model", {
+    name: "assistant",
+    model: "qwen",
+    on: "lab2",
+    confirm: p.json.digest,
+  });
+  assert.equal(mismatched.isError, true);
+  const r = envelope(
+    await call(client, "agentry_agent_model", {
+      name: "assistant",
+      model: "qwen",
+      on: "lab",
+      confirm: p.json.digest,
+    }),
+  );
+  assert.equal(r.json.exitClass, "ok");
+  const argv = receivedArgv(argvFile).filter((a) => a.includes("lab"));
+  assert.deepEqual(argv[0], ["agent", "show", "assistant", "--json", "--on", "lab"]);
+  assert.deepEqual(argv[1], ["runhost", "model", "lab", "--json"]);
+  assert.deepEqual(argv[argv.length - 1], [
+    "agent",
+    "configure",
+    "assistant",
+    "--model",
+    "d3f17234",
+    "--json",
+    "--on",
+    "lab",
+  ]);
+});
+
+test("a move on a runhost refuses a model the runhost does not hold, by name, before any confirm", async () => {
+  const { client, argvFile } = await connect();
+  const r = await call(client, "agentry_agent_model", {
+    name: "assistant",
+    model: "anthropic",
+    on: "lab",
+  });
+  assert.equal(r.isError, true);
+  assert.match(
+    r.content[0].text,
+    /no saved model "anthropic" on the runhost lab; it holds: Qwen, ChatGPT \(or default.*runhost model lab --add/,
+  );
+  const d = envelope(
+    await call(client, "agentry_agent_model", { name: "assistant", model: "default", on: "lab" }),
+  );
+  assert.deepEqual(d.json.to, { followsDefault: true });
+  for (const a of receivedArgv(argvFile))
+    assert.ok(!a.includes("configure"), `the agent was configured: ${a}`);
+});
+
+test("a move on a runhost is refused for a bad name and with the version it needs on an older CLI", async () => {
+  const { client, argvFile } = await connect();
+  const bad = await call(client, "agentry_agent_model", {
+    name: "assistant",
+    model: "qwen",
+    on: "Lab;x",
+  });
+  assert.equal(bad.isError, true);
+  assert.match(bad.content[0].text, /not a runhost's name/);
+  assert.deepEqual(receivedArgv(argvFile), []);
+  const old = await connect({}, {}, undefined, { ...ALL_FEATURES, agentRunhostModels: false });
+  const r = await call(old.client, "agentry_agent_model", {
+    name: "assistant",
+    model: "qwen",
+    on: "lab",
+  });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /v0\.7\.39 or later/);
+  assert.deepEqual(receivedArgv(old.argvFile), []);
+});

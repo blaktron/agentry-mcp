@@ -81,15 +81,8 @@ test("a saved model the computer does not have is the CLI's refusal, by its name
   assert.match(r.content[0].text, /no saved model "Gone"/);
 });
 
-test("model is refused on a runhost and on a CLI without saved model runs, before anything is planned", async () => {
-  const { client, argvFile } = await connect();
-  const on = await client.callTool({
-    name: "agentry_run",
-    arguments: { ref: "acme/widget", model: "Qwen", on: "lab" },
-  });
-  assert.equal(on.isError, true);
-  assert.match(on.content[0].text, /runhost keeps/);
-
+test("model is refused on a CLI without saved model runs, before anything is planned", async () => {
+  const { argvFile } = await connect();
   const old = await connect({}, {}, undefined, { ...ALL_FEATURES, savedModels: false });
   const r = await old.client.callTool({
     name: "agentry_run",
@@ -120,5 +113,108 @@ test("the probe reads agent configure --model from the CLI's help", async () => 
     assert.equal((await checkCli(FAKE)).features.agentModels, false);
   } finally {
     delete process.env.FAKE_NO_AGENT_MODELS;
+  }
+});
+
+test("agentry_models_list with on: runhost model <on> --json, the runhost's saved models", async () => {
+  const { client, argvFile } = await connect();
+  const r = await client.callTool({ name: "agentry_models_list", arguments: { on: "lab" } });
+  assert.notEqual(r.isError, true);
+  const out = JSON.parse(r.content[0].text);
+  assert.equal(out.result.runhost, "lab");
+  assert.deepEqual(
+    out.result.models.models.map((m) => [m.name, m.kind]),
+    [
+      ["Qwen", "no-key"],
+      ["ChatGPT", "sign-in"],
+    ],
+  );
+  assert.equal(out.result.models.models[1].refusal, "the runhost is not signed in to ChatGPT");
+  assert.equal(out.result.models.default, "d3f17234");
+  assert.deepEqual(receivedArgv(argvFile)[0], ["runhost", "model", "lab", "--json"]);
+});
+
+test("agentry_models_list with on refuses a bad name, a policy beside it, and a CLI that cannot list a runhost's models", async () => {
+  const { client, argvFile } = await connect();
+  const bad = await client.callTool({ name: "agentry_models_list", arguments: { on: "Lab;rm" } });
+  assert.equal(bad.isError, true);
+  assert.match(bad.content[0].text, /not a runhost's name/);
+  const pol = await client.callTool({
+    name: "agentry_models_list",
+    arguments: { on: "lab", policy: "p.yaml" },
+  });
+  assert.equal(pol.isError, true);
+  const old = await connect({}, {}, undefined, { ...ALL_FEATURES, runhostModels: false });
+  const r = await old.client.callTool({ name: "agentry_models_list", arguments: { on: "lab" } });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /v0\.7\.39 or later/);
+  assert.deepEqual(receivedArgv(argvFile), []);
+  assert.deepEqual(receivedArgv(old.argvFile), []);
+});
+
+test("agentry_run's model with on: --model on the plan and the run, and the consent says its credential alone travels", async () => {
+  const { client, argvFile } = await connect();
+  const p = JSON.parse(
+    (
+      await client.callTool({
+        name: "agentry_run",
+        arguments: { ref: "acme/widget", model: "Qwen", on: "lab" },
+      })
+    ).content[0].text,
+  );
+  assert.match(
+    p.summary,
+    /saved model "Qwen": its credential alone travels with the run to the runhost lab/,
+  );
+  const plan = runArgv(argvFile)[0];
+  assert.equal(plan[plan.indexOf("--model") + 1], "Qwen");
+  const r = await client.callTool({
+    name: "agentry_run",
+    arguments: { ref: "acme/widget", model: "Qwen", on: "lab", confirm: p.digest },
+  });
+  assert.notEqual(r.isError, true);
+  const run = runArgv(argvFile).find((a) => !a.includes("--plan"));
+  assert.equal(run[run.indexOf("--model") + 1], "Qwen");
+  assert.equal(run[run.indexOf("--on") + 1], "lab");
+});
+
+test("agentry_session_start's model with on: --model on the session's plan, said in the summary", async () => {
+  const { client, argvFile } = await connect();
+  const r = await client.callTool({
+    name: "agentry_session_start",
+    arguments: { ref: "acme/widget", model: "Qwen", on: "lab" },
+  });
+  assert.notEqual(r.isError, true);
+  const plan = runArgv(argvFile)[0];
+  assert.equal(plan[plan.indexOf("--model") + 1], "Qwen");
+  assert.match(JSON.parse(r.content[0].text).summary, /credential alone travels/);
+});
+
+test("model with on is refused with the version it needs on a CLI that takes no --model with --on", async () => {
+  const old = await connect({}, {}, undefined, { ...ALL_FEATURES, runhostModels: false });
+  for (const name of ["agentry_run", "agentry_session_start"]) {
+    const r = await old.client.callTool({
+      name,
+      arguments: { ref: "acme/widget", model: "Qwen", on: "lab" },
+    });
+    assert.equal(r.isError, true);
+    assert.match(r.content[0].text, /v0\.7\.39 or later/);
+  }
+  assert.deepEqual(runArgv(old.argvFile), []);
+});
+
+test("the probe reads --on --model from run's and agent configure's help", async () => {
+  const f = await checkCli(FAKE);
+  assert.equal(f.features.runhostModels, true);
+  assert.equal(f.features.agentRunhostModels, true);
+  process.env.FAKE_NO_RUNHOST_MODELS = "1";
+  try {
+    const old = await checkCli(FAKE);
+    assert.equal(old.features.runhostModels, false);
+    assert.equal(old.features.agentRunhostModels, false);
+    assert.equal(old.features.savedModels, true);
+    assert.equal(old.features.agentModels, true);
+  } finally {
+    delete process.env.FAKE_NO_RUNHOST_MODELS;
   }
 });

@@ -195,18 +195,49 @@ export function registerReadTools(d: Driver): void {
       description:
         "List the saved models on this computer, each a provider and a model id under the person's name for it, " +
         "and which is the default, with agentry models list --json (never a key). agentry_run's and " +
-        "agentry_session_start's model names one of them; without it a run is on the default. Adding, editing, " +
-        "removing or checking a saved model, changing the default and adding a provider stay in a terminal or the desktop.",
+        "agentry_session_start's model names one of them; without it a run is on the default. With `on`, a remote " +
+        "runhost's name, it lists the saved models that runhost holds, read from the runhost now " +
+        "(`agentry runhost model <on> --json`, CLI v0.7.39 or later): `models` each with `id`, `name`, `provider`, " +
+        "`model` (the provider's model id), `contextWindow` when known, `default` for the runhost's default, `kind` " +
+        "(`key`: a key kept in the runhost's store; `no-key`: an endpoint that takes none; `sign-in`: a plan the runhost " +
+        "is signed in to; `credits`: Agentry credits paid with the runhost's own token), `refusal` when a turn on it " +
+        "would be refused there now (its sign-in is missing or expired, say), and `users`, the agents and schedules " +
+        "that name it (`kind`, `id`, `name`); then `default` (the runhost's default id, empty when it holds none) and " +
+        "`max` (how many a runhost may hold). Its names are what agentry_agent_model's `on` and agentry_run's `model` " +
+        "with `on` take. agentry_runhost_list gives each runhost's saved models as this computer last read them. Adding " +
+        "a saved model to a runhost, taking one away and choosing its default (`agentry runhost model <runhost> " +
+        "--add|--remove|--default`) stay in a terminal: they read a key from the keychain, sign the runhost in from " +
+        "the person's browser, or revoke a credential. Adding, editing, removing or checking a saved model on this " +
+        "computer, changing its default and adding a provider stay in a terminal or the desktop.",
       inputSchema: {
         policy: z
           .string()
           .optional()
-          .describe("The operator policy file; the default when omitted."),
+          .describe("The operator policy file; the default when omitted. Not taken with `on`."),
+        on: z
+          .string()
+          .optional()
+          .describe(
+            "A remote runhost's name (see agentry_runhost_list): list the saved models that runhost holds instead of this computer's.",
+          ),
       },
       annotations: readOnly,
     },
     (a) =>
       guard("agentry_models_list", async () => {
+        if (a.on !== undefined) {
+          if (!/^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/.test(a.on))
+            throw new ArgumentError(
+              `on ${JSON.stringify(a.on)} is not a runhost's name (see agentry_runhost_list)`,
+            );
+          if (a.policy !== undefined)
+            throw new ArgumentError("policy is this computer's; leave it out with on");
+          if (!d.features.runhostModels)
+            throw new ArgumentError(
+              "this agentry CLI lists no runhost's saved models; update the CLI to v0.7.39 or later",
+            );
+          return d.run("agentry_models_list", ["runhost", "model", a.on, "--json"]);
+        }
         if (!d.features.savedModels)
           throw new ArgumentError(
             "this agentry CLI has no saved models a run can name; update the CLI to v0.7.39 or later",
@@ -352,7 +383,9 @@ export function registerReadTools(d: Driver): void {
       description:
         "List this computer's remote runhosts, the person's own Linux servers that run QuickAgents for them " +
         "over SSH, with agentry runhost list --json: each one's name (what agentry_run's `on` takes), address, " +
-        "pinned host key fingerprint, owner, server CLI version, operating system and architecture. Setting " +
+        "pinned host key fingerprint, owner, server CLI version, operating system and architecture, and `models`, " +
+        "the saved models it holds as this computer last read them (`id`, `name`, `provider`, `model`, `default`; " +
+        "absent until first read; agentry_models_list with `on` asks the runhost now). Setting " +
         "one up (`agentry runhost add`), removing one, pairing a device and changing its settings stay in a " +
         "terminal: they take an administrator's sign-in to the server, which this server never holds.",
       inputSchema: {},

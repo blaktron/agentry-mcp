@@ -430,6 +430,8 @@ export interface AgentModelArgs {
   name: string;
   /** A saved model's name or id, or `default`. */
   model: string;
+  /** A remote runhost's name: the agent there, and the saved models that runhost holds. */
+  on?: string;
   confirm?: string;
 }
 
@@ -465,7 +467,21 @@ export async function agentModel(d: Driver, a: AgentModelArgs): Promise<CallTool
     );
   const name = agentName(a.name);
   const ref = value("model", a.model);
-  const shown = await d.run("agentry_agent_model (show)", ["agent", "show", name, "--json"]);
+  if (a.on !== undefined && !RUNHOST_NAME.test(a.on))
+    throw new ArgumentError(
+      `on ${JSON.stringify(a.on)} is not a runhost's name (see agentry_runhost_list)`,
+    );
+  if (a.on !== undefined && !d.features.agentRunhostModels)
+    return text(
+      "agentry_agent_model: this agentry CLI cannot move an agent on a runhost to one of the runhost's saved models (no `agent configure --on --model`). " +
+        "Update the CLI to v0.7.39 or later (https://secureagentry.net/download); the server never updates it for you.",
+      true,
+    );
+  const where = a.on !== undefined ? `the runhost ${a.on}` : "this computer";
+  const shown = await d.run(
+    "agentry_agent_model (show)",
+    onRunhost(d, ["agent", "show", name, "--json"], a.on),
+  );
   const env = envelopeOf<AgentState>(shown);
   if (!env || env.exitClass !== "ok") return { ...shown, isError: true };
   const st = env.result;
@@ -473,16 +489,32 @@ export async function agentModel(d: Driver, a: AgentModelArgs): Promise<CallTool
     return text(`agentry_agent_model: the ${name} agent runs only in Agentry Desktop.`, true);
   let to: { id: string; name: string; model: string } | undefined;
   if (ref.toLowerCase() !== FOLLOW_DEFAULT) {
-    const listed = await d.run("agentry_agent_model (models)", ["models", "list", "--json"]);
-    const models = envelopeOf<{ models: SavedModel[] }>(listed);
-    if (!models || models.exitClass !== "ok") return { ...listed, isError: true };
-    const all = models.result.models ?? [];
+    let all: SavedModel[];
+    if (a.on !== undefined) {
+      const listed = await d.run("agentry_agent_model (models)", [
+        "runhost",
+        "model",
+        a.on,
+        "--json",
+      ]);
+      const models = envelopeOf<{ models?: { models?: SavedModel[] } }>(listed);
+      if (!models || models.exitClass !== "ok") return { ...listed, isError: true };
+      all = models.result.models?.models ?? [];
+    } else {
+      const listed = await d.run("agentry_agent_model (models)", ["models", "list", "--json"]);
+      const models = envelopeOf<{ models: SavedModel[] }>(listed);
+      if (!models || models.exitClass !== "ok") return { ...listed, isError: true };
+      all = models.result.models ?? [];
+    }
     const found =
       all.find((m) => m.id === ref) ?? all.find((m) => m.name.toLowerCase() === ref.toLowerCase());
     if (!found) {
       const names = all.map((m) => m.name).join(", ") || "none";
       return text(
-        `agentry_agent_model: there is no saved model ${JSON.stringify(ref)} on this computer; its saved models: ${names} (or ${FOLLOW_DEFAULT} to follow the default).`,
+        `agentry_agent_model: there is no saved model ${JSON.stringify(ref)} on ${where}; ${a.on !== undefined ? "it holds" : "its saved models"}: ${names} (or ${FOLLOW_DEFAULT} to follow the default).` +
+          (a.on !== undefined
+            ? ` Making another available there stays in a terminal: agentry runhost model ${a.on} --add <saved model>.`
+            : ""),
         true,
       );
     }
@@ -491,6 +523,7 @@ export async function agentModel(d: Driver, a: AgentModelArgs): Promise<CallTool
   const facts = {
     tool: "agentry_agent_model",
     agent: st.agent,
+    on: a.on ?? "",
     from: st.model?.followsDefault ? FOLLOW_DEFAULT : (st.model?.savedModel?.id ?? ""),
     to: to?.id ?? FOLLOW_DEFAULT,
   };
@@ -500,6 +533,7 @@ export async function agentModel(d: Driver, a: AgentModelArgs): Promise<CallTool
     return previewText(
       {
         agent: st.agent,
+        ...(a.on !== undefined ? { on: a.on } : {}),
         model: st.model ?? null,
         from: modelWords(st.model),
         to: to
@@ -510,11 +544,14 @@ export async function agentModel(d: Driver, a: AgentModelArgs): Promise<CallTool
         note:
           `The agent would run on ${toWords}` +
           (to ? "" : ", following it when the default changes") +
+          (a.on !== undefined ? `, on the runhost ${a.on}, one the runhost holds` : "") +
           ". " +
           (running
             ? "The running agent takes it at its next turn without a stop, and is told; on another harness its new conversation carries the last exchange. "
             : "The agent takes it when it next starts. ") +
-          "Its turns are paid with that model's provider. A turn on a saved model the computer no longer has fails, and never runs on another. " +
+          "Its turns are paid with that model's provider" +
+          (a.on !== undefined ? ", with the credential the runhost keeps for it" : "") +
+          `. A turn on a saved model ${a.on !== undefined ? "the runhost no longer holds" : "the computer no longer has"} fails, and never runs on another. ` +
           "Show the person this; confirm with this digest only once they agree.",
       },
       facts,
@@ -522,17 +559,13 @@ export async function agentModel(d: Driver, a: AgentModelArgs): Promise<CallTool
   }
   const ok = await confirmed(d.server, "agentry_agent_model", a.confirm, facts, {
     unsigned: false,
-    ask: `Move the ${st.agent} agent to ${toWords}?`,
+    ask: `Move the ${st.agent} agent${a.on !== undefined ? ` on the runhost ${a.on}` : ""} to ${toWords}?`,
   });
   if (!isConsent(ok)) return ok;
-  return d.run("agentry_agent_model", [
-    "agent",
-    "configure",
-    name,
-    "--model",
-    to?.id ?? FOLLOW_DEFAULT,
-    "--json",
-  ]);
+  return d.run(
+    "agentry_agent_model",
+    onRunhost(d, ["agent", "configure", name, "--model", to?.id ?? FOLLOW_DEFAULT, "--json"], a.on),
+  );
 }
 
 /** One event line from descriptor 3. */

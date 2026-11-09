@@ -60,6 +60,7 @@
 #   FAKE_NO_AGENT_PLAN  set to make `agent install --help` omit --plan (a CLI without agent install --plan)
 #   FAKE_NO_SAVED_MODELS  set to make `run --help` omit --model (a CLI without saved model runs)
 #   FAKE_NO_AGENT_MODELS  set to make `agent configure --help` omit --model (a CLI before agents named saved models)
+#   FAKE_NO_RUNHOST_MODELS  set to make `run --help` and `agent configure --help` omit what --on --model adds (a CLI before runhosts held saved models)
 #   FAKE_AGENT_MODEL_FILE  a file whose content, when it exists, is the `model` `agent show` says the assistant runs on
 #   FAKE_PIN_VERSION   the version `agent install --plan` pins acme/summarizer to (default 1.2.0; "none" resolves to none)
 #   FAKE_PIN_FILE      a file whose content, when it exists, is FAKE_PIN_VERSION (so a test can move the pin between calls)
@@ -77,7 +78,7 @@ if [ "${1:-}" = "install" ] && [ "${2:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_PLAN:-}" ]; then echo "Flags: --yes --allow-unsigned --target"; else echo "Flags: --plan --yes --allow-unsigned --target"; fi; exit 0
 fi
 if [ "${1:-}" = "run" ] && [ "${2:-}" = "--help" ]; then
-  if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode ${FAKE_NO_PROTOCOL:+removed} ${FAKE_NO_PROTOCOL:---session-protocol} ${FAKE_NO_DELIVER:---deliver-to} ${FAKE_NO_DESTINATION:---destination} ${FAKE_NO_RUNHOST:---on}${FAKE_NO_RUNHOST:+}${FAKE_OLD_RUNHOST:- carrying the secrets, files and intake}${FAKE_OLD_RUNHOST:-; runhost model --sign-in}${FAKE_NO_RUNHOST_SESSIONS:- --detach} ${FAKE_NO_SAVED_MODELS:---model}"; fi; exit 0
+  if [ -n "${FAKE_NO_RUN_PLAN:-}" ]; then echo "Flags: --dry-run --yes --allow-unsigned --mode"; else echo "Flags: --plan --dry-run --yes --allow-unsigned --mode ${FAKE_NO_PROTOCOL:+removed} ${FAKE_NO_PROTOCOL:---session-protocol} ${FAKE_NO_DELIVER:---deliver-to} ${FAKE_NO_DESTINATION:---destination} ${FAKE_NO_RUNHOST:---on}${FAKE_NO_RUNHOST:+}${FAKE_OLD_RUNHOST:- carrying the secrets, files and intake}${FAKE_OLD_RUNHOST:-; runhost model --sign-in}${FAKE_NO_RUNHOST_SESSIONS:- --detach} ${FAKE_NO_SAVED_MODELS:---model} ${FAKE_NO_RUNHOST_MODELS:-(with --on, its credential alone travels with the run)}"; fi; exit 0
 fi
 if [ "${1:-}" = "knowledge" ] && [ "${2:-}" = "create" ] && [ "${3:-}" = "--help" ]; then
   echo "Flags: --file --brief-file --web --no-web ${FAKE_NO_SOURCES:---repo --url}"; exit 0
@@ -103,7 +104,7 @@ if [ "${1:-}" = "agent" ] && [ "${2:-}" = "install" ] && [ "${3:-}" = "--help" ]
   if [ -n "${FAKE_NO_AGENT_INSTALL:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent install <ns/name[@version]> | --local <folder> [flags]"; [ -z "${FAKE_NO_AGENT_PLAN:-}" ] && echo "      --plan   preview only"; [ -z "${FAKE_NO_RUNNING_UPDATES:-}" ] && printf 'A running agent takes the update at its next turn,\nits conversation continuing.\n'; fi; exit 0
 fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "configure" ] && [ "${3:-}" = "--help" ]; then
-  echo "Usage: agentry agent configure <name> [flags]"; [ -z "${FAKE_NO_AGENT_MODELS:-}" ] && echo "      --model string   the saved model it runs on, by name or id (agentry models list); default follows the default"; exit 0
+  echo "Usage: agentry agent configure <name> [flags]"; [ -z "${FAKE_NO_AGENT_MODELS:-}" ] && echo "      --model string   the saved model it runs on, by name or id (agentry models list); default follows the default${FAKE_NO_RUNHOST_MODELS:-; with --on, one the runhost holds (agentry runhost model <runhost>)}"; exit 0
 fi
 if [ "${1:-}" = "agent" ] && [ "${2:-}" = "uninstall" ] && [ "${3:-}" = "--help" ]; then
   if [ -n "${FAKE_NO_AGENT_INSTALL:-}" ]; then echo "Usage: agentry agent [command]"; else echo "Usage: agentry agent uninstall <name> [flags]"; fi; exit 0
@@ -197,6 +198,7 @@ if [ "${1:-}" = "runhost" ]; then
   [ -n "${FAKE_NO_RUNHOST:-}" ] && { echo 'Error: unknown command "runhost" for "agentry"' >&2; exit 1; }
   case "${2:-}" in
     list) echo '{"runhosts":[{"name":"lab","host":"192.0.2.10","port":22,"hostKey":"ssh-ed25519 AAAA","hostKeyFingerprint":"SHA256:abc","owner":{"kind":"devices"},"deviceID":"aaaa","cliVersion":"0.6.1017","arch":"amd64","os":"Debian GNU/Linux 13 (trixie)","gvisor":"20261026.0","addedAt":"2026-11-01T00:00:00Z"}]}' ;;
+    model) printf '{"runhost":"%s","models":{"models":[{"id":"d3f17234","name":"Qwen","provider":"custom-lab","model":"qwen3","contextWindow":32768,"kind":"no-key","default":true,"users":[{"kind":"agent","id":"assistant","name":"Assistant"}]},{"id":"5a1c0b22","name":"ChatGPT","provider":"openai","model":"gpt-5.2","kind":"sign-in","refusal":"the runhost is not signed in to ChatGPT"}],"default":"d3f17234","max":10}}\n' "$3" ;;
     doctor)
       if [ -n "${FAKE_RUNHOST_DOWN:-}" ]; then
         printf '{"ref":"runhost %s","checks":[{"name":"docker","status":"ok","detail":"Docker Engine 29.0.0"},{"name":"runhost:gvisor","status":"fail","detail":"the policy runs containers under runc","remedy":"run agentry runhost add again"}]}\n' "$3"; exit 1
