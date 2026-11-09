@@ -247,13 +247,16 @@ variable the person set (`intakeTokens`, `hostPasswords`, `hostPassphrases`,
 the CLI uses the sign-ins saved in the system keychain. Use only variable
 names the person gave you, and show the preview's `signIns`: each variable's
 value goes to the source or host named beside it. A release that uses an
-application on the person's computer (Blender, Unreal Engine) needs
-`desktop`: show the preview's line, then pass `applications` with each id it
-names and `computerUse: true` if it does computer use, only once the person
-agrees, and `allowScreen` only when they agreed to their whole screen. Agentry
-Desktop must be running on their computer; it asks them before code runs and
-they can stop it at any time. Never start Agentry Desktop, open an application
-or change Settings → Your computer for them: those stay in the app.
+application on the person's computer (any application, by an id such as
+`blender` or `my-cad`) needs `desktop`: show the preview's line, then pass
+`applications` with each id it names, `choose: true` if it uses an application
+the person chooses when the run starts, and `computerUse: true` if it does
+computer use, only once the person agrees, and `allowScreen` only when they
+agreed to their whole screen. Agentry Desktop resolves each id to an
+application the person added and approved in its Settings → Your computer, and
+must be running on their computer; it asks them before code runs and they can
+stop it at any time. Never start Agentry Desktop, open an application, or add
+or approve one in Settings → Your computer for them: those stay in the app.
 `agentry_deliver`
 copies or sends a run already made again, previewed and confirmed like a run.
 

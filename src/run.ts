@@ -159,7 +159,8 @@ export interface RunArgs {
   on?: string;
   /**
    * The person's agreement to what the release uses on their computer:
-   * each application it declares, by catalogue id, and computer use; and
+   * each application it names, by id, an application they choose when the
+   * release asks for one, and computer use; and
    * `allowScreen` for a computer use that asks for the whole screen
    * (`--allow-screen`).
    */
@@ -168,6 +169,7 @@ export interface RunArgs {
 
 export interface DesktopArgs {
   applications?: string[];
+  choose?: boolean;
   computerUse?: boolean;
   allowScreen?: boolean;
 }
@@ -189,8 +191,16 @@ export interface CompiledPlan {
     targetHosts?: string[];
     browser?: unknown;
     desktop?: {
-      servers?: { id: string; application?: string; tools?: { name: string; class?: string }[] }[];
+      servers?: {
+        id: string;
+        application?: string;
+        tools?: { name: string; class?: string }[];
+        narrowed?: boolean;
+        chosen?: boolean;
+      }[];
       computerUse?: string;
+      windows?: string[];
+      chooseWindows?: boolean;
     };
   };
   tools?: string[];
@@ -576,7 +586,8 @@ export async function runConsent(
   const desktopNeeds =
     desktopRefusal &&
     !desktopRefusal.startsWith("desktop.applications names") &&
-    !desktopRefusal.startsWith("this release uses nothing")
+    !desktopRefusal.startsWith("this release uses nothing") &&
+    !desktopRefusal.startsWith("desktop.choose is for")
       ? desktopRefusal
       : null;
   if (desktopRefusal && (a.confirm !== undefined || !desktopNeeds))
@@ -957,44 +968,97 @@ function textOf(r: CallToolResult): string {
   return (r.content[0] as { text: string }).text;
 }
 
+type DesktopLine = NonNullable<NonNullable<CompiledPlan["capabilities"]>["desktop"]>;
+
+/** chosenEntry says a plan's server entry is the application the person chooses. */
+function chosenEntry(s: NonNullable<DesktopLine["servers"]>[number]): boolean {
+  return s.chosen === true || s.id === "chosen";
+}
+
+/**
+ * declaredApplications are the ids a plan's desktop line names: each
+ * application whose server it uses and each whose windows it uses, once, in
+ * the line's order. The application the person chooses has no id.
+ */
+function declaredApplications(line: DesktopLine): string[] {
+  const ids = (line.servers ?? []).filter((s) => !chosenEntry(s)).map((s) => s.id);
+  for (const w of line.windows ?? []) if (!ids.includes(w)) ids.push(w);
+  return ids;
+}
+
 /**
  * desktopAgreement holds the call's `desktop` to what the compiled plan uses
- * on the person's computer: each declared application named, and computer
- * use agreed when it is declared, nothing named the release does not use.
- * The message names what is missing or unknown; null when they agree.
+ * on the person's computer: each application it names agreed by id, an
+ * application the person chooses agreed with `choose` when its server is
+ * used, and computer use agreed when it is declared; nothing named the
+ * release does not use. The message names what is missing or unknown; null
+ * when they agree.
  */
 export function desktopAgreement(plan: CompiledPlan, d: DesktopArgs | undefined): string | null {
   const line = plan.capabilities?.desktop;
-  const declared = (line?.servers ?? []).map((s) => s.id);
   const named = d?.applications ?? [];
   if (!line) {
-    if (named.length || d?.computerUse || d?.allowScreen)
+    if (named.length || d?.choose || d?.computerUse || d?.allowScreen)
       return "this release uses nothing on the person's computer: leave desktop out";
     return null;
   }
+  const declared = declaredApplications(line);
+  const chooses = (line.servers ?? []).some(chosenEntry);
   const unknown = named.filter((id) => !declared.includes(id));
   if (unknown.length)
-    return `desktop.applications names ${unknown.join(", ")}, which this release does not use; it uses ${declared.join(", ") || "no application"}`;
+    return `desktop.applications names ${unknown.join(", ")}, which this release does not use; it uses ${declared.join(", ") || "no application by id"}`;
+  if (d?.choose && !chooses)
+    return "desktop.choose is for a release that uses an application the person chooses, and this one does not: leave it out";
   const missing = declared.filter((id) => !named.includes(id));
   if (missing.length)
     return `this release uses ${missing.join(", ")} on the person's computer through Agentry Desktop: show the person the preview and pass desktop.applications ${JSON.stringify(declared)} once they agree`;
+  if (chooses && !d?.choose)
+    return "this release uses an application the person chooses on their computer when the run starts, through its MCP server: show the person the preview and pass desktop.choose true once they agree";
   if (line.computerUse && !d?.computerUse)
     return `this release does computer use on the person's computer (${line.computerUse === "screen" ? "the whole screen" : "the windows of its applications"}): pass desktop.computerUse true once the person agrees`;
   return null;
 }
 
 /** desktopWords is the summary's phrase for what the run uses on the person's computer. */
-function desktopWords(line: NonNullable<CompiledPlan["capabilities"]>["desktop"]): string {
+function desktopWords(line: DesktopLine | undefined): string {
   if (!line) return "";
   const apps = (line.servers ?? []).map((s) => {
     const tools = s.tools ?? [];
+    const name = chosenEntry(s)
+      ? "an application the person chooses when the run starts"
+      : !s.application || s.application === s.id
+        ? `${s.id} (an application on your computer, as Agentry Desktop resolves it)`
+        : s.application;
+    if (s.narrowed)
+      return `${name}, through its MCP server (tools ${tools.map((t) => t.name).join(", ")})`;
+    if (!tools.length) return `${name}, through its MCP server (every tool it lists)`;
     const code = tools.filter((t) => t.class === "exec").length;
-    return `${s.application ?? s.id} (${tools.length} tools${code ? `, ${code} that run code` : ""})`;
+    return `${name} (${tools.length} tools${code ? `, ${code} that run code` : ""})`;
   });
-  if (line.computerUse === "app") apps.push("computer use in the windows of those applications");
+  const usesServer = new Set((line.servers ?? []).map((s) => s.id));
+  for (const w of line.windows ?? [])
+    if (!usesServer.has(w))
+      apps.push(
+        `${w} (an application on your computer, as Agentry Desktop resolves it), through its windows only`,
+      );
+  if (line.computerUse === "app") {
+    const windows = [...(line.windows ?? [])];
+    if (line.chooseWindows) windows.push("an application the person chooses when the run starts");
+    apps.push(
+      line.windows || line.chooseWindows
+        ? `computer use in the windows of ${joinAnd(windows)}`
+        : "computer use in the windows of those applications",
+    );
+  }
   if (line.computerUse === "screen") apps.push("computer use of the whole screen");
   return (
     `on the person's computer through Agentry Desktop, which must be running there: ${apps.join(", ")}; ` +
     "Agentry Desktop asks before code runs, logs each call, and its Stop ends the run's use of the computer"
   );
+}
+
+/** joinAnd lists items for a sentence: "a", "a and b", "a, b and c". */
+function joinAnd(items: string[]): string {
+  if (items.length < 2) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 }

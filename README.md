@@ -257,15 +257,18 @@ person saved in the system keychain. The preview's `signIns` and the
 question put to the person name each variable and the source or host it
 signs in to, since its value goes there. A release that uses applications
 on the person's own computer (`capabilities.desktop`; CLI v0.7.33 or later) runs
-only with `desktop`: `applications` names each catalogue id the preview names
-(`blender`, `unreal`) once the person agreed, `computerUse` agrees to its
-computer use, and `allowScreen` passes `--allow-screen` for a whole-screen
-one; an id missing or unknown is refused, naming it. The run uses them
-through Agentry Desktop, which must be running on the person's computer (on
-this computer, or with `on` the one that follows the run), asks before code
-runs inside an application, logs each call, and stops on the person's Stop;
-Settings → Your computer, the system's permissions and opening an
-application stay in Agentry Desktop. A session's preview names its
+only with `desktop`: `applications` names each application id the preview
+names once the person agreed (any application's id, such as `blender` or
+`my-cad`, through its MCP server or its windows; Agentry Desktop resolves it
+to an application the person approved), `choose` agrees to an application the
+person chooses when the run starts (CLI v0.7.35 or later), `computerUse`
+agrees to its computer use, and `allowScreen` passes `--allow-screen` for a
+whole-screen one; an id missing or unknown is refused, naming it. The run uses
+them through Agentry Desktop, which must be running on the person's computer
+(on this computer, or with `on` the one that follows the run), asks before
+code runs inside an application, logs each call, and stops on the person's
+Stop. Adding and approving applications (Settings → Your computer), the
+system's permissions and opening an application stay in Agentry Desktop. A session's preview names its
 destinations too: a session delivers at its end. The destination list shows a
 destination's host, never its path or secret, so one saved again under the
 same name and host reads as the same destination. `agentry_deliver` sends a run already

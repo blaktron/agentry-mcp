@@ -705,6 +705,81 @@ test("a run that uses the person's computer names each application, and refuses 
   assert.ok(receivedRunArgv(argvFile).at(-1).includes("--allow-screen"));
 });
 
+test("a run names any application by id, agrees to one the person chooses, and names one used through its windows only", async () => {
+  const line = JSON.stringify({
+    servers: [
+      {
+        id: "my-cad",
+        application: "my-cad",
+        tools: [{ name: "export_drawing", class: "" }],
+        narrowed: true,
+      },
+      { id: "chosen", application: "an application the person chooses", tools: null, chosen: true },
+    ],
+    computerUse: "app",
+    windows: ["kdenlive"],
+    personServers: "allowed",
+  });
+  const { client } = await connect({ FAKE_RUN_DESKTOP_LINE: line });
+  const refused = async (args, pattern) => {
+    const r = await client.callTool({
+      name: "agentry_run",
+      arguments: { ref: "acme/widget", ...args },
+    });
+    assert.equal(r.isError, true, r.content[0].text);
+    assert.match(r.content[0].text, pattern);
+  };
+  const shown = await previewRun(client, { ref: "acme/widget" });
+  assert.match(
+    shown.desktopNeeds,
+    /uses my-cad, kdenlive on the person's computer through Agentry Desktop: .*desktop\.applications \["my-cad","kdenlive"\]/,
+  );
+  const unchosen = await previewRun(client, {
+    ref: "acme/widget",
+    desktop: { applications: ["my-cad", "kdenlive"], computerUse: true },
+  });
+  assert.match(
+    unchosen.desktopNeeds,
+    /an application the person chooses .*pass desktop\.choose true/,
+  );
+  await refused(
+    {
+      desktop: { applications: ["my-cad", "kdenlive"], computerUse: true },
+      confirm: unchosen.digest,
+    },
+    /pass desktop\.choose true/,
+  );
+  await refused(
+    { desktop: { applications: ["my-cad", "kdenlive", "chosen"], choose: true } },
+    /names chosen, which this release does not use/,
+  );
+  const p = await previewRun(client, {
+    ref: "acme/widget",
+    desktop: { applications: ["my-cad", "kdenlive"], choose: true, computerUse: true },
+  });
+  assert.equal(p.desktopNeeds, undefined);
+  assert.match(
+    p.summary,
+    /which must be running there: my-cad \(an application on your computer, as Agentry Desktop resolves it\), through its MCP server \(tools export_drawing\), an application the person chooses when the run starts, through its MCP server \(every tool it lists\), kdenlive \(an application on your computer, as Agentry Desktop resolves it\), through its windows only, computer use in the windows of kdenlive; Agentry Desktop asks before code runs/,
+  );
+});
+
+test("a release with no application the person chooses refuses desktop.choose", async () => {
+  const { client } = await connect({ FAKE_RUN_DESKTOP: "app" });
+  const r = await client.callTool({
+    name: "agentry_run",
+    arguments: {
+      ref: "acme/widget",
+      desktop: { applications: ["blender"], choose: true, computerUse: true },
+    },
+  });
+  assert.equal(r.isError, true);
+  assert.match(
+    r.content[0].text,
+    /desktop\.choose is for a release that uses an application the person chooses/,
+  );
+});
+
 test("a run that uses nothing on the person's computer refuses a desktop argument", async () => {
   const { client } = await connect({});
   const r = await client.callTool({
