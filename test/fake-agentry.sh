@@ -328,6 +328,7 @@ if os.environ["RAW"]:
     out += ",\"refusals\":" + os.environ["RAW"]
 print(out, end="")')
       rdesktop=""
+      [ -n "${FAKE_RUN_DESKTOP_LINE:-}" ] && rdesktop=",\"desktop\":${FAKE_RUN_DESKTOP_LINE}"
       [ -n "${FAKE_RUN_DESKTOP:-}" ] && rdesktop=',"desktop":{"servers":[{"id":"blender","application":"Blender","package":"pypi:mcp-for-blender@2.2.7","tools":[{"name":"get_scene_info","class":"read"},{"name":"execute_blender_code","class":"exec"}]}],"computerUse":"'"${FAKE_RUN_DESKTOP}"'"}'
       timeout=900; mode=autonomous; prev=""; for a in "$@"; do if [ "$prev" = "--timeout" ]; then timeout=$a; fi; if [ "$prev" = "--mode" ]; then mode=$a; fi; prev=$a; done
       echo "narration: compiled plan" >&2
