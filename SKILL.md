@@ -73,6 +73,11 @@ a terminal. Signing in with a provider's own account (_Connect your
 account_) is done in a terminal with `agentry setup` or in the desktop, never
 through a tool.
 
+Saved models (`agentry models`) and the providers they are paid with
+(`agentry providers`) are the person's to add, change, check and remove, in a
+terminal or the desktop: no tool lists or changes them yet, and a run uses the
+computer's default saved model.
+
 ## Find, install and run
 
 Start with `agentry_doctor`; inspect `agentry_whoami` if sign-in matters.
