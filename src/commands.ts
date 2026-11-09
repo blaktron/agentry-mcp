@@ -42,7 +42,8 @@ export const TOOL_COMMANDS: Record<string, readonly string[]> = {
   agentry_report_design_build: ["report-design design", "report-design cover"],
   agentry_connections_list: ["connections list"],
   agentry_model_signins_list: ["model-signins list"],
-  agentry_models_list: ["models list"],
+  // `runhost model` with no flag lists what a runhost holds; its --add, --remove and --default stay in a terminal.
+  agentry_models_list: ["models list", "runhost model"],
   agentry_schedule_list: ["schedule list", "runhost schedules"],
   agentry_schedule_show: ["schedule show"],
   agentry_schedule_pause: ["schedule pause", "schedule resume", "schedule show"],
@@ -58,7 +59,7 @@ export const TOOL_COMMANDS: Record<string, readonly string[]> = {
   agentry_agent_compact: ["agent compact"],
   agentry_agent_grant: ["agent grant"],
   // The model alone (--model); the rest of configure stays with the person.
-  agentry_agent_model: ["agent configure", "agent show", "models list"],
+  agentry_agent_model: ["agent configure", "agent show", "models list", "runhost model"],
 };
 
 const SIGN_IN =
@@ -117,7 +118,6 @@ export const TERMINAL_ONLY: Record<string, string> = {
   "models remove": SAVED_MODELS,
   "models default": SAVED_MODELS,
   "models check": SAVED_MODELS,
-  "runhost model": SIGN_IN,
   "runhost store": SIGN_IN,
   publish: PUBLISH,
   yank: PUBLISH,

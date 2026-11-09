@@ -303,9 +303,9 @@ function checkOn(d: Driver, a: RunArgs, mode: RunMode): void {
     throw new ArgumentError(
       "this agentry CLI cannot run a session on a remote runhost (its run has no --detach); update the CLI, or start the session on this computer",
     );
-  if (given(a.model))
+  if (given(a.model) && !d.features.runhostModels)
     throw new ArgumentError(
-      "model chooses among this computer's saved models, and a run on a runhost uses the model the runhost keeps; leave model out",
+      "this agentry CLI cannot run on a saved model on a runhost (its run --on takes no --model); update the CLI to v0.7.39 or later, or leave model out",
     );
   if (given(a.adapter) && !d.features.runhostSignIns)
     throw new ArgumentError(
@@ -384,6 +384,18 @@ function modelWords(p: RunPlan): string {
       ? `spends your ${h.modelSignIn.provider ?? "model"} plan through its sign-in`
       : "paid with the provider key the runner policy names";
   return `Model: ${named}, ${paid}.`;
+}
+
+/**
+ * What a run on a runhost with a saved model sends: that model's credential
+ * and no other.
+ */
+function runhostModelWords(a: RunArgs): string {
+  if (a.on === undefined || a.model === undefined) return "";
+  return (
+    `The run is on this computer's saved model ${JSON.stringify(a.model)}: its credential alone travels with the run ` +
+    `to the runhost ${a.on}, and nothing of any other saved model.`
+  );
 }
 
 /** A run's budget in words: the wall clock, the cost cap and the tool-call cap, each when set. */
@@ -469,6 +481,7 @@ export function runSummary(
         ]
       : []),
     modelWords(p),
+    ...(runhostModelWords(a) ? [runhostModelWords(a)] : []),
     `Network: ${network}${extras.length ? `; also ${extras.join("; ")}` : ""}.`,
     `Reads: ${reads}. Writes: ${writes}.` +
       `${cap.execCommands?.length ? ` Runs the commands: ${cap.execCommands.join(", ")}.` : ""}` +
@@ -700,6 +713,7 @@ export async function runConsent(
       `${mode === "interactive" ? "Start a session with" : "Run"} ${plan.ref}${a.on !== undefined ? ` on the remote runhost ${a.on}` : ""} (${plan.mode}` +
       `${mode === "interactive" ? "" : `, up to ${timeoutSeconds}s`})? Contract: ${canonical(plan.contract)}. ` +
       `${a.model !== undefined ? `${modelWords(plan)} ` : ""}` +
+      `${runhostModelWords(a) ? `${runhostModelWords(a)} ` : ""}` +
       `${a.deliverTo !== undefined ? `Copies its deliverables to ${a.deliverTo}. ` : ""}` +
       `${sends.destinations.length ? `Sends its result and deliverables to ${sends.destinations.join(", ")}. ` : ""}` +
       `${secrets.length ? `Signs in with: ${secrets.map(describeSignIn).join("; ")}. ` : ""}` +

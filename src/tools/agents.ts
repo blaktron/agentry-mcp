@@ -315,7 +315,11 @@ export function registerAgentTools(d: Driver): void {
     {
       description:
         "Move a persistent agent to another of this computer's saved models (`agentry agent configure <name> " +
-        "--model <model> --json`), in two calls. Without `confirm`: a preview of the model it runs on now (the " +
+        "--model <model> --json`), in two calls. With `on`, a remote runhost's name, the agent is the one on that " +
+        "runhost and `model` names one of the saved models the runhost holds (agentry_models_list with `on` lists " +
+        "them; CLI v0.7.39 or later): a model it does not hold is refused by name before anything is asked, with " +
+        "what it does hold, and making one available there stays in a terminal (`agentry runhost model <runhost> " +
+        "--add <saved model>`). Without `confirm`: a preview of the model it runs on now (the " +
         "one it names, or the default it follows), the one it would move to, whether it is running, and a " +
         "`digest`; nothing changes. Show the person both and only when they agree call again with `confirm` set " +
         "to that digest. A running agent takes the new model at its next turn without a stop, and is told; on " +
@@ -328,7 +332,13 @@ export function registerAgentTools(d: Driver): void {
         model: z
           .string()
           .describe(
-            "The saved model's name or id, as agentry_models_list names it, or `default` to follow the default.",
+            "The saved model's name or id, as agentry_models_list names it (with `on`, one the runhost holds), or `default` to follow the default.",
+          ),
+        on: z
+          .string()
+          .optional()
+          .describe(
+            "A remote runhost's name (agentry_runhost_list names them): move the agent there to one of the saved models that runhost holds.",
           ),
         confirm: z
           .string()

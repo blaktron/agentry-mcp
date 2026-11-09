@@ -58,6 +58,10 @@ export interface CliFeatures {
   savedModels: boolean;
   /** `agent configure --model` and the agents' `model` in `agent list|show --json`. */
   agentModels: boolean;
+  /** `run --on --model` and `runhost model <runhost> --json`: a run on a saved model, and the saved models a runhost holds. */
+  runhostModels: boolean;
+  /** `agent configure --on --model`: an agent on a runhost moved to a saved model the runhost holds. */
+  agentRunhostModels: boolean;
 }
 
 /** The features of a CLI that has them all (the tests' fake, a current CLI). */
@@ -82,6 +86,8 @@ export const ALL_FEATURES: CliFeatures = {
   runhostAgents: true,
   savedModels: true,
   agentModels: true,
+  runhostModels: true,
+  agentRunhostModels: true,
 };
 
 /**
@@ -109,6 +115,9 @@ export const FEATURE_TOOLS: Record<keyof CliFeatures, string> = {
   runhostAgents: "the agent tools' on",
   savedModels: "agentry_run's and agentry_session_start's model, and agentry_models_list",
   agentModels: "agentry_agent_model",
+  runhostModels:
+    "agentry_models_list's on, and agentry_run's and agentry_session_start's model with on",
+  agentRunhostModels: "agentry_agent_model's on",
 };
 
 /**
@@ -448,6 +457,12 @@ export async function checkCli(
       ),
       savedModels: /--model\b/.test(runHelp),
       agentModels: /--model string\s+the saved model it runs on/.test(
+        configureHelp.stdout + configureHelp.stderr,
+      ),
+      runhostModels: /--model\b[^\n]*with --on, its credential alone travels with the run/.test(
+        runHelp,
+      ),
+      agentRunhostModels: /--model string[^\n]*with --on, one the runhost holds/.test(
         configureHelp.stdout + configureHelp.stderr,
       ),
     },
