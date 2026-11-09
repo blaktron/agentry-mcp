@@ -1,4 +1,4 @@
-# agentry version 0.0.0-dev, built from agentry-cli dev 42701bfd
+# agentry version 0.0.0-dev, built from agentry-cli 4f4837e4
 acp
 agent
 agent attach
@@ -75,10 +75,6 @@ logout
 managed
 managed refresh
 managed show
-model-signins
-model-signins add
-model-signins list
-model-signins remove
 models
 models add
 models check

@@ -20,7 +20,7 @@ import { registerSessionTools } from "./tools/session.js";
 import { registerWriteTools } from "./tools/write.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.7.19";
+export const SERVER_VERSION = "0.7.20";
 
 export function instructions(bin: string, cliVersion: string): string {
   return [
@@ -59,7 +59,7 @@ export function instructions(bin: string, cliVersion: string): string {
       "agentry_voice_build and agentry_report_design_build.",
     "",
     "To read this computer's state: agentry_schedule_list, agentry_connections_list, " +
-      "agentry_model_signins_list, agentry_report_design_show, agentry_report_design_list and " +
+      "agentry_providers_list, agentry_models_list, agentry_report_design_show, agentry_report_design_list and " +
       "agentry_destinations_list. Changing any of " +
       "them stays with the person, in a terminal or the desktop. agentry_managed_show reads the settings the " +
       "person's organization manages for them (what is locked, what is a default, what this computer applies); " +
@@ -93,7 +93,7 @@ export function instructions(bin: string, cliVersion: string): string {
       "the design to the output folder only; adding it to the account's report designs stays in a terminal.",
     "",
     "Not here: signing in (the person runs `agentry login` in a terminal once; this server uses " +
-      "that login; `agentry connect` and `agentry model-signins add` likewise), publishing (`agentry publish` " +
+      "that login; `agentry connect` and `agentry providers add` likewise), publishing (`agentry publish` " +
       "in a terminal, where the person sees the pipeline's verdict), and saving schedules or destinations.",
     "",
     "Start with agentry_doctor if a run or install is the goal: it says what this machine lacks.",

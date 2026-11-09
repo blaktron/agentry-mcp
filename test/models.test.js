@@ -218,3 +218,34 @@ test("the probe reads --on --model from run's and agent configure's help", async
     delete process.env.FAKE_NO_RUNHOST_MODELS;
   }
 });
+
+test("agentry_providers_list: providers list --json, the providers and every kept sign-in, never a token", async () => {
+  const { client, argvFile } = await connect();
+  const r = await client.callTool({ name: "agentry_providers_list", arguments: {} });
+  assert.equal(r.isError, undefined, r.content[0].text);
+  const out = JSON.parse(r.content[0].text);
+  assert.deepEqual(
+    out.result.providers.map((p) => [p.id, p.account]),
+    [["copilot", "octo"]],
+  );
+  assert.deepEqual(
+    out.result.signIns.map((s) => [s.vendor, s.provider, s.inUse]),
+    [
+      ["copilot", "copilot", true],
+      ["chatgpt", "openai", false],
+    ],
+  );
+  const withPolicy = await client.callTool({
+    name: "agentry_providers_list",
+    arguments: { policy: "/tmp/policy.yaml" },
+  });
+  assert.equal(withPolicy.isError, undefined, withPolicy.content[0].text);
+  assert.deepEqual(receivedArgv(argvFile), [
+    ["providers", "list", "--json"],
+    ["providers", "list", "--json", "--policy", "/tmp/policy.yaml"],
+  ]);
+  const old = await connect({}, {}, undefined, { ...ALL_FEATURES, savedModels: false });
+  const refused = await old.client.callTool({ name: "agentry_providers_list", arguments: {} });
+  assert.equal(refused.isError, true);
+  assert.match(refused.content[0].text, /v0\.7\.39 or later/);
+});
