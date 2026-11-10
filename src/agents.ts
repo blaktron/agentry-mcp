@@ -262,11 +262,16 @@ interface RosterEntry {
   id: string;
   kind: string;
   name: string;
+  /** "built-in", "release", "you" or "organization". */
   grantedBy: string;
   state: string;
   on: boolean;
   line: string;
   fixed?: boolean;
+  /** The organization whose managed settings put the entry on the agent. */
+  organization?: string;
+  /** Locked on by those settings: on, with no switch. */
+  locked?: boolean;
 }
 
 /** A subagent a published agent's release declares, as pinned at its install. */
@@ -353,6 +358,11 @@ export async function agentGrant(d: Driver, a: AgentGrantArgs): Promise<CallTool
       `agentry_agent_grant: ${id} is always on for the ${name} agent; no switch changes it.`,
       true,
     );
+  if (entry.locked && !a.on)
+    return text(
+      `agentry_agent_grant: ${entry.name} is locked on by ${entry.organization ?? "your organization"}'s managed settings and cannot be switched off.`,
+      true,
+    );
   const facts = {
     tool: "agentry_agent_grant",
     agent: st.agent,
@@ -361,6 +371,7 @@ export async function agentGrant(d: Driver, a: AgentGrantArgs): Promise<CallTool
       kind: entry.kind,
       name: entry.name,
       grantedBy: entry.grantedBy,
+      ...(entry.organization ? { organization: entry.organization } : {}),
       line: entry.line,
     },
     agreed: st.config?.consented?.[entry.id] ?? "",

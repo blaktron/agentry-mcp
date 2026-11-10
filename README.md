@@ -222,7 +222,12 @@ choose otherwise), and whether this computer's Agentry applies it. When a
 locked value stops runs from starting, the CLI exits 11 and its reason comes
 back in `log`. The tools that write the person's settings through the CLI
 (`agentry_setup`, `agentry_agent_model`) pass the CLI's refusal of a locked
-value through unchanged, in no words of this server's own. A schedule's `held`
+value through unchanged, in no words of this server's own. An organization
+can also configure the person's Assistant and Coding agent (CLI v0.7.51 or
+later). `agentry_agent_show` lists those fields under `managed`, and the
+roster entries it puts on an agent carry `grantedBy: "organization"`, the
+`organization` and, when locked, `locked`. `agentry_agent_grant` refuses to
+switch a locked entry off before it previews anything. A schedule's `held`
 says why it does not run now: its consents were given in Unsafe Mode and the
 managed settings forbid it; it runs again once they stop forbidding it.
 Changing managed settings is an admin's act in the organization's console and
