@@ -237,6 +237,13 @@ account the CLI is signed in to, which takes no key variable, base URL or model.
 in with a provider's own account (_Connect your account_) stays in a terminal
 (`agentry setup`) or the desktop.
 
+When the person's organization sets the model in its managed settings (CLI
+v0.7.46 or later), a call that gives no `provider` takes the organization's
+choice: `agentry`, paid with the organization's credits or with its own model
+key, which stays with the registry, or the provider and model it names. The
+CLI says which in `log`. If the organization locks the model step, another
+provider or model is refused with the CLI's sentence and exit class `policy`.
+
 A run's preview is the CLI's compiled run plan with the attestation verdict
 and every refusal a run would meet, under `plan`, with two things read before
 the person is asked: `summary`, the contract in words (what runs and for how

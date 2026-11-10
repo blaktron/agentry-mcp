@@ -332,9 +332,10 @@ once they stop. `run.unsafeMode` says its consents were given in Unsafe Mode.
 organization default, whether this computer's Agentry applies it, and, when the
 CLI exits 11 (no run may start), the CLI's reason. `agentry_managed_refresh`
 asks the registry again, then shows them; use it when the person asked or the
-copy looks stale. When `agentry_setup` or `agentry_agent_model` is refused for a
-locked value, show the CLI's sentence as it is and do not try another value
-around it. Changing managed settings is an admin's act in the organization's
+copy looks stale. When the organization sets the model (CLI v0.7.46 or later),
+call `agentry_setup` with no `provider` to take its choice; the CLI says which.
+When `agentry_setup` or `agentry_agent_model` is refused for a locked value,
+show the CLI's sentence as it is and do not try another value around it. Changing managed settings is an admin's act in the organization's
 console; there is no tool for it, and do not offer to change one.
 
 Sessions use `agentry_session_start`, `agentry_session_send`, and
