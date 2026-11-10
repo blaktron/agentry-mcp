@@ -1060,3 +1060,30 @@ test("a move on a runhost is refused for a bad name and with the version it need
   assert.match(r.content[0].text, /v0\.7\.39 or later/);
   assert.deepEqual(receivedArgv(old.argvFile), []);
 });
+
+test("a roster entry an organization locks on is refused off before any preview", async () => {
+  const { client, argvFile } = await connect();
+  const r = await call(client, "agentry_agent_grant", {
+    name: "assistant",
+    entry: "server:url-mcp-acme-example",
+    on: false,
+  });
+  assert.equal(r.isError, true);
+  assert.match(
+    r.content[0].text,
+    /locked on by acme's managed settings and cannot be switched off/,
+  );
+  assert.ok(
+    !receivedArgv(argvFile).some((a) => a.includes("grant")),
+    "the CLI was asked to switch it",
+  );
+  const on = envelope(
+    await call(client, "agentry_agent_grant", {
+      name: "assistant",
+      entry: "server:url-mcp-acme-example",
+      on: true,
+    }),
+  );
+  assert.equal(on.json.entry.organization, "acme");
+  assert.equal(on.json.entry.grantedBy, "organization");
+});

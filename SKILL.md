@@ -337,6 +337,14 @@ CLI exits 11 (no run may start), the CLI's reason. `agentry_managed_refresh`
 asks the registry again, then shows them; use it when the person asked or the
 copy looks stale. When the organization sets the model (CLI v0.7.46 or later),
 call `agentry_setup` with no `provider` to take its choice; the CLI says which.
+An organization can also configure the person's Assistant and Coding agent
+(CLI v0.7.51 or later): its name, personality and start with Agentry, and
+MCP servers and shared knowledge packs it puts on their roster. In
+`agentry_agent_show`, `managed` names those fields and the roster's
+`grantedBy: "organization"` entries name the `organization`. A `locked` entry
+is always on: `agentry_agent_grant` refuses to switch it off, so tell the
+person who manages it rather than retrying. They still agree to such entries
+at the agent's next start, as to their own.
 When `agentry_setup` or `agentry_agent_model` is refused for a locked value,
 show the CLI's sentence as it is and do not try another value around it. Changing managed settings is an admin's act in the organization's
 console; there is no tool for it, and do not offer to change one.
