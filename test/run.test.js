@@ -789,3 +789,19 @@ test("a run that uses nothing on the person's computer refuses a desktop argumen
   assert.equal(r.isError, true);
   assert.match(r.content[0].text, /uses nothing on the person's computer/);
 });
+
+test("run preview: the skills a release ships are named beside the network, and a run without says nothing of skills", async () => {
+  const skills = JSON.stringify([
+    { name: "reproduce", description: "Reproduce a reported bug" },
+    { name: "triage", description: "Sort an issue" },
+  ]);
+  const { client } = await connect({ FAKE_RUN_SKILLS: skills });
+  const shown = await previewRun(client, { ref: "acme/widget" });
+  assert.match(
+    shown.summary,
+    /^Network: no network; also the skills it ships \(reproduce, triage\)\./m,
+  );
+  const plain = await connect({});
+  const none = await previewRun(plain.client, { ref: "acme/widget" });
+  assert.doesNotMatch(none.summary, /skills/);
+});

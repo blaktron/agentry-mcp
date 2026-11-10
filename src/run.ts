@@ -191,6 +191,8 @@ export interface CompiledPlan {
     webTools?: boolean;
     webRender?: boolean;
     targetHosts?: string[];
+    /** The skills the release ships, which the run reads with skill_read. */
+    shippedSkills?: { name: string; description?: string }[];
     browser?: unknown;
     desktop?: {
       servers?: {
@@ -444,6 +446,9 @@ export function runSummary(
     cap.webRender ? "page rendering" : "",
     cap.browser ? "a browser" : "",
     cap.targetHosts?.length ? `the target hosts ${cap.targetHosts.join(", ")}` : "",
+    cap.shippedSkills?.length
+      ? `the skills it ships (${cap.shippedSkills.map((s) => s.name).join(", ")})`
+      : "",
     desktopWords(cap.desktop),
     cap.dataAccess?.length ? `data access: ${cap.dataAccess.join(", ")}` : "",
   ].filter(Boolean);
