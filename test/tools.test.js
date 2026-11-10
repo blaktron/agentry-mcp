@@ -141,3 +141,13 @@ test("agentry_info passes the run object through and says to answer its question
   assert.match(r.content[0].text, /"type": ?"repository"/);
   assert.match(r.content[0].text, /"guide"/);
 });
+
+test("search with org lists the organization's QuickAgents through search --org", async () => {
+  const { client, argvFile } = await connect();
+  const r = await client.callTool({
+    name: "agentry_search",
+    arguments: { query: "csv", org: true, mode: "autonomous" },
+  });
+  assert.equal(r.isError, undefined);
+  assert.deepEqual(receivedArgv(argvFile)[0], ["search", "--org", "csv", "--json"]);
+});
