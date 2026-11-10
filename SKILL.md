@@ -84,6 +84,9 @@ changes them, and signing in again is `agentry providers add` in a terminal.
 
 Start with `agentry_doctor`; inspect `agentry_whoami` if sign-in matters.
 Search with `agentry_search`, then read `agentry_info` and `agentry_verify`.
+With `org: true` it lists the QuickAgents the person's organization requires or
+offers (CLI v0.7.49 or later). A required one is installed for them, and its
+first run still asks their consent: show the run's consent as for any other.
 Read the full capability contract before proposing an install or run.
 
 Before a run, read all of `agentry_info`'s `run` object: the questions the

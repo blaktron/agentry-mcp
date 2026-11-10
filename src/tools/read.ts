@@ -314,7 +314,11 @@ export function registerReadTools(d: Driver): void {
       description:
         "Search a registry's public QuickAgents with the installed agentry CLI (`agentry search --json`). " +
         "Returns the CLI's JSON: results (namespace, name, modes, summary, installs30d, quarantineState), " +
-        "facets and total. Every result is a published, scanned release; the report card is on agentry_info.",
+        "facets and total. Every result is a published, scanned release; the report card is on agentry_info. " +
+        "With org, it lists instead the QuickAgents the person's organization requires or offers in its managed " +
+        "settings, as this computer holds them, without asking the registry (`agentry search --org --json`; CLI v0.7.49 " +
+        "or later): results of {ref, version, mode, organization, registry} and total. A required one is installed for " +
+        "the person, and its first run still asks their consent.",
       inputSchema: {
         query: z
           .string()
@@ -334,6 +338,12 @@ export function registerReadTools(d: Driver): void {
           .optional()
           .describe("SPDX identifier of the latest published manifest."),
         verified: z.boolean().optional().describe("Only org namespaces with a verified domain."),
+        org: z
+          .boolean()
+          .optional()
+          .describe(
+            "List the QuickAgents the person's organization requires or offers (its managed settings), filtered by query; the other filters do not apply.",
+          ),
         sort: z.enum(["relevance", "installs", "newest"]).optional(),
         limit: z.number().int().min(1).max(100).optional(),
         registry,
@@ -342,6 +352,12 @@ export function registerReadTools(d: Driver): void {
     },
     (a) =>
       guard("agentry_search", async () => {
+        if (a.org) {
+          const argv = ["search", "--org"];
+          if (a.query) argv.push(value("query", a.query));
+          argv.push("--json");
+          return d.run("agentry_search", argv);
+        }
         const argv = ["search", value("query", a.query), "--json"];
         flag(argv, "mode", a.mode);
         flag(argv, "capability", a.capability);
