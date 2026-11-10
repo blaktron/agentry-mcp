@@ -43,14 +43,16 @@ export function registerRunTools(d: Driver): void {
           ])
           .optional()
           .describe(
-            "The model provider; the policy's current one when omitted. vultr is Vultr Serverless Inference " +
+            "The model provider. When omitted: the provider and model the person's organization sets in its " +
+              "managed settings, if it sets one (CLI v0.7.46 or later; the CLI says which), else the policy's current one. vultr is Vultr Serverless Inference " +
               "(key variable VULTR_INFERENCE_API_KEY by default; needs CLI v0.6.1000 or later); openrouter, poe " +
               "and huggingface default to OPENROUTER_API_KEY, POE_API_KEY and HF_TOKEN. Each is paid by a key " +
               "variable here; signing in with the provider's own account (Connect your account) is done in a " +
               "terminal (`agentry setup`) or the desktop, never through this tool. agentry pays with the Agentry " +
-              "credits of the account the CLI is signed in to (`agentry login`, in a terminal) and takes no apiKeyEnv, " +
-              "baseUrl or model: each run opens a credits session with that sign-in, and the registry picks the model " +
-              "(needs CLI v0.6.1005 or later).",
+              "credits of the account the CLI is signed in to (`agentry login`, in a terminal), or, where its organization's " +
+              "managed settings say so, with the organization's credits or its own model key, which stays with the registry. " +
+              "It takes no apiKeyEnv, baseUrl or model: each run opens a session with that sign-in, and the registry picks " +
+              "the model (needs CLI v0.6.1005 or later).",
           ),
         model: z
           .string()
