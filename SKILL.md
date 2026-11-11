@@ -79,6 +79,9 @@ terminal or the desktop. `agentry_models_list` lists the saved models and
 `agentry_providers_list` the providers, with every model sign-in and connected
 account kept on the computer (CLI v0.7.41 or later lists the sign-ins); no tool
 changes them, and signing in again is `agentry providers add` in a terminal.
+A model's sampling and its cap on one answer (`model.sampling`,
+`model.maxOutputTokens`, CLI v0.7.53 or later) are set in the runner policy by
+the person; no tool sets them.
 
 ## Find, install and run
 
