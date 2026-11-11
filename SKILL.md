@@ -251,6 +251,16 @@ terminal. Storing the agent's secret or git
 host account on the runhost (`agentry agent secret set … --on`, `agentry agent
 configure … --account … --on`) also stays in a terminal.
 
+A persistent agent's remote server that signs in by OAuth, one the person
+added or one their organization put on the agent, signs in with the person's
+own connection (CLI v0.7.53 or later). When `agentry_agent_show` lists it
+`needs-sign-in`, tell the person to run `agentry agent connect <name>` in a
+terminal; it opens the vendor's consent in their browser. Never try to sign
+in, and never ask for a token. The agent starts without the server until
+then, and takes it at its next turn once the person has signed in.
+Removing the connection (`agentry agent connect <name> --remove`) also stays
+in a terminal.
+
 Never try to set a runhost up, remove one, pair or unpair a computer, update
 its CLI or change its settings, or give it or take away its credits token:
 those take an administrator's sign-in to the person's server, the person's own
