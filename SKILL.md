@@ -346,7 +346,12 @@ once they stop. `run.unsafeMode` says its consents were given in Unsafe Mode.
 `agentry_managed_show` reads the managed settings the person's organization sets
 (CLI v0.7.35 or later): per setting its value, whether it is `locked` or an
 organization default, whether this computer's Agentry applies it, and, when the
-CLI exits 11 (no run may start), the CLI's reason. `agentry_managed_refresh`
+CLI exits 11 (no run may start), the CLI's reason. From CLI v0.7.55 it also
+lists this computer's machine settings (`machine`, and the document of "this
+computer's administrator"): a registry they pin, an organization they require
+the person to be signed in to, and locks that win over the organization's.
+Only the computer's administrator changes them; tell the person so.
+`agentry_managed_refresh`
 asks the registry again, then shows them; use it when the person asked or the
 copy looks stale. When the organization sets the model (CLI v0.7.46 or later),
 call `agentry_setup` with no `provider` to take its choice; the CLI says which.

@@ -29,7 +29,11 @@ const READ =
   "`organization`, `version`, `issuedAt` and `fetchedAt`, and its `settings`, each with its `id`, its `value`, " +
   "`locked` (true: the person cannot change it; false: the organization's default, which applies until the " +
   "person chooses otherwise), `known` (this version of Agentry knows the setting) and `applied` (this " +
-  "computer's Agentry applies it); and `problems`, the copies that could not be verified. When no run can " +
+  "computer's Agentry applies it); and `problems`, the copies that could not be verified. With CLI v0.7.55 or " +
+  "later, `machine` names this computer's machine settings (where they were read, the `registry` they pin and the " +
+  "organization `requireOrg` requires), their settings are the document whose `organization` is \"this computer's " +
+  "administrator\" and whose `registry` is empty, and a problem with them has `machine` true; only this computer's " +
+  "administrator changes them. When no run can " +
   "start (a copy that cannot be verified, or a locked setting this version does not know) the CLI exits 11: " +
   "the result then has exitClass `policy` and the CLI's reason in `log`, unchanged. Say who set a value and " +
   "whether it is locked or a default; do not guess a reason for it. ";
