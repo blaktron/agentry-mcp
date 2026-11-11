@@ -111,7 +111,10 @@ saved model; the preview says so. Saving, editing,
 removing or checking a saved model, changing the default and adding a
 provider stay in a terminal or the desktop, and so does making a schedule
 (`agentry schedule add --model`); `agentry_schedule_show` names the saved
-model each schedule runs on.
+model each schedule runs on. A model's sampling and its cap on one answer, for
+a model on a server of your own (`model.sampling` and `model.maxOutputTokens`,
+CLI v0.7.53 or later), are set in the runner policy, not through a tool
+([the model's settings](https://docs.secureagentry.net/runner/#the-models-settings-on-a-server-of-your-own)).
 
 A runhost holds some of this computer's saved models (up to 10), and its
 persistent agents and schedules each run on one of them or on its default.
