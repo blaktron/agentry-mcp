@@ -221,7 +221,11 @@ Managed settings are what an organization's admins set for their members:
 for example, that members may not turn on Unsafe Mode. `agentry_managed_show`
 reads them as this computer holds them, and names who set each value, whether
 it is locked (the person cannot change it) or a default (it applies until they
-choose otherwise), and whether this computer's Agentry applies it. When a
+choose otherwise), and whether this computer's Agentry applies it. With CLI v0.7.55 or later it
+also lists this computer's machine settings, which its administrator deploys:
+`machine` says where they were read, the registry they pin and the
+organization they require, and their settings come as the document of "this
+computer's administrator". When a
 locked value stops runs from starting, the CLI exits 11 and its reason comes
 back in `log`. The tools that write the person's settings through the CLI
 (`agentry_setup`, `agentry_agent_model`) pass the CLI's refusal of a locked
