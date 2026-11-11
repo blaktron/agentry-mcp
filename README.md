@@ -375,7 +375,11 @@ run), switched with `agentry_agent_grant`. So is each application on the
 person's computer an agent may use through Agentry Desktop (`desktop:<id>`,
 with `desktop:<id>:exec`, the agreement that its code runs without asking,
 and `desktop:computer`, CLI v0.7.34 or later); Agentry Desktop's Settings →
-Your computer and the system's permissions stay in the app. A question the agent puts to the
+Your computer and the system's permissions stay in the app. A remote server
+that signs in by OAuth uses the person's own connection (CLI v0.7.53 or
+later): until they make it in a terminal with `agentry agent connect <name>`,
+`agentry_agent_show` lists the server `needs-sign-in` and the agent starts
+without it. No tool makes or removes that connection. A question the agent puts to the
 person during a send is asked through the host's elicitation and answered with
 what the person says; a host that cannot ask leaves it unanswered and the send
 reports `awaitingPerson`. A start that would give the agent something
