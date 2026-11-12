@@ -371,7 +371,12 @@ Sessions use `agentry_session_start`, `agentry_session_send`, and
 `agentry_session_close`. Start reports a launched process, not a ready sandbox.
 Multiline and slash-prefixed text are literal JSON data. A timed-out or opening
 turn is collected on the next send with `sent: false`; send the held text again
-after collecting it. `agentry_session_add` previews and confirms a new file,
+after collecting it. While a turn is still running, `agentry_session_steer`
+sends a correction or one more request into it instead of waiting: use it when
+the reply would otherwise answer the wrong question. A refusal says why (no
+turn in flight: send it as a turn; a harness that takes a message only between
+turns, which the default one is; a CLI before v0.7.56), and the turn goes on
+either way, so collect its reply with send. `agentry_session_add` previews and confirms a new file,
 then stages it read-only; collect its notice/refusal with send. Close with
 `finish: true` for a final result, or false to quit; a close whose envelope
 ended in a failure class is a tool error carrying the same record. One

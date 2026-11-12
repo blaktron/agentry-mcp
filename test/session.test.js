@@ -325,10 +325,121 @@ test("no session result carries a secret value from the server's environment", a
   }
 });
 
+test("a steer joins the turn in flight: taken while a turn is past its limit, and the turn's reply is still collected", async () => {
+  const { client } = await connect({ FAKE_TURN_DELAY: "2" });
+  const { session } = await startSession(client);
+  const id = session.sessionId;
+  const slow = await call(client, "agentry_session_send", {
+    sessionId: id,
+    text: "slow one",
+    turnTimeoutSeconds: 1,
+  });
+  assert.equal(slow.isError, true);
+  const steer = await call(client, "agentry_session_steer", {
+    sessionId: id,
+    text: "  and the date too\n",
+  });
+  assert.equal(steer.isError, undefined, steer.content[0].text);
+  const taken = JSON.parse(steer.content[0].text);
+  assert.equal(taken.steered, true);
+  assert.match(taken.note, /collect the turn's reply with agentry_session_send/);
+  // The turn's own events were kept while the steer read the stream: the
+  // late reply has its tool call and its usage, and what the steer added.
+  const held = await call(client, "agentry_session_send", {
+    sessionId: id,
+    text: "next",
+    turnTimeoutSeconds: 10,
+  });
+  assert.equal(held.isError, undefined, held.content[0].text);
+  const late = JSON.parse(held.content[0].text);
+  assert.equal(late.lateReplyTo, "slow one");
+  assert.equal(late.reply, "echo: slow one + and the date too");
+  assert.deepEqual(late.toolCalls, ["fs_read"]);
+  assert.equal(late.usage.inputTokens, 10);
+  assert.deepEqual(late.errors, []);
+  const c = await call(client, "agentry_session_close", { sessionId: id });
+  const transcript = readFileSync(JSON.parse(c.content[0].text).transcript, "utf8");
+  assert.match(transcript, /"kind": "steer", "text": "and the date too"/);
+});
+
+test("a steer while another call waits on the turn is answered there, and that turn's reply is its own", async () => {
+  const { client } = await connect({ FAKE_TURN_DELAY: "2" });
+  const { session } = await startSession(client);
+  const id = session.sessionId;
+  const turn = call(client, "agentry_session_send", {
+    sessionId: id,
+    text: "long one",
+    turnTimeoutSeconds: 10,
+  });
+  await sleep(300);
+  const steer = await call(client, "agentry_session_steer", { sessionId: id, text: "more" });
+  assert.equal(steer.isError, undefined, steer.content[0].text);
+  const reply = JSON.parse((await turn).content[0].text);
+  assert.equal(reply.reply, "echo: long one + more");
+  assert.deepEqual(reply.errors, []);
+  await call(client, "agentry_session_close", { sessionId: id, finish: false });
+});
+
+test("a steer the session cannot take is a tool error that says why, and the turn goes on", async () => {
+  for (const [how, says] of [
+    ["cannot", /harness takes a message only between turns .*docker-agent/],
+    [
+      "old-cli",
+      /installed CLI does not know the steer command, which needs CLI v0\.7\.56 or later/,
+    ],
+    [
+      "cap",
+      /the session refused the message \(steer_refused\): the session's limit of 3 messages is reached/,
+    ],
+  ]) {
+    const { client } = await connect({ FAKE_TURN_DELAY: "1", FAKE_STEER: how });
+    const { session } = await startSession(client);
+    const id = session.sessionId;
+    const turn = call(client, "agentry_session_send", {
+      sessionId: id,
+      text: "long one",
+      turnTimeoutSeconds: 10,
+    });
+    await sleep(200);
+    const steer = await call(client, "agentry_session_steer", { sessionId: id, text: "more" });
+    assert.equal(steer.isError, true, how);
+    assert.match(steer.content[0].text, says, how);
+    // The refusal was the steer's: the turn is answered, with no error of its own.
+    const reply = JSON.parse((await turn).content[0].text);
+    assert.equal(reply.reply, "echo: long one", how);
+    assert.deepEqual(reply.errors, [], how);
+    await call(client, "agentry_session_close", { sessionId: id, finish: false });
+    await clients.pop().close();
+  }
+});
+
+test("a steer with no turn in flight, an empty one and one to no session are refused before or by the CLI", async () => {
+  const { client } = await connect();
+  const none = await call(client, "agentry_session_steer", { sessionId: "s-none", text: "x" });
+  assert.equal(none.isError, true);
+  assert.match(none.content[0].text, /no session is open/);
+  const { session } = await startSession(client);
+  const id = session.sessionId;
+  const idle = await call(client, "agentry_session_steer", { sessionId: id, text: "too early" });
+  assert.equal(idle.isError, true);
+  assert.match(
+    idle.content[0].text,
+    /no turn is in flight on session .*send the text with agentry_session_send/,
+  );
+  const empty = await call(client, "agentry_session_steer", { sessionId: id, text: "  " });
+  assert.equal(empty.isError, true);
+  assert.match(empty.content[0].text, /text must not be empty/);
+  // The session is unharmed: a turn after the refusals is answered.
+  const t = await call(client, "agentry_session_send", { sessionId: id, text: "hello" });
+  assert.equal(JSON.parse(t.content[0].text).reply, "echo: hello");
+  await call(client, "agentry_session_close", { sessionId: id, finish: false });
+});
+
 test("the tool list includes the updated surface", async () => {
   const { client } = await connect();
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 51);
+  assert.equal(tools.length, 52);
+  assert.ok(tools.find((t) => t.name === "agentry_session_steer"));
   assert.ok(tools.find((t) => t.name === "agentry_session_start"));
 });
 

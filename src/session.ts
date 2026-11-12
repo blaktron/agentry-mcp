@@ -35,6 +35,7 @@ interface SessionEvent {
   text?: string;
   reason?: string;
   stopReason?: string;
+  synthetic?: boolean;
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
@@ -100,6 +101,18 @@ export interface Turn {
   errors: string[];
 }
 
+/** How long a steer waits for the CLI to take or refuse it. */
+const STEER_WAIT_MS = 15_000;
+/** The refusals that answer a steer; a CLI older than the command answers unknown_command. */
+const STEER_REFUSALS = new Set(["no_turn", "cannot_steer", "steer_refused", "unknown_command"]);
+
+/** How a steer came out: taken into the turn in flight, refused by class, unanswered, or the end. */
+export type SteerOutcome =
+  | { kind: "taken" }
+  | { kind: "refused"; refused: string; why: string }
+  | { kind: "unanswered" }
+  | { kind: "ended"; reason: string };
+
 /** How a send came out: the reply to this text, the late reply to an earlier one, a timeout, or the end. */
 export type SendOutcome =
   | { kind: "reply"; turn: Turn; text: string }
@@ -121,6 +134,8 @@ export class ProtocolSession {
   /** The text of a turn that went unanswered within its limit; the chat is still on it. */
   private awaiting: string | undefined;
   private pendingTurn: Turn | undefined;
+  /** Settles the steer in flight, from whichever call reads its answer. */
+  private steering: ((outcome: SteerOutcome) => void) | undefined;
 
   constructor(
     readonly child: ChildProcess,
@@ -199,7 +214,22 @@ export class ProtocolSession {
             turn.usage.costUsd = Math.max(turn.usage.costUsd, ev.costUsd ?? 0);
           }
           break;
+        case "steer":
+          // The session's own record of a message it took into the turn;
+          // the runner's notice of an added file is one too, and answers
+          // no call.
+          if (!ev.synthetic && this.steering) {
+            this.steering({ kind: "taken" });
+            this.steering = undefined;
+          }
+          break;
         case "error":
+          if (ev.refused && this.steering && STEER_REFUSALS.has(ev.refused)) {
+            // The refusal is the steer's, not the turn's: the turn goes on.
+            this.steering({ kind: "refused", refused: ev.refused, why: ev.text ?? "" });
+            this.steering = undefined;
+            break;
+          }
           if (turn) turn.errors.push(`${ev.refused ? `${ev.refused}: ` : ""}${ev.text ?? ""}`);
           break;
         case "session_end":
@@ -288,6 +318,56 @@ export class ProtocolSession {
       await sleep(POLL_MS);
     }
     return "timeout";
+  }
+
+  /** The turn a call outside send collects events into: the one still awaited, if any. */
+  private collecting(): Turn | undefined {
+    if (this.awaiting === undefined) return undefined;
+    this.pendingTurn ??= {
+      taken: false,
+      toolCalls: [],
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 },
+      errors: [],
+    };
+    return this.pendingTurn;
+  }
+
+  /**
+   * A message into the turn in flight. The CLI answers with the session's
+   * steer event or with a refusal; a send that is waiting for the turn
+   * reads either, and with none waiting this call reads the stream itself,
+   * keeping the turn's own events for the send that collects it.
+   */
+  async steer(line: string, waitMs = STEER_WAIT_MS): Promise<SteerOutcome> {
+    if (this.closing) throw new ArgumentError("the session is closing");
+    if (this.steering) throw new ArgumentError("a message is already on its way into the turn");
+    if (!this.busy) this.absorb(await this.tail.next(), this.collecting());
+    if (this.endedReason || this.exited)
+      return {
+        kind: "ended",
+        reason: this.endedReason ?? `CLI exited ${this.exitCode}: ${this.raw.slice(-4000)}`,
+      };
+    let outcome: SteerOutcome | undefined;
+    this.steering = (o) => {
+      outcome = o;
+    };
+    this.child.stdin?.write(JSON.stringify({ steer: { text: line } }) + "\n");
+    const until = Date.now() + waitMs;
+    while (outcome === undefined && Date.now() < until) {
+      if (!this.busy) this.absorb(await this.tail.next(), this.collecting());
+      if (this.tail.problem) {
+        this.steering = undefined;
+        throw new ArgumentError(this.tail.problem);
+      }
+      if (outcome === undefined && (this.endedReason || this.exited)) {
+        this.endedReason ??= "harness_exit";
+        outcome = { kind: "ended", reason: this.endedReason };
+        break;
+      }
+      await sleep(POLL_MS);
+    }
+    this.steering = undefined;
+    return outcome ?? { kind: "unanswered" };
   }
 
   /** A consented file add, never an arbitrary protocol command. */
@@ -490,6 +570,60 @@ export function turnLine(textIn: string): string {
   if (Buffer.byteLength(JSON.stringify({ send: { text: line } })) > 1 << 20)
     throw new ArgumentError("text exceeds the session protocol's 1 MiB command limit");
   return line;
+}
+
+/** agentry_session_steer: a message into the turn in flight, and what the CLI answered. */
+export async function sessionSteer(
+  d: Driver,
+  a: { sessionId: string; text: string },
+): Promise<CallToolResult> {
+  const tool = "agentry_session_steer";
+  const s = openSession(d, a.sessionId, tool);
+  if (!(s instanceof ProtocolSession)) return s;
+  const line = a.text.trim();
+  if (line === "") throw new ArgumentError("text must not be empty");
+  if (Buffer.byteLength(JSON.stringify({ steer: { text: line } })) > 1 << 20)
+    throw new ArgumentError("text exceeds the session protocol's 1 MiB command limit");
+  const r = await s.steer(line);
+  const collect = "collect the turn's reply with agentry_session_send";
+  switch (r.kind) {
+    case "taken":
+      return json({
+        sessionId: s.id,
+        steered: true,
+        note: `the message joins the turn in flight after the tool calls it is running; ${collect}`,
+      });
+    case "ended":
+      return text(
+        `${tool}: session ${s.id} ended (${r.reason}); nothing was sent. Close it with agentry_session_close for the transcript and receipts.`,
+        true,
+      );
+    case "unanswered":
+      return text(
+        `${tool}: the CLI did not say whether it took the message within ${STEER_WAIT_MS / 1000}s; ${collect} and read the transcript at the close to see whether it joined the turn.`,
+        true,
+      );
+    case "refused":
+      switch (r.refused) {
+        case "no_turn":
+          return text(
+            `${tool}: no turn is in flight on session ${s.id}, so there is nothing to join; send the text with agentry_session_send.`,
+            true,
+          );
+        case "cannot_steer":
+          return text(
+            `${tool}: this session's harness takes a message only between turns (${r.why}); ${collect}, then send the text as a turn.`,
+            true,
+          );
+        case "unknown_command":
+          return text(
+            `${tool}: the installed CLI does not know the steer command, which needs CLI v0.7.56 or later; ${collect}, then send the text as a turn.`,
+            true,
+          );
+        default:
+          return text(`${tool}: the session refused the message (${r.refused}): ${r.why}`, true);
+      }
+  }
 }
 
 /** agentry_session_send: one user turn in, the agent's reply out. */

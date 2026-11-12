@@ -11,6 +11,7 @@ import {
   sessionClose,
   sessionAdd,
   sessionSend,
+  sessionSteer,
   sessionStart,
 } from "../session.js";
 import { registerTool } from "../toolargs.js";
@@ -170,6 +171,35 @@ export function registerSessionTools(d: Driver): void {
       },
     },
     (a) => guard("agentry_session_send", () => sessionSend(d, a)),
+  );
+
+  registerTool(
+    d.server,
+    "agentry_session_steer",
+    {
+      description:
+        "Send a message into the turn the agent is still working on, instead of waiting for its reply: a " +
+        "correction, or one more thing to do. It needs a turn in flight (a send that went past its limit, the " +
+        "opening task, or a send another call is waiting on) and a session whose harness takes a message " +
+        "during a turn; the message then joins the conversation after the tool calls the agent is running, " +
+        "and the turn's reply is collected with agentry_session_send as usual. Anything else is a tool error " +
+        "that says which it was: no turn in flight (send the text as a turn), a harness that takes a message " +
+        "only between turns, an installed CLI older than v0.7.56, or the session's own refusal (its limit of " +
+        "messages). The message counts as one of the session's user messages. Text is sent as JSON data.",
+      inputSchema: {
+        sessionId: z.string().describe("The id agentry_session_start returned."),
+        text: z
+          .string()
+          .describe("The message for the turn in flight; multiline text is preserved."),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    (a) => guard("agentry_session_steer", () => sessionSteer(d, a)),
   );
 
   registerTool(
