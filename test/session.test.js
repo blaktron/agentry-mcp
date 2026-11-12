@@ -438,7 +438,8 @@ test("a steer with no turn in flight, an empty one and one to no session are ref
 test("the tool list includes the updated surface", async () => {
   const { client } = await connect();
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 52);
+  assert.equal(tools.length, 53);
+  assert.ok(tools.find((t) => t.name === "agentry_agent_steer"));
   assert.ok(tools.find((t) => t.name === "agentry_session_steer"));
   assert.ok(tools.find((t) => t.name === "agentry_session_start"));
 });

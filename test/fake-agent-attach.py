@@ -15,6 +15,16 @@ for line in sys.stdin:
     cmd = json.loads(line)
     if 'end' in cmd:
         break
+    if 'steer' in cmd:
+        how = os.getenv('FAKE_STEER', 'taken')
+        if how == 'taken':
+            event('steer', text=cmd['steer']['text'])
+            event('steered')
+        elif how == 'silent':
+            pass
+        else:
+            event('error', text='refused by the fixture', refused=how)
+        continue
     text = cmd['send']['text']
     if os.getenv('FAKE_AGENT_BUSY'):
         event('error', text='a turn is in flight; send again when its answer arrives', refused='busy')
