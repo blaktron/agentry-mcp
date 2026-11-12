@@ -821,6 +821,160 @@ export async function agentSend(d: Driver, a: AgentSendArgs): Promise<CallToolRe
   );
 }
 
+export interface AgentSteerArgs {
+  name: string;
+  text: string;
+  on?: string;
+}
+
+/** How long a steer waits for the agent to take or refuse it. */
+const AGENT_STEER_WAIT_MS = 15_000;
+/** The refusals that answer a steer; a CLI older than the command answers unknown_command. */
+const AGENT_STEER_REFUSALS = new Set([
+  "no_turn",
+  "cannot_steer",
+  "steer_refused",
+  "unknown_command",
+  "ended",
+]);
+
+/**
+ * agentry_agent_steer: a message into the running agent's turn in flight,
+ * over its own `agentry agent attach --json`. Taken, the agent's steer event
+ * comes back with this text; refused, the refusal says what to do instead.
+ * The attach detaches either way, and the turn goes on.
+ */
+export async function agentSteer(d: Driver, a: AgentSteerArgs): Promise<CallToolResult> {
+  const refused = needsAgents(d, "agentry_agent_steer");
+  if (refused) return refused;
+  if (process.platform === "win32")
+    return text(
+      "agentry_agent_steer: the CLI's pipe protocol is unavailable on Windows; use `agentry agent chat` in a terminal.",
+      true,
+    );
+  const name = agentName(a.name);
+  if (a.text.trim() === "") throw new ArgumentError("text must not be empty");
+  const child = spawn(d.bin, onRunhost(d, ["agent", "attach", name, "--json"], a.on), {
+    cwd: d.cwd,
+    env: { ...process.env, ...d.env },
+    stdio: ["pipe", "pipe", "pipe", "pipe"],
+  });
+  let stderr = "";
+  child.stderr?.setEncoding("utf8");
+  child.stderr?.on("data", (s: string) => (stderr = (stderr + s).slice(-65536)));
+  child.stdout?.resume();
+  child.stdin?.on("error", () => {});
+  const exited = new Promise<number>((resolve) => {
+    child.on("close", (code, signal) => resolve(code ?? (signal ? 128 : -1)));
+    child.on("error", () => resolve(-1));
+  });
+  type Outcome =
+    | { kind: "taken" }
+    | { kind: "refused"; refused: string; why: string }
+    | { kind: "ended"; reason: string }
+    | { kind: "problem"; why: string };
+  let partial = "";
+  const outcome = new Promise<Outcome>((resolve) => {
+    const events = child.stdio[3] as Readable;
+    events.setEncoding("utf8");
+    events.on("error", (err) => resolve({ kind: "problem", why: err.message }));
+    events.on("end", () =>
+      resolve({ kind: "problem", why: "the CLI closed its events before answering the steer" }),
+    );
+    events.on("data", (chunk: string) => {
+      partial += chunk;
+      if (partial.length > 16 << 20) {
+        resolve({ kind: "problem", why: "an agent event exceeded 16 MiB" });
+        return;
+      }
+      const lines = partial.split("\n");
+      partial = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let ev: AgentEvent;
+        try {
+          ev = JSON.parse(line) as AgentEvent;
+        } catch {
+          resolve({ kind: "problem", why: "the CLI emitted an invalid protocol event" });
+          return;
+        }
+        if (ev.refused && AGENT_STEER_REFUSALS.has(ev.refused)) {
+          resolve({ kind: "refused", refused: ev.refused, why: ev.text ?? "" });
+          return;
+        }
+        if (ev.kind === "steer" && !ev.synthetic && (ev.text ?? "").endsWith(a.text)) {
+          resolve({ kind: "taken" });
+          return;
+        }
+        if (ev.kind === "session_end") {
+          resolve({ kind: "ended", reason: ev.reason ?? "ended" });
+          return;
+        }
+      }
+    });
+  });
+  child.stdin?.write(JSON.stringify({ steer: { text: a.text } }) + "\n");
+  let timer: NodeJS.Timeout | undefined;
+  const got = await Promise.race([
+    outcome,
+    exited.then((code): Outcome => ({
+      kind: "problem",
+      why: `\`agentry agent attach\` exited ${code} before the steer was answered`,
+    })),
+    new Promise<Outcome>((resolve) => {
+      timer = setTimeout(
+        () =>
+          resolve({ kind: "problem", why: "the agent neither took nor refused the steer in time" }),
+        AGENT_STEER_WAIT_MS,
+      );
+    }),
+  ]);
+  if (timer) clearTimeout(timer);
+  child.stdin?.end(JSON.stringify({ end: { finish: false } }) + "\n");
+  let detachTimer: NodeJS.Timeout | undefined;
+  await Promise.race([
+    exited,
+    new Promise<number>((resolve) => {
+      detachTimer = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve(-1);
+      }, DETACH_MS);
+    }),
+  ]);
+  if (detachTimer) clearTimeout(detachTimer);
+
+  switch (got.kind) {
+    case "taken":
+      return json({
+        agent: name,
+        steered: true,
+        note: "The message joins the turn in flight after the tools the agent is running; its answer arrives with that turn (agentry_agent_send's reply, or agentry_agent_show's `transcript`).",
+      });
+    case "refused": {
+      const next: Record<string, string> = {
+        no_turn: "No turn is in flight: send the text as a turn with agentry_agent_send.",
+        cannot_steer:
+          "The agent is on a turn of its own (a task, a messenger's message, upkeep), or its harness takes a message only between turns: send the text with agentry_agent_send once the turn ends.",
+        steer_refused: "The agent would not take it.",
+        unknown_command:
+          "The installed agentry CLI is older than v0.7.58 and cannot send a message into a persistent agent's turn.",
+        ended: "The agent's segment has ended.",
+      };
+      return text(
+        `agentry_agent_steer: ${got.refused}: ${got.why}. ${next[got.refused] ?? ""}`.trim(),
+        true,
+      );
+    }
+    case "ended":
+      return text(`agentry_agent_steer: the ${name} agent's segment ended (${got.reason}).`, true);
+    case "problem":
+      return text(
+        `agentry_agent_steer: ${got.why}.` + (stderr.trim() ? `\n\n${tail(stderr)}` : ""),
+        true,
+      );
+  }
+}
+
 /** The task operations a program may ask for: pause and resume. Removing a
  *  task stays in a terminal and the desktop. */
 export const TASK_OPS = ["pause", "resume"] as const;

@@ -162,6 +162,39 @@ test("a send is one attach: the reply to its own turn, past the end of another c
   assert.deepEqual(receivedArgv(argvFile), [["agent", "attach", "assistant", "--json"]]);
 });
 
+test("a steer is one attach: taken into the turn in flight, then detached", async () => {
+  const { client, argvFile } = await connect({});
+  const r = envelope(
+    await call(client, "agentry_agent_steer", { name: "assistant", text: "keep it short" }),
+  );
+  assert.equal(r.json.steered, true);
+  assert.deepEqual(receivedArgv(argvFile), [["agent", "attach", "assistant", "--json"]]);
+});
+
+test("a steer's refusal says what to do instead", async () => {
+  for (const [how, want] of [
+    ["no_turn", /no_turn: .*send the text as a turn with agentry_agent_send/],
+    ["cannot_steer", /cannot_steer: .*once the turn ends/],
+    ["steer_refused", /steer_refused: .*would not take it/],
+    ["unknown_command", /unknown_command: .*older than v0\.7\.58/],
+  ]) {
+    const { client } = await connect({ FAKE_STEER: how });
+    const r = await call(client, "agentry_agent_steer", {
+      name: "assistant",
+      text: "keep it short",
+    });
+    assert.equal(r.isError, true, how);
+    assert.match(r.content[0].text, want);
+  }
+});
+
+test("a steer needs a text", async () => {
+  const { client } = await connect({});
+  const r = await call(client, "agentry_agent_steer", { name: "assistant", text: "  " });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /text must not be empty/);
+});
+
 test("a send while another chat's turn is in flight is refused busy", async () => {
   const { client } = await connect({ FAKE_AGENT_BUSY: "1" });
   const r = await call(client, "agentry_agent_send", { name: "assistant", text: "hello" });

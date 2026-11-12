@@ -60,6 +60,7 @@ export const TOOL_COMMANDS: Record<string, readonly string[]> = {
   agentry_agent_start: ["agent start"],
   agentry_agent_stop: ["agent stop"],
   agentry_agent_send: ["agent attach"],
+  agentry_agent_steer: ["agent attach"],
   agentry_agent_tasks: ["agent tasks"],
   agentry_agent_compact: ["agent compact"],
   agentry_agent_grant: ["agent grant"],
