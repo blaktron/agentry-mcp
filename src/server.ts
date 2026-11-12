@@ -20,7 +20,7 @@ import { registerSessionTools } from "./tools/session.js";
 import { registerWriteTools } from "./tools/write.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.7.27";
+export const SERVER_VERSION = "0.7.28";
 
 export function instructions(bin: string, cliVersion: string): string {
   return [
@@ -68,8 +68,9 @@ export function instructions(bin: string, cliVersion: string): string {
     "",
     "An interactive session is the same consent, then agentry_session_start opens the QuickAgent's " +
       "session through the CLI's JSON-line protocol; agentry_session_send is one turn in and the reply out, as the " +
-      "run's own events receipt recorded it; agentry_session_close ends it and names the transcript and " +
-      "receipts. One session at a time.",
+      "run's own events receipt recorded it; agentry_session_steer sends a message into a turn that is still " +
+      "running, where the session's harness takes one; agentry_session_close ends it and names the transcript " +
+      "and receipts. One session at a time.",
     "",
     "Persistent agents run in the background once started and keep their conversation: " +
       "agentry_agent_list and agentry_agent_show read them, agentry_agent_start and agentry_agent_stop start and " +

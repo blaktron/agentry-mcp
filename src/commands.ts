@@ -27,6 +27,7 @@ export const TOOL_COMMANDS: Record<string, readonly string[]> = {
   agentry_session_start: ["run"],
   // A session's turns and files go into the chat the start opened.
   agentry_session_send: [],
+  agentry_session_steer: [],
   agentry_session_add: [],
   agentry_session_close: [],
   agentry_validate: ["validate"],
