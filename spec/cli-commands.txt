@@ -1,10 +1,11 @@
-# agentry version 0.0.0-dev, built from agentry-cli 4f4837e4
+# agentry version 0.7.57-dev.1
 acp
 agent
 agent attach
 agent chat
 agent compact
 agent configure
+agent connect
 agent disable
 agent enable
 agent grant
@@ -56,6 +57,8 @@ draft
 files
 files ensure
 fork
+harness
+harness use
 info
 init
 install
