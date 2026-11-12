@@ -348,12 +348,22 @@ Interactive sessions launch `agentry run --mode interactive
 and an event pipe on descriptor 3. One session runs at a time. Windows uses
 the terminal CLI because the pipe protocol is unavailable there.
 
-| Tool                    | Runs                                                                                                                                                         | Returns                                                                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `agentry_session_start` | `agentry run --plan --json --mode interactive` and `agentry doctor <ref> --json`, then `agentry run --mode interactive` consented, over the session protocol | the summary, the readiness block and the plan with a `digest`, then the session id, the output folder and the receipts directory |
-| `agentry_session_send`  | a JSON send command to the open chat session                                                                                                                 | the agent's reply as the events receipt recorded it, the tools it called, the usage                                              |
-| `agentry_session_add`   | a consented JSON add command to the open chat session                                                                                                        | staged file submission; collect its notice or refusal with send                                                                  |
-| `agentry_session_close` | a JSON end command to the open chat session, then the CLI's teardown                                                                                         | why the session ended, the envelope's status and result, the transcript, the receipts directory; a failure class is a tool error |
+`agentry_session_steer` sends a message into the turn the agent is still
+working on: a turn whose send went past its limit, the opening task, or a send
+another call is waiting on. Where the session's harness takes a message during
+a turn, it joins the conversation after the tool calls the agent is running,
+and the turn's reply is collected with `agentry_session_send` as before. The
+default harness takes a message only between turns, and says so; so does a
+CLI older than v0.7.56, by name. The message counts as one of the session's
+user messages.
+
+| Tool                    | Runs                                                                                                                                                         | Returns                                                                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agentry_session_start` | `agentry run --plan --json --mode interactive` and `agentry doctor <ref> --json`, then `agentry run --mode interactive` consented, over the session protocol | the summary, the readiness block and the plan with a `digest`, then the session id, the output folder and the receipts directory                  |
+| `agentry_session_send`  | a JSON send command to the open chat session                                                                                                                 | the agent's reply as the events receipt recorded it, the tools it called, the usage                                                               |
+| `agentry_session_steer` | a JSON steer command to the open chat session, into the turn in flight (CLI v0.7.56 or later)                                                                | whether the session took the message; a tool error when no turn is in flight, the harness takes a message only between turns, or the CLI is older |
+| `agentry_session_add`   | a consented JSON add command to the open chat session                                                                                                        | staged file submission; collect its notice or refusal with send                                                                                   |
+| `agentry_session_close` | a JSON end command to the open chat session, then the CLI's teardown                                                                                         | why the session ended, the envelope's status and result, the transcript, the receipts directory; a failure class is a tool error                  |
 
 Persistent agents run in the background once started and keep their
 conversation from one start to the next: the Assistant, the Coding agent and
