@@ -249,6 +249,14 @@ account the CLI is signed in to, which takes no key variable, base URL or model.
 in with a provider's own account (_Connect your account_) stays in a terminal
 (`agentry setup`) or the desktop.
 
+Which container harness runs use, Docker Agent (the default) or the Agentry
+harness, is the person's choice for every later run, made in a terminal with
+`agentry harness use` (CLI v0.7.57 or later). No tool changes it.
+`agentry_setup`'s result names the harness runs use in `harness`, and
+`agentry_doctor` has a `harness` check that names it and fails when that
+harness does not reach the model. `adapter` on a run or a session still names
+the harness of that one.
+
 When the person's organization sets the model in its managed settings (CLI
 v0.7.46 or later), a call that gives no `provider` takes the organization's
 choice: `agentry`, paid with the organization's credits or with its own model
@@ -519,7 +527,8 @@ set/attach/delete and account upload/download, enabling, configuring and
 resetting a persistent agent (`agentry agent enable`, `configure`, `reset`;
 the Assistant's mail providers and its three resets among them), installing a
 persistent agent from a folder (`agentry agent install --local`),
-`agentry files ensure`,
+`agentry files ensure`, choosing the container harness
+(`agentry harness use`),
 Unsafe Mode and vulnerable-server lifts, and a build's source tokens. Those
 stay in a terminal.
 
@@ -544,6 +553,7 @@ the CLI gains is given a tool or a row here before the server ships.
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `agentry acp`                       | is the Agent Client Protocol server itself, which a host starts directly instead of this one                                                                                                                          |
 | `agentry agent chat`                | an interactive terminal interface, not a command a program reads                                                                                                                                                      |
+| `agentry agent connect`             | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                                                                                               |
 | `agentry agent disable`             | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds                                                                              |
 | `agentry agent enable`              | configures a persistent agent's accounts, messengers, skills or secrets, each of which takes a sign-in, a key or a file the person holds                                                                              |
 | `agentry agent memory export`       | deletes, downloads, exports or imports a kept pack, voice, design or memory on this computer; the person does it in a terminal or the desktop                                                                         |
@@ -572,6 +582,7 @@ the CLI gains is given a tool or a row here before the server ships.
 | `agentry destinations remove`       | signs in or out, or takes a credential: the person types it where they can see the prompt, never through a host's model                                                                                               |
 | `agentry files ensure`              | fetches or builds a runner image; agentry_run and agentry_setup do it when a run needs it                                                                                                                             |
 | `agentry fork`                      | publishes to the registry or changes what the person's account holds there; a person decides that in a terminal or on the site                                                                                        |
+| `agentry harness use`               | changes what every later run takes or where its results go, which the person decides once in a terminal or the desktop                                                                                                |
 | `agentry init`                      | writes a new workspace in a folder of the person's; agentry_draft drafts one from a description                                                                                                                       |
 | `agentry knowledge delete`          | deletes, downloads, exports or imports a kept pack, voice, design or memory on this computer; the person does it in a terminal or the desktop                                                                         |
 | `agentry knowledge download`        | deletes, downloads, exports or imports a kept pack, voice, design or memory on this computer; the person does it in a terminal or the desktop                                                                         |

@@ -171,6 +171,10 @@ lists them (CLI v0.7.39 or later), never a key. A run or a session is on the
 default unless `model` names one, by name or id: pass it only when the person
 asked for that model. The harness follows the model's credential (a ChatGPT
 plan runs on Codex), and `adapter` overrides it only when the person asked.
+For a model paid by a key, the person's own setting chooses between Docker
+Agent and the Agentry harness (`agentry harness use`, in a terminal; CLI
+v0.7.57 or later): `agentry_doctor`'s `harness` check says which, and you
+never pass `adapter` to change it for them.
 The preview's summary names the saved model; show it. A name the computer
 does not have is refused, never replaced by the default: tell the person,
 and list the ones it has. `model` goes with `on` too (CLI v0.7.39 or later): it
