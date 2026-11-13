@@ -20,7 +20,7 @@ import { registerSessionTools } from "./tools/session.js";
 import { registerWriteTools } from "./tools/write.js";
 
 export const SERVER_NAME = "agentry-mcp";
-export const SERVER_VERSION = "0.7.30";
+export const SERVER_VERSION = "0.7.31";
 
 export function instructions(bin: string, cliVersion: string): string {
   return [
@@ -75,7 +75,7 @@ export function instructions(bin: string, cliVersion: string): string {
     "Persistent agents run in the background once started and keep their conversation: " +
       "agentry_agent_list and agentry_agent_show read them, agentry_agent_start and agentry_agent_stop start and " +
       "stop one, agentry_agent_send is one turn in and the answer out, agentry_agent_grant switches a roster " +
-      "entry, and agentry_agent_compact has an agent write a handoff and start a fresh conversation. " +
+      "entry, and agentry_agent_compact compacts an agent's conversation, in place or into a handoff and a fresh one. " +
       "agentry_agent_install adds a persistent QuickAgent from a registry (named by its ns/name everywhere an " +
       "agent is named) and agentry_agent_uninstall removes it, keeping its conversation and files unless the " +
       "person asks to remove them. An install shows the person what the agent may do, the persona, the knowledge " +
