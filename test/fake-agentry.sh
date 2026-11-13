@@ -192,7 +192,12 @@ if [ "$1" = "agent" ]; then
       fi
       printf '{"agent":"acme.widget","ref":"acme/widget","dataRemoved":%s,"release":{"ref":"acme/widget","plan":false,"installs":["/home/me/.agentry/runner/agents/acme/widget/1.0.0-aaaa"],"profiles":[],"consentRecord":true}}\n' "$wiped" ;;
     stop) echo '{"status":"ok","resultFile":"/home/me/.agentry/runner/agents/assistant/result.json"}' ;;
-    compact) printf '{"agent":"%s","compacted":{"trigger":"manual","swapped":true,"factsBefore":6,"factsAfter":14,"handoffBytes":1326,"swap":"in-segment","swapMillis":30}}\n' "$3" ;;
+    compact)
+      if [ -n "${FAKE_COMPACT_IN_PLACE:-}" ]; then
+        printf '{"agent":"%s","compacted":{"trigger":"manual","swapped":false,"factsBefore":6,"factsAfter":6,"swap":"in-place","swapMillis":2571,"saveFailed":"prompt: context deadline exceeded"}}\n' "$3"
+      else
+        printf '{"agent":"%s","compacted":{"trigger":"manual","swapped":true,"factsBefore":6,"factsAfter":14,"handoffBytes":1326,"swap":"in-segment","swapMillis":30}}\n' "$3"
+      fi ;;
     grant) printf '[{"id":"share","on":%s}]\n' "$( [ "$5" = on ] && echo true || echo false )" ;;
     attach) exec python3 "$(dirname "$0")/fake-agent-attach.py" "$@" ;;
     tasks)
