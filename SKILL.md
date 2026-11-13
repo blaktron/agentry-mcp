@@ -246,7 +246,8 @@ lists what is there.
 
 A persistent agent may run on a runhost too (CLI v0.7.14 or later): pass `on`
 to `agentry_agent_list`, `agentry_agent_show`, `agentry_agent_start`,
-`agentry_agent_stop`, `agentry_agent_send` and `agentry_agent_tasks`, and
+`agentry_agent_stop`, `agentry_agent_send`, `agentry_agent_steer` and
+`agentry_agent_tasks`, and
 `runhost` to `agentry_agent_grant` (whose `on` is the switch), when the person
 named that runhost or the agent runs there. Its model is one the runhost holds
 (`agentry_models_list` with `on`): if a start says the runhost has none, tell
@@ -477,7 +478,12 @@ conversation grows large, and the Assistant tidies its memory once a day;
 `lastConsolidation`, say when each last ran and what came of it.
 
 `agentry_agent_send` is one turn and its answer; other chats may share the
-agent, and busy means one of theirs is answering, so send again later. Past the
+agent, and busy means one of theirs is answering, so send again later.
+`agentry_agent_steer` puts a correction or one more request into a turn a chat
+sent while the agent is still answering it (CLI v0.7.58 or later); no turn in
+flight means send it instead, and a turn the agent runs on its own, or a
+harness that takes a message only between turns, means send it once the turn
+ends. Past the
 limit the agent finishes on its own: read the answer with `agentry_agent_show`
 and `transcript`. Stop an agent only when the person asks. A persistent agent
 takes no files through its chat; the person puts them in its share folder.

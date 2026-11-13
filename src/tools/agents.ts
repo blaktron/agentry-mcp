@@ -16,6 +16,7 @@ import {
   agentList,
   agentModel,
   agentSend,
+  agentSteer,
   agentShow,
   agentStart,
   agentStop,
@@ -266,6 +267,36 @@ export function registerAgentTools(d: Driver): void {
       },
     },
     (a) => guard("agentry_agent_send", () => agentSend(d, a)),
+  );
+
+  registerTool(
+    d.server,
+    "agentry_agent_steer",
+    {
+      description:
+        "Send a message into the turn a running persistent agent is still answering, instead of waiting for " +
+        "its answer (`agentry agent attach <name> --json`, its steer command): a correction, or one more thing " +
+        "to do. It joins a turn a chat sent (this server's agentry_agent_send, the terminal's or the desktop's " +
+        "chat), after the tools the agent is running, and the turn's answer is that turn's. Anything else is a " +
+        "tool error that says which it was: no turn in flight (send the text with agentry_agent_send), a turn " +
+        "the agent runs on its own (a task, a messenger's message, upkeep) or a harness that takes a message " +
+        "only between turns (send it once the turn ends), or an installed CLI older than v0.7.58. Leaving never " +
+        "stops the agent. Text is sent as JSON data.",
+      inputSchema: {
+        name,
+        on,
+        text: z
+          .string()
+          .describe("The message for the turn in flight; multiline text is preserved."),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    (a) => guard("agentry_agent_steer", () => agentSteer(d, a)),
   );
 
   registerTool(
