@@ -420,13 +420,17 @@ export function registerAgentTools(d: Driver): void {
     {
       description:
         "Compact a running persistent agent's conversation now (`agentry agent compact <name> --json`), in two " +
-        "calls: the agent writes a short handoff, then goes on in a fresh conversation that opens with it; the " +
-        "Assistant first saves what the conversation produced to its memory. Every agent also does this on its " +
+        "calls. On a harness that summarises its own conversation (the Agentry harness, Codex, Copilot CLI) the " +
+        "harness replaces it with a summary in place, and the Assistant then saves what the summary holds to its " +
+        "memory; on any other the agent writes a short handoff and goes on in a fresh conversation that opens " +
+        "with it, the Assistant saving the conversation to its memory first. Every agent also does this on its " +
         "own when its conversation grows large. Without `confirm`: what it does and spends (one upkeep turn on the person's model plan, " +
         "within its 12 a day) and a `digest`; nothing runs. Show the person, and only when they agree call again " +
-        "with `confirm` set to that digest. It can take a few minutes; the result says whether a fresh " +
-        "conversation started and, for the Assistant, the memory's fact lines before and after, and " +
-        "agentry_agent_show's `lastCompaction` keeps it.",
+        "with `confirm` set to that digest. It can take a few minutes, and up to half an hour on a model server " +
+        "of the person's own. The result's `compacted` says how: `swapped` true for a fresh conversation, `swap` " +
+        "`in-place` for a summary in place (then `saveFailed`, when present, says the save to memory after it " +
+        "did not finish; the compaction stands), with the memory's fact lines before and after for the " +
+        "Assistant; a compaction that did not finish is an error. agentry_agent_show's `lastCompaction` keeps it.",
       inputSchema: {
         name,
         confirm: z

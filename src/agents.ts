@@ -1016,8 +1016,12 @@ export async function agentTasks(d: Driver, a: AgentTasksArgs): Promise<CallTool
   return d.run("agentry_agent_tasks", onRunhost(d, argv, a.on));
 }
 
-/** How long a compaction may take: the CLI's own bound, and a margin. */
-const COMPACT_TIMEOUT_MS = 11 * 60_000;
+/**
+ * How long a compaction may take: the CLI's own bound, and a margin. The CLI
+ * waits 61 minutes, since on a model server of the person's own a compaction
+ * and the save to memory after it may each take up to half an hour.
+ */
+export const COMPACT_TIMEOUT_MS = 62 * 60_000;
 
 export interface AgentCompactArgs {
   name: string;
@@ -1027,7 +1031,9 @@ export interface AgentCompactArgs {
 /**
  * agentry_agent_compact, in two calls. The preview reads the agent's state
  * and says what a compaction does and spends: one upkeep turn on the
- * person's model plan, within the agent's daily cap. The confirm, with the
+ * person's model plan, within the agent's daily cap, made in place by a
+ * harness that summarises its own conversation and otherwise as a handoff
+ * and a fresh conversation. The confirm, with the
  * digest, runs `agent compact`, which asks nothing more on a terminal.
  */
 export async function agentCompact(d: Driver, a: AgentCompactArgs): Promise<CallToolResult> {
@@ -1060,9 +1066,11 @@ export async function agentCompact(d: Driver, a: AgentCompactArgs): Promise<Call
         writes: true,
         spends: COMPACT_SPENDS,
         note:
-          "A compaction sends the agent one upkeep turn: it writes a short handoff (the Assistant first saves " +
-          "what this conversation produced to its memory), and the agent goes on in a fresh conversation that " +
-          "opens with it. " +
+          "On a harness that summarises its own conversation (the Agentry harness, Codex, Copilot CLI), the " +
+          "harness replaces the conversation with a summary of it in one request that calls no tool, and the " +
+          "Assistant then saves what the summary holds to its memory. On any other harness the agent writes a " +
+          "short handoff (the Assistant first saves what this conversation produced to its memory) and goes on " +
+          "in a fresh conversation that opens with it. " +
           "A message sent meanwhile waits for it. Show the person this; confirm with this digest only once they agree.",
       },
       facts,
@@ -1081,7 +1089,7 @@ export async function agentCompact(d: Driver, a: AgentCompactArgs): Promise<Call
 /** What a compaction spends, as the person is told it. */
 const COMPACT_SPENDS =
   "It uses the person's model plan for one upkeep turn (the agent runs at most 12 upkeep turns a day), " +
-  "which can take a few minutes on a long conversation.";
+  "which can take a few minutes on a long conversation, and up to half an hour on a model server of the person's own.";
 
 /** Refuses the call when the found CLI cannot install or remove a persistent agent from a registry. */
 function needsPublishedAgents(d: Driver, tool: string): CallToolResult | undefined {

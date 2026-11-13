@@ -10,6 +10,7 @@ import { test } from "node:test";
 
 import { connect, envelope, receivedArgv } from "./helpers.js";
 import { ALL_FEATURES } from "../dist/cli.js";
+import { COMPACT_TIMEOUT_MS } from "../dist/agents.js";
 
 const call = (client, name, args = {}) => client.callTool({ name, arguments: args });
 
@@ -302,6 +303,27 @@ test("a compaction previews what it spends, and the confirm runs agent compact",
   assert.equal(r.json.exitClass, "ok");
   assert.equal(r.json.result.compacted.swapped, true);
   assert.deepEqual(receivedArgv(argvFile).at(-1), ["agent", "compact", "assistant", "--json"]);
+});
+
+test("a compaction in place passes through, and the preview says both kinds and the longer wait", async () => {
+  const { client } = await connect({ FAKE_AGENT_STATE: "running", FAKE_COMPACT_IN_PLACE: "1" });
+  const p = envelope(await call(client, "agentry_agent_compact", { name: "assistant" }));
+  assert.match(p.json.note, /summary of it in one request that calls no tool/);
+  assert.match(p.json.note, /fresh conversation that opens with it/);
+  assert.match(p.json.spends, /up to half an hour on a model server of the person's own/);
+  const r = envelope(
+    await call(client, "agentry_agent_compact", { name: "assistant", confirm: p.json.digest }),
+  );
+  assert.equal(r.json.exitClass, "ok");
+  assert.equal(r.json.result.compacted.swapped, false);
+  assert.equal(r.json.result.compacted.swap, "in-place");
+  assert.equal(r.json.result.compacted.saveFailed, "prompt: context deadline exceeded");
+});
+
+test("a compaction may take as long as the CLI waits for one, and a margin", () => {
+  // The CLI's CompactWait: a compaction and the save after it, each up to
+  // half an hour on a model server of the person's own, and a minute.
+  assert.ok(COMPACT_TIMEOUT_MS > 61 * 60_000, `${COMPACT_TIMEOUT_MS} ms`);
 });
 
 test("the Coding agent is compacted the same way, and the preview names no memory of its own", async () => {
